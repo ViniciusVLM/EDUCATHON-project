@@ -9,7 +9,7 @@ const router = Router();
  */
 router.post('/', (req, res) => {
   try {
-    const { title, question, rubric, educationLevel } = req.body;
+    const { title, question, rubric, educationLevel, subject, classId, dueDate, rubricCriteria } = req.body;
 
     if (!title || !question || !rubric) {
       return res.status(400).json({
@@ -17,7 +17,17 @@ router.post('/', (req, res) => {
       });
     }
 
-    const result = createActivity({ title, question, rubric, educationLevel });
+    const result = createActivity({
+      title,
+      question,
+      rubric,
+      educationLevel,
+      subject,
+      classId,
+      dueDate,
+      rubricCriteria,
+      teacherId: req.teacher?.id || null,
+    });
 
     res.status(201).json({
       message: 'Atividade criada com sucesso!',
@@ -35,7 +45,7 @@ router.post('/', (req, res) => {
  */
 router.get('/', (req, res) => {
   try {
-    const activities = getAllActivities();
+    const activities = getAllActivities(req.teacher?.id || null);
     res.json(activities);
   } catch (error) {
     console.error('Erro ao listar atividades:', error);

@@ -5,6 +5,10 @@ import { getDb } from './database/db.js';
 import activitiesRouter from './routes/activities.js';
 import studentsRouter from './routes/students.js';
 import feedbackRouter from './routes/feedback.js';
+import csvRouter from './routes/csv.js';
+import authRouter from './routes/auth.js';
+import classesRouter from './routes/classes.js';
+import { requireAuth } from './middleware/auth.js';
 
 // Carrega variáveis de ambiente
 dotenv.config();
@@ -15,8 +19,12 @@ const PORT = process.env.PORT || 3001;
 // ──────────────────────────────────────────
 // Middlewares
 // ──────────────────────────────────────────
+const corsOrigins = process.env.CORS_ORIGIN
+  ? process.env.CORS_ORIGIN.split(',').map((o) => o.trim())
+  : ['http://localhost:5173', 'http://127.0.0.1:5173'];
+
 app.use(cors({
-  origin: ['http://localhost:5173', 'http://127.0.0.1:5173'],
+  origin: corsOrigins,
   methods: ['GET', 'POST', 'PATCH', 'DELETE'],
   credentials: true,
 }));
@@ -32,11 +40,7 @@ getDb();
 // ──────────────────────────────────────────
 // Rotas
 // ──────────────────────────────────────────
-app.use('/api/activities', activitiesRouter);
-app.use('/api/activities', studentsRouter);
-app.use('/api', feedbackRouter);
-
-// Health check
+// Health check público
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
@@ -45,10 +49,20 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+// Rotas públicas de autenticação
+app.use('/api/auth', authRouter);
+
+// Rotas operacionais protegidas por autenticação
+app.use('/api/classes', requireAuth, classesRouter);
+app.use('/api/activities', requireAuth, activitiesRouter);
+app.use('/api/activities', requireAuth, studentsRouter);
+app.use('/api', requireAuth, feedbackRouter);
+app.use('/api', requireAuth, csvRouter);
+
 // ──────────────────────────────────────────
 // Tratamento de erros global
 // ──────────────────────────────────────────
-app.use((err, req, res, next) => {
+app.use((err, req, res, _next) => {
   console.error('❌ Erro não tratado:', err);
   res.status(500).json({
     error: 'Erro interno do servidor.',

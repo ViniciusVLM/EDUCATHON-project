@@ -1,12 +1,14 @@
-import { useState, useRef, DragEvent } from 'react';
+import { useState, useRef, useEffect, DragEvent } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { uploadCSV, addManualResponses } from '../services/api';
+import { uploadCSV, addManualResponses, previewCSV, getActivity } from '../services/api';
+import type { ActivityWithResponses } from '../types';
 
 export default function UploadResponses() {
   const { activityId } = useParams<{ activityId: string }>();
   const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const [activity, setActivity] = useState<ActivityWithResponses | null>(null);
   const [mode, setMode] = useState<'csv' | 'manual'>('csv');
   const [dragging, setDragging] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -19,48 +21,34 @@ export default function UploadResponses() {
     { student_name: '', original_response: '' },
   ]);
 
-  function handleFileRead(file: File) {
+  useEffect(() => {
+    if (activityId) {
+      getActivity(Number(activityId))
+        .then((act) => setActivity(act))
+        .catch(() => {
+          // Mantém silencioso se falhar
+        });
+    }
+  }, [activityId]);
+
+  async function handleFileRead(file: File) {
     setError('');
+    setCsvPreview([]);
+    setCsvRaw('');
+
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       const content = e.target?.result as string;
       setCsvRaw(content);
-
-      // Simple preview parsing
+      setLoading(true);
       try {
-        const lines = content.split('\n').filter((l) => l.trim());
-        if (lines.length < 2) {
-          setError('O CSV deve ter pelo menos um cabeçalho e uma linha de dados.');
-          return;
-        }
-
-        const header = lines[0].toLowerCase();
-        const delimiter = header.includes(';') ? ';' : ',';
-        const cols = lines[0].split(delimiter).map((c) => c.trim().replace(/"/g, ''));
-
-        const nameIdx = cols.findIndex((c) =>
-          ['nome_aluno', 'nome', 'name', 'student_name', 'aluno'].includes(c.toLowerCase())
-        );
-        const respIdx = cols.findIndex((c) =>
-          ['resposta', 'response', 'original_response', 'texto', 'answer'].includes(c.toLowerCase())
-        );
-
-        if (nameIdx === -1 || respIdx === -1) {
-          setError(`Colunas não encontradas. Use "nome_aluno" e "resposta" como cabeçalhos. Encontrado: ${cols.join(', ')}`);
-          return;
-        }
-
-        const preview = lines.slice(1).map((line) => {
-          const parts = line.split(delimiter).map((p) => p.trim().replace(/^"|"$/g, ''));
-          return {
-            student_name: parts[nameIdx] || '',
-            original_response: parts[respIdx] || '',
-          };
-        }).filter((r) => r.student_name && r.original_response);
-
-        setCsvPreview(preview);
-      } catch {
-        setError('Erro ao ler o CSV. Verifique o formato do arquivo.');
+        const { rows } = await previewCSV(content);
+        setCsvPreview(rows);
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : 'Erro ao ler o CSV.';
+        setError(message);
+      } finally {
+        setLoading(false);
       }
     };
     reader.readAsText(file, 'UTF-8');
@@ -134,6 +122,50 @@ export default function UploadResponses() {
       <p className="page-subtitle">
         Envie as respostas dos alunos via arquivo CSV ou digite manualmente.
       </p>
+
+      {activity && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.85rem',
+            padding: '0.85rem 1.15rem',
+            background: 'var(--surface-800)',
+            borderRadius: 'var(--radius-md)',
+            border: '1px solid var(--surface-700)',
+            marginBottom: '1.75rem',
+          }}
+        >
+          <span style={{ fontSize: '1.4rem' }}>📋</span>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 600, color: 'var(--color-text-primary)' }}>
+              {activity.title}
+            </div>
+            <div style={{ fontSize: '0.825rem', color: 'var(--color-text-muted)', marginTop: '0.15rem' }}>
+              {activity.class_name ? (
+                <span>
+                  🏫 Turma: <strong style={{ color: 'var(--color-primary-light, #818cf8)' }}>{activity.class_name}</strong>
+                  {activity.class_code && ` (${activity.class_code})`}
+                  <span
+                    style={{
+                      marginLeft: '0.75rem',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.25rem',
+                      color: 'var(--color-success, #10b981)',
+                      fontWeight: 500,
+                    }}
+                  >
+                    ✓ Vínculo e e-mails automáticos ativos
+                  </span>
+                </span>
+              ) : (
+                <span>Sem turma vinculada (avulso)</span>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Mode Toggle */}
       <div className="filter-tabs" style={{ marginBottom: '2rem' }}>

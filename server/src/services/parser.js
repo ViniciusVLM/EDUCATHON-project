@@ -25,12 +25,14 @@ export function parseCSV(csvContent) {
   // Mapeia nomes de colunas possíveis para os campos internos
   const nameAliases = ['nome_aluno', 'nome', 'name', 'student_name', 'aluno', 'estudante'];
   const responseAliases = ['resposta', 'response', 'original_response', 'texto', 'text', 'answer'];
+  const emailAliases = ['email', 'e-mail', 'mail', 'correio_eletronico'];
 
   const firstRecord = records[0];
   const columns = Object.keys(firstRecord).map(k => k.toLowerCase().trim());
 
   const nameCol = findColumn(columns, nameAliases, Object.keys(firstRecord));
   const responseCol = findColumn(columns, responseAliases, Object.keys(firstRecord));
+  const emailCol = findColumn(columns, emailAliases, Object.keys(firstRecord));
 
   if (!nameCol) {
     throw new Error(
@@ -50,16 +52,21 @@ export function parseCSV(csvContent) {
     .map((record, index) => {
       const studentName = record[nameCol]?.trim();
       const response = record[responseCol]?.trim();
+      const email = emailCol ? record[emailCol]?.trim() : null;
 
       if (!studentName || !response) {
         console.warn(`⚠️ Linha ${index + 2} ignorada: nome ou resposta vazia.`);
         return null;
       }
 
-      return {
+      const item = {
         student_name: studentName,
         original_response: response,
       };
+      if (email) {
+        item.email = email;
+      }
+      return item;
     })
     .filter(Boolean);
 

@@ -78,10 +78,12 @@ router.get('/activities/:id/progress', (req, res) => {
 router.patch('/feedback/:feedbackId', (req, res) => {
   try {
     const feedbackId = Number(req.params.feedbackId);
-    const { teacherFeedback } = req.body;
+    const { teacherFeedback, teacherRating, criteriaScores } = req.body;
 
-    if (!teacherFeedback) {
-      return res.status(400).json({ error: 'Campo "teacherFeedback" é obrigatório.' });
+    if (teacherFeedback === undefined && teacherRating === undefined && criteriaScores === undefined) {
+      return res.status(400).json({
+        error: 'Envie ao menos um campo para atualizar (teacherFeedback, teacherRating ou criteriaScores).',
+      });
     }
 
     const feedback = getFeedback(feedbackId);
@@ -89,7 +91,7 @@ router.patch('/feedback/:feedbackId', (req, res) => {
       return res.status(404).json({ error: 'Feedback não encontrado.' });
     }
 
-    updateFeedback(feedbackId, teacherFeedback);
+    updateFeedback(feedbackId, teacherFeedback, teacherRating, criteriaScores);
 
     res.json({
       message: 'Feedback atualizado com sucesso!',
@@ -166,7 +168,8 @@ router.post('/feedback/:feedbackId/regenerate', async (req, res) => {
     const newFeedback = saveFeedback(
       feedback.student_response_id,
       result.raw,
-      result.parsed.feedback_completo
+      result.parsed.feedback_completo,
+      process.env.GEMINI_MODEL || 'gemini-2.5-flash'
     );
 
     res.json({

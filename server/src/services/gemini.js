@@ -19,10 +19,12 @@ function getModel() {
     }
 
     genAI = new GoogleGenerativeAI(apiKey);
+    const modelName = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
     model = genAI.getGenerativeModel({
-      model: 'gemini-2.0-flash',
+      model: modelName,
       systemInstruction: SYSTEM_INSTRUCTION,
     });
+    console.log(`🤖 Usando modelo Gemini: ${modelName}`);
   }
   return model;
 }

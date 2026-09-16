@@ -1,17 +1,56 @@
 import { generateFeedback } from './gemini.js';
-import { saveFeedback, deleteFeedbackByResponseId } from '../database/db.js';
+import { saveFeedback, getDb } from '../database/db.js';
 
-/**
- * Estado global de processamento de atividades.
- * Em produção seria Redis ou similar; no MVP, fica em memória.
- */
-const processingState = new Map();
+// ──────────────────────────────────────────
+// Helpers: processing_jobs (SQLite)
+// ──────────────────────────────────────────
+
+function upsertJob(activityId, status, total, processed, errors) {
+  const db = getDb();
+  db.prepare(`
+    INSERT INTO processing_jobs (activity_id, status, total, processed, errors, updated_at)
+    VALUES (?, ?, ?, ?, ?, datetime('now'))
+    ON CONFLICT(activity_id) DO UPDATE SET
+      status     = excluded.status,
+      total      = excluded.total,
+      processed  = excluded.processed,
+      errors     = excluded.errors,
+      updated_at = excluded.updated_at
+  `).run(activityId, status, total, processed, errors);
+}
+
+function incrementJob(activityId, isError) {
+  const db = getDb();
+  db.prepare(`
+    UPDATE processing_jobs
+    SET processed  = processed + 1,
+        errors     = errors + ?,
+        updated_at = datetime('now')
+    WHERE activity_id = ?
+  `).run(isError ? 1 : 0, activityId);
+}
+
+function markJobComplete(activityId) {
+  const db = getDb();
+  db.prepare(`
+    UPDATE processing_jobs
+    SET status = 'complete', updated_at = datetime('now')
+    WHERE activity_id = ?
+  `).run(activityId);
+}
+
+// ──────────────────────────────────────────
+// API pública
+// ──────────────────────────────────────────
 
 /**
  * Retorna o estado de processamento de uma atividade.
+ * Persiste no banco — sobrevive a restarts do servidor.
  */
 export function getProgress(activityId) {
-  return processingState.get(activityId) || {
+  const db = getDb();
+  const row = db.prepare('SELECT * FROM processing_jobs WHERE activity_id = ?').get(activityId);
+  return row || {
     status: 'idle',
     total: 0,
     processed: 0,
@@ -22,21 +61,18 @@ export function getProgress(activityId) {
 /**
  * Processa as respostas dos alunos em lotes, gerando feedbacks via IA.
  * Usa lotes de 3 com delay de 1.5s entre eles para evitar rate limiting.
+ * O progresso fica registrado no banco e sobrevive a restarts.
  *
  * @param {Object} activity - Dados da atividade
- * @param {Array} responses - Lista de respostas dos alunos com seus IDs
+ * @param {Array}  responses - Lista de respostas dos alunos com seus IDs
  */
 export async function processResponses(activity, responses) {
   const activityId = activity.id;
   const BATCH_SIZE = 3;
   const DELAY_MS = 1500;
 
-  processingState.set(activityId, {
-    status: 'processing',
-    total: responses.length,
-    processed: 0,
-    errors: 0,
-  });
+  // Cria / atualiza job como 'processing'
+  upsertJob(activityId, 'processing', responses.length, 0, 0);
 
   for (let i = 0; i < responses.length; i += BATCH_SIZE) {
     const batch = responses.slice(i, i + BATCH_SIZE);
@@ -53,11 +89,12 @@ export async function processResponses(activity, responses) {
             educationLevel: activity.education_level,
           });
 
-          // Salva no banco
+          // Salva no banco com registro do modelo utilizado
           saveFeedback(
             response.id,
             result.raw,
-            result.parsed.feedback_completo
+            result.parsed.feedback_completo,
+            process.env.GEMINI_MODEL || 'gemini-2.5-flash'
           );
 
           return { success: true, studentName: response.student_name };
@@ -68,17 +105,14 @@ export async function processResponses(activity, responses) {
       })
     );
 
-    // Atualiza estado
-    const state = processingState.get(activityId);
+    // Atualiza progresso no banco atomicamente
     for (const result of results) {
-      state.processed++;
-      if (result.status === 'rejected' || (result.value && !result.value.success)) {
-        state.errors++;
-      }
+      const isError = result.status === 'rejected' || (result.value && !result.value.success);
+      incrementJob(activityId, isError);
     }
-    processingState.set(activityId, { ...state });
 
-    console.log(`📊 Progresso: ${state.processed}/${state.total} (erros: ${state.errors})`);
+    const progress = getProgress(activityId);
+    console.log(`📊 Progresso: ${progress.processed}/${progress.total} (erros: ${progress.errors})`);
 
     // Delay entre lotes (exceto no último)
     if (i + BATCH_SIZE < responses.length) {
@@ -87,9 +121,6 @@ export async function processResponses(activity, responses) {
   }
 
   // Marca como completo
-  const finalState = processingState.get(activityId);
-  finalState.status = 'complete';
-  processingState.set(activityId, finalState);
-
+  markJobComplete(activityId);
   console.log(`✅ Processamento da atividade ${activityId} finalizado.`);
 }

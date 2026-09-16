@@ -13,6 +13,8 @@
 cd server
 cp ../.env.example .env
 # Edite o .env e adicione sua GEMINI_API_KEY
+# Opcionalmente configure GEMINI_MODEL (padrão: gemini-2.5-flash)
+# Opcionalmente configure CORS_ORIGIN para produção (padrão: localhost:5173)
 ```
 
 ### 2. Instalar dependências e rodar o Backend
@@ -54,7 +56,7 @@ npm run dev
 ```
 ├── client/          # Frontend React
 │   ├── src/
-│   │   ├── pages/   # 5 páginas do fluxo
+│   │   ├── pages/   # 6 páginas do fluxo (incl. /activities)
 │   │   ├── services/# API client
 │   │   ├── styles/  # Design system CSS
 │   │   └── types/   # TypeScript types

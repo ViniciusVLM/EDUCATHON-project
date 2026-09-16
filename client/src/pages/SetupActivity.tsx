@@ -1,18 +1,28 @@
-import { useState, FormEvent } from 'react';
+import { useState, useEffect, FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { createActivity } from '../services/api';
+import { createActivity, getClasses } from '../services/api';
+import type { Class } from '../types';
 
 export default function SetupActivity() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [classes, setClasses] = useState<Class[]>([]);
 
   const [form, setForm] = useState({
     title: '',
     question: '',
     rubric: '',
     educationLevel: 'medio',
+    subject: '',
+    classId: '',
   });
+
+  useEffect(() => {
+    getClasses()
+      .then(setClasses)
+      .catch((err) => console.warn('Erro ao carregar turmas:', err));
+  }, []);
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) {
     setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
@@ -29,10 +39,18 @@ export default function SetupActivity() {
 
     setLoading(true);
     try {
-      const result = await createActivity(form);
+      const result = await createActivity({
+        title: form.title.trim(),
+        question: form.question.trim(),
+        rubric: form.rubric.trim(),
+        educationLevel: form.educationLevel,
+        subject: form.subject.trim() || undefined,
+        classId: form.classId ? Number(form.classId) : undefined,
+      });
       navigate(`/upload/${result.id}`);
-    } catch (err: any) {
-      setError(err.message || 'Erro ao criar atividade.');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Erro ao criar atividade.';
+      setError(msg);
     } finally {
       setLoading(false);
     }
@@ -63,7 +81,7 @@ export default function SetupActivity() {
             />
           </div>
 
-          <div className="form-row">
+          <div className="form-row" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
             <div className="input-group">
               <label className="input-label" htmlFor="educationLevel">
                 Nível de Ensino
@@ -80,7 +98,41 @@ export default function SetupActivity() {
                 <option value="superior">Ensino Superior</option>
               </select>
             </div>
-            <div></div>
+
+            <div className="input-group">
+              <label className="input-label" htmlFor="subject">
+                Disciplina / Matéria
+              </label>
+              <input
+                id="subject"
+                name="subject"
+                type="text"
+                className="input"
+                placeholder="Ex: Biologia, História..."
+                value={form.subject}
+                onChange={handleChange}
+              />
+            </div>
+
+            <div className="input-group">
+              <label className="input-label" htmlFor="classId">
+                Turma (opcional)
+              </label>
+              <select
+                id="classId"
+                name="classId"
+                className="select"
+                value={form.classId}
+                onChange={handleChange}
+              >
+                <option value="">Nenhuma turma específica (avulsa)</option>
+                {classes.map((cls) => (
+                  <option key={cls.id} value={cls.id}>
+                    {cls.name} ({cls.student_count || 0} alunos)
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
 
           <div className="input-group">

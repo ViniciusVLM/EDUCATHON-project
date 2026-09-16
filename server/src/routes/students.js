@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { parseCSV } from '../services/parser.js';
-import { addResponses, getActivity, getResponseCount } from '../database/db.js';
+import { addResponses, getActivity } from '../database/db.js';
 
 const router = Router();
 
@@ -26,7 +26,7 @@ router.post('/:id/upload', (req, res) => {
     }
 
     const parsed = parseCSV(csvContent);
-    const ids = addResponses(activityId, parsed);
+    const ids = addResponses(activityId, parsed, 'csv');
 
     res.status(201).json({
       message: `${parsed.length} respostas carregadas com sucesso!`,
@@ -70,7 +70,7 @@ router.post('/:id/manual', (req, res) => {
       }
     }
 
-    const ids = addResponses(activityId, responses);
+    const ids = addResponses(activityId, responses, 'manual');
 
     res.status(201).json({
       message: `${responses.length} respostas adicionadas com sucesso!`,

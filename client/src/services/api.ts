@@ -2,19 +2,63 @@
    EDUCATHON — API Client Service
    ════════════════════════════════════════════ */
 
-import type { Activity, ActivityWithResponses, Progress } from '../types';
+import type {
+  Activity,
+  ActivityWithResponses,
+  Progress,
+  AuthResponse,
+  AuthTeacher,
+  Class,
+  ClassWithStudents,
+  Student,
+} from '../types';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
+let authToken: string | null = null;
+
+export function setAuthToken(token: string | null) {
+  authToken = token;
+  if (token) {
+    try {
+      localStorage.setItem('educathon_token', token);
+    } catch {
+      // Ignora erro em ambientes sem localStorage
+    }
+  } else {
+    try {
+      localStorage.removeItem('educathon_token');
+    } catch {
+      // Ignora erro
+    }
+  }
+}
+
+export function getAuthToken(): string | null {
+  if (!authToken) {
+    try {
+      authToken = localStorage.getItem('educathon_token');
+    } catch {
+      authToken = null;
+    }
+  }
+  return authToken;
+}
+
 /**
- * Helper para fazer requests com tratamento de erro padrão.
+ * Helper para fazer requests com tratamento de erro padrão e injeção do token JWT.
  */
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
+  const token = getAuthToken();
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...((options?.headers as Record<string, string>) || {}),
+  };
+
   const response = await fetch(`${API_BASE}${url}`, {
-    headers: {
-      'Content-Type': 'application/json',
-    },
     ...options,
+    headers,
   });
 
   if (!response.ok) {
@@ -39,6 +83,10 @@ export async function createActivity(data: {
   question: string;
   rubric: string;
   educationLevel: string;
+  subject?: string;
+  classId?: number | null;
+  dueDate?: string | null;
+  rubricCriteria?: { criterio: string; peso: number }[];
 }): Promise<{ message: string; id: number }> {
   return request('/activities', {
     method: 'POST',
@@ -52,6 +100,20 @@ export async function getActivities(): Promise<Activity[]> {
 
 export async function getActivity(id: number): Promise<ActivityWithResponses> {
   return request(`/activities/${id}`);
+}
+
+// ──────────────────────────────────────────
+// CSV Preview
+// ──────────────────────────────────────────
+
+export async function previewCSV(csvContent: string): Promise<{
+  rows: { student_name: string; original_response: string }[];
+  total: number;
+}> {
+  return request('/csv/preview', {
+    method: 'POST',
+    body: JSON.stringify({ csvContent }),
+  });
 }
 
 // ──────────────────────────────────────────
@@ -129,7 +191,12 @@ export async function regenerateFeedback(feedbackId: number): Promise<{
 // ──────────────────────────────────────────
 
 export async function exportCSV(activityId: number): Promise<void> {
-  const response = await fetch(`${API_BASE}/activities/${activityId}/export`);
+  const token = getAuthToken();
+  const response = await fetch(`${API_BASE}/activities/${activityId}/export`, {
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+  });
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({ error: 'Erro ao exportar' }));
@@ -146,4 +213,107 @@ export async function exportCSV(activityId: number): Promise<void> {
   a.click();
   document.body.removeChild(a);
   window.URL.revokeObjectURL(url);
+}
+
+// ──────────────────────────────────────────
+// Auth (Fase 5.1)
+// ──────────────────────────────────────────
+
+export async function registerTeacher(data: {
+  name: string;
+  email: string;
+  password: string;
+}): Promise<AuthResponse> {
+  const res = await request<AuthResponse>('/auth/register', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+  setAuthToken(res.token);
+  return res;
+}
+
+export async function loginTeacher(data: {
+  email: string;
+  password: string;
+}): Promise<AuthResponse> {
+  const res = await request<AuthResponse>('/auth/login', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+  setAuthToken(res.token);
+  return res;
+}
+
+export async function getMe(): Promise<{ teacher: AuthTeacher }> {
+  return request<{ teacher: AuthTeacher }>('/auth/me');
+}
+
+// ──────────────────────────────────────────
+// Classes & Students (Fase 5.2)
+// ──────────────────────────────────────────
+
+export async function getClasses(): Promise<Class[]> {
+  return request<Class[]>('/classes');
+}
+
+export async function getClass(id: number): Promise<ClassWithStudents> {
+  return request<ClassWithStudents>(`/classes/${id}`);
+}
+
+export async function createClass(data: {
+  name: string;
+  schoolYear?: string;
+}): Promise<{ message: string; class: Class }> {
+  return request<{ message: string; class: Class }>('/classes', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function updateClass(
+  id: number,
+  data: { name?: string; schoolYear?: string }
+): Promise<{ message: string }> {
+  return request<{ message: string }>(`/classes/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteClass(id: number): Promise<{ message: string }> {
+  return request<{ message: string }>(`/classes/${id}`, {
+    method: 'DELETE',
+  });
+}
+
+export async function addStudent(
+  classId: number,
+  data: { name: string; email?: string }
+): Promise<{ message: string; student: Student }> {
+  return request<{ message: string; student: Student }>(`/classes/${classId}/students`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function addStudentsBatch(
+  classId: number,
+  students: { name: string; email?: string }[]
+): Promise<{ message: string; count: number; students: Student[] }> {
+  return request<{ message: string; count: number; students: Student[] }>(
+    `/classes/${classId}/students`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ students }),
+    }
+  );
+}
+
+export async function deleteStudent(
+  classId: number,
+  studentId: number
+): Promise<{ message: string }> {
+  return request<{ message: string }>(`/classes/${classId}/students/${studentId}`, {
+    method: 'DELETE',
+  });
 }
