@@ -1,0 +1,31 @@
+{
+  "name": "educathon-server",
+  "version": "1.0.0",
+  "description": "Backend do Copiloto Pedagógico Educathon",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "test": "node --test src/__tests__/*.test.js",
+    "test:unit": "node --test src/__tests__/parser.test.js",
+    "test:integration": "node --test src/__tests__/routes.test.js src/__tests__/auth.test.js src/__tests__/classes.test.js src/__tests__/idor.test.js",
+    "lint": "eslint src/"
+  },
+  "dependencies": {
+    "@google/genai": "^1.0.0",
+    "bcryptjs": "^3.0.3",
+    "better-sqlite3": "^11.10.0",
+    "cors": "^2.8.5",
+    "csv-parse": "^5.5.6",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.0",
+    "jsonwebtoken": "^9.0.3"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.10.0",
+    "globals": "^17.12.0",
+    "supertest": "^7.2.2"
+  }
+}
