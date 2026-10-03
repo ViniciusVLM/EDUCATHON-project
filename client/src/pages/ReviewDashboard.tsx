@@ -30,6 +30,16 @@ export default function ReviewDashboard() {
       setActivity(data);
       setLoading(false);
 
+      try {
+        const prog = await fetchProgress(Number(activityId));
+        setProgress(prog);
+        if (prog.status === 'processing') {
+          setGenerating(true);
+        }
+      } catch {
+        // ignora erro ao buscar progresso inicial
+      }
+
       // Auto-select first response
       const responses = filterResponses(data.responses, filter);
       if (responses.length > 0 && selectedIndex >= responses.length) {
@@ -54,7 +64,8 @@ export default function ReviewDashboard() {
         const prog = await fetchProgress(Number(activityId));
         setProgress(prog);
 
-        if (prog.status === 'complete') {
+        // Para o polling se completo ou com erro
+        if (prog.status === 'complete' || prog.status === 'error') {
           setGenerating(false);
           loadActivity();
         }
@@ -266,12 +277,30 @@ export default function ReviewDashboard() {
             </div>
           ) : (
             <div>
-              <p style={{ marginBottom: '1rem', color: 'var(--text-secondary)' }}>
-                {activity.responses.filter((r) => !r.feedback_id).length} alunos ainda não possuem feedback.
-              </p>
-              <button className="btn btn-primary btn-lg" onClick={handleGenerate}>
-                🤖 Gerar Feedbacks com IA
-              </button>
+              {progress && (progress.errors > 0 || progress.status === 'error') ? (
+                <div style={{ marginBottom: '1rem' }}>
+                  <div style={{ color: 'var(--danger-400, #ef4444)', fontWeight: 600, marginBottom: '0.5rem' }}>
+                    ⚠️ {progress.errors > 0
+                      ? `${progress.errors} resposta(s) falharam na geração.`
+                      : 'O processamento anterior foi interrompido ou falhou.'}
+                  </div>
+                  <p style={{ color: 'var(--text-secondary)', marginBottom: '1rem' }}>
+                    {activity.responses.filter((r) => !r.feedback_id).length} aluno(s) ainda sem feedback.
+                  </p>
+                  <button className="btn btn-primary btn-lg" onClick={handleGenerate}>
+                    🔄 Tentar Novamente
+                  </button>
+                </div>
+              ) : (
+                <div>
+                  <p style={{ marginBottom: '1rem', color: 'var(--text-secondary)' }}>
+                    {activity.responses.filter((r) => !r.feedback_id).length} alunos ainda não possuem feedback.
+                  </p>
+                  <button className="btn btn-primary btn-lg" onClick={handleGenerate}>
+                    🤖 Gerar Feedbacks com IA
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>

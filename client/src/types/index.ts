@@ -69,7 +69,7 @@ export interface FeedbackParsed {
 }
 
 export interface Progress {
-  status: 'idle' | 'processing' | 'complete';
+  status: 'idle' | 'processing' | 'complete' | 'error';
   total: number;
   processed: number;
   errors: number;
