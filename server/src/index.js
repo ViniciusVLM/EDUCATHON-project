@@ -1,6 +1,6 @@
+import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
-import dotenv from 'dotenv';
 import { getDb } from './database/db.js';
 import activitiesRouter from './routes/activities.js';
 import studentsRouter from './routes/students.js';
@@ -9,9 +9,6 @@ import csvRouter from './routes/csv.js';
 import authRouter from './routes/auth.js';
 import classesRouter from './routes/classes.js';
 import { requireAuth } from './middleware/auth.js';
-
-// Carrega variáveis de ambiente
-dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3001;
