@@ -10,6 +10,7 @@ import {
   generateToken,
 } from '../services/auth.js';
 import { requireAuth } from '../middleware/auth.js';
+import { authLimiter } from '../middleware/rateLimit.js';
 
 const router = Router();
 
@@ -18,8 +19,9 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 /**
  * POST /api/auth/register
  * Cadastra um novo professor.
+ * Endurecimento: authLimiter e senha mínima de 8 caracteres.
  */
-router.post('/register', async (req, res) => {
+router.post('/register', authLimiter, async (req, res) => {
   try {
     const { name, email, password } = req.body;
 
@@ -29,8 +31,8 @@ router.post('/register', async (req, res) => {
       });
     }
 
-    const trimmedName = name.trim();
-    const normalizedEmail = email.trim().toLowerCase();
+    const trimmedName = String(name).trim();
+    const normalizedEmail = String(email).trim().toLowerCase();
 
     if (trimmedName.length < 2) {
       return res.status(400).json({
@@ -44,9 +46,9 @@ router.post('/register', async (req, res) => {
       });
     }
 
-    if (password.length < 6) {
+    if (password.length < 8) {
       return res.status(400).json({
-        error: 'A senha deve ter pelo menos 6 caracteres.',
+        error: 'A senha deve ter pelo menos 8 caracteres.',
       });
     }
 
@@ -84,8 +86,9 @@ router.post('/register', async (req, res) => {
 /**
  * POST /api/auth/login
  * Autentica o professor por email e senha.
+ * Endurecimento: authLimiter para mitigação de ataques de força bruta.
  */
-router.post('/login', async (req, res) => {
+router.post('/login', authLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
 
