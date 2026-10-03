@@ -64,6 +64,14 @@ const MIGRATIONS = [
       'ALTER TABLE activities ADD COLUMN teacher_id INTEGER REFERENCES teachers(id) ON DELETE SET NULL',
     ],
   },
+  // ── Fase 3: unicidade de feedback por resposta ─────────────────────────────
+  {
+    name: '008_feedbacks_unique_student_response',
+    sqls: [
+      'DELETE FROM feedbacks WHERE id NOT IN (SELECT MAX(id) FROM feedbacks GROUP BY student_response_id)',
+      'CREATE UNIQUE INDEX IF NOT EXISTS idx_feedbacks_student_response_id ON feedbacks(student_response_id)',
+    ],
+  },
 ];
 
 /**
@@ -240,6 +248,17 @@ export function deleteStudent(studentId) {
   return db.prepare('DELETE FROM students WHERE id = ?').run(studentId);
 }
 
+/**
+ * Remove um aluno garantindo que ele pertence à turma informada.
+ * Impede IDOR: professor A não pode apagar aluno da turma de professor B.
+ * Retorna o resultado do run() — changes === 0 significa que o aluno
+ * não existe ou não pertence à turma especificada.
+ */
+export function deleteStudentFromClass(studentId, classId) {
+  const db = getDb();
+  return db.prepare('DELETE FROM students WHERE id = ? AND class_id = ?').run(studentId, classId);
+}
+
 // ──────────────────────────────────────────
 // Helpers: Activities
 // ──────────────────────────────────────────
@@ -282,12 +301,20 @@ export function getActivity(id) {
 }
 
 /**
- * Retorna a atividade somente se ela pertencer ao professor informado.
- * Retorna null tanto quando o ID não existe quanto quando pertence a outro professor,
- * para evitar revelar a existência de recursos alheios (prevenção de IDOR).
- * @param {number} activityId
- * @param {number} teacherId
- * @returns {object|null}
+ * Lista atividades do professor logado.
+ * IDOR fix: removido o filtro `OR teacher_id IS NULL` que expunha
+ * atividades sem dono a todos os professores autenticados.
+ * As rotas já estão atrás de requireAuth, então teacherId nunca é null
+ * num contexto de request real.
+ */
+export function getAllActivities(teacherId) {
+  const db = getDb();
+  return db.prepare('SELECT * FROM activities WHERE teacher_id = ? ORDER BY created_at DESC').all(teacherId);
+}
+
+/**
+ * Retorna uma atividade se e somente se o teacher_id coincidir.
+ * Usar em rotas que precisam checar posse antes de agir.
  */
 export function getActivityIfOwned(activityId, teacherId) {
   const db = getDb();
@@ -300,9 +327,6 @@ export function getActivityIfOwned(activityId, teacherId) {
  * Retorna o feedback somente se a atividade-pai pertencer ao professor informado.
  * Faz JOIN: feedbacks → student_responses → activities para checar posse.
  * Retorna null tanto quando o ID não existe quanto quando pertence a outro professor.
- * @param {number} feedbackId
- * @param {number} teacherId
- * @returns {object|null}
  */
 export function getFeedbackIfOwned(feedbackId, teacherId) {
   const db = getDb();
@@ -315,14 +339,6 @@ export function getFeedbackIfOwned(feedbackId, teacherId) {
       WHERE f.id = ? AND a.teacher_id = ?
     `)
     .get(feedbackId, teacherId) || null;
-}
-
-export function getAllActivities(teacherId = null) {
-  const db = getDb();
-  if (teacherId) {
-    return db.prepare('SELECT * FROM activities WHERE teacher_id = ? OR teacher_id IS NULL ORDER BY created_at DESC').all(teacherId);
-  }
-  return db.prepare('SELECT * FROM activities ORDER BY created_at DESC').all();
 }
 
 // ──────────────────────────────────────────
@@ -426,13 +442,16 @@ export function getResponseCount(activityId) {
 // Helpers: Feedbacks
 // ──────────────────────────────────────────
 
-export function saveFeedback(studentResponseId, aiFeedbackJson, aiFeedbackText, aiModel = null) {
+export function saveFeedback(studentResponseId, aiFeedbackJson, aiFeedbackText, aiModel = null, criteriaScores = null) {
   const db = getDb();
   const stmt = db.prepare(`
-    INSERT INTO feedbacks (student_response_id, ai_feedback_json, ai_feedback_text, ai_model, status, generated_at)
-    VALUES (?, ?, ?, ?, 'pendente', datetime('now'))
+    INSERT INTO feedbacks (student_response_id, ai_feedback_json, ai_feedback_text, ai_model, criteria_scores, status, generated_at)
+    VALUES (?, ?, ?, ?, ?, 'pendente', datetime('now'))
   `);
-  const result = stmt.run(studentResponseId, aiFeedbackJson, aiFeedbackText, aiModel);
+  const formattedCriteria = criteriaScores !== null && criteriaScores !== undefined
+    ? (typeof criteriaScores === 'string' ? criteriaScores : JSON.stringify(criteriaScores))
+    : null;
+  const result = stmt.run(studentResponseId, aiFeedbackJson, aiFeedbackText, aiModel, formattedCriteria);
   return { id: result.lastInsertRowid };
 }
 

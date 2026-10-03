@@ -9,8 +9,9 @@ import {
   saveFeedback,
   getExportData,
 } from '../database/db.js';
-import { processResponses, getProgress } from '../services/queue.js';
+import { processResponses, getProgress, markJobError } from '../services/queue.js';
 import { generateFeedback } from '../services/gemini.js';
+import { aiGenerateLimiter } from '../middleware/rateLimit.js';
 
 const router = Router();
 
@@ -18,8 +19,10 @@ const router = Router();
  * POST /api/activities/:id/generate
  * Dispara a geração de feedbacks para todos os alunos da atividade.
  * Retorna imediatamente e processa em background.
+ * Previne geração concorrente com 409 Conflict.
+ * Endurecimento: aiGenerateLimiter para controle de cota.
  */
-router.post('/activities/:id/generate', async (req, res) => {
+router.post('/activities/:id/generate', aiGenerateLimiter, async (req, res) => {
   try {
     const activityId = Number(req.params.id);
     // Verifica posse antes de qualquer operação (prevenção de IDOR)
@@ -27,6 +30,14 @@ router.post('/activities/:id/generate', async (req, res) => {
 
     if (!activity) {
       return res.status(404).json({ error: 'Atividade não encontrada.' });
+    }
+
+    // Previne duplo clique / processamento paralelo concorrente
+    const currentProgress = getProgress(activityId);
+    if (currentProgress && currentProgress.status === 'processing') {
+      return res.status(409).json({
+        error: 'Já existe um processamento de feedbacks em andamento para esta atividade.',
+      });
     }
 
     const responses = getResponsesByActivity(activityId);
@@ -50,6 +61,7 @@ router.post('/activities/:id/generate', async (req, res) => {
     // Inicia processamento em background
     processResponses(activity, pendingResponses).catch((error) => {
       console.error('Erro no processamento em background:', error);
+      markJobError(activityId);
     });
 
     res.status(202).json({
@@ -58,16 +70,24 @@ router.post('/activities/:id/generate', async (req, res) => {
     });
   } catch (error) {
     console.error('Erro ao gerar feedbacks:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: 'Erro interno ao iniciar geração de feedbacks.' });
   }
 });
 
 /**
  * GET /api/activities/:id/progress
  * Retorna o progresso da geração de feedbacks.
+ * IDOR fix: verifica posse da atividade antes de expor dados.
  */
 router.get('/activities/:id/progress', (req, res) => {
   const activityId = Number(req.params.id);
+
+  // Garante que a atividade pertence ao professor logado
+  const activity = getActivityIfOwned(activityId, req.teacher.id);
+  if (!activity) {
+    return res.status(404).json({ error: 'Atividade não encontrada.' });
+  }
+
   const progress = getProgress(activityId);
   res.json(progress);
 });
@@ -84,6 +104,18 @@ router.patch('/feedback/:feedbackId', (req, res) => {
     if (teacherFeedback === undefined && teacherRating === undefined && criteriaScores === undefined) {
       return res.status(400).json({
         error: 'Envie ao menos um campo para atualizar (teacherFeedback, teacherRating ou criteriaScores).',
+      });
+    }
+
+    if (teacherFeedback !== undefined && (typeof teacherFeedback !== 'string' || teacherFeedback.length > 10000)) {
+      return res.status(400).json({
+        error: 'O feedback do professor deve ter no máximo 10.000 caracteres.',
+      });
+    }
+
+    if (teacherRating !== undefined && teacherRating !== null && ![-1, 0, 1].includes(teacherRating)) {
+      return res.status(400).json({
+        error: 'A avaliação deve ser -1, 0 ou 1.',
       });
     }
 
@@ -134,8 +166,9 @@ router.post('/feedback/:feedbackId/approve', (req, res) => {
 /**
  * POST /api/feedback/:feedbackId/regenerate
  * Regenera o feedback via IA para um aluno específico.
+ * Endurecimento: aiGenerateLimiter para controle de cota.
  */
-router.post('/feedback/:feedbackId/regenerate', async (req, res) => {
+router.post('/feedback/:feedbackId/regenerate', aiGenerateLimiter, async (req, res) => {
   try {
     const feedbackId = Number(req.params.feedbackId);
 
@@ -148,7 +181,7 @@ router.post('/feedback/:feedbackId/regenerate', async (req, res) => {
     // Busca a atividade associada (teacher_id já validado acima)
     const db = (await import('../database/db.js'));
     const response = db.getDb().prepare(`
-      SELECT sr.*, a.question, a.rubric, a.education_level
+      SELECT sr.*, a.question, a.rubric, a.education_level, a.subject, a.rubric_criteria
       FROM student_responses sr
       JOIN activities a ON a.id = sr.activity_id
       WHERE sr.id = ? AND a.teacher_id = ?
@@ -158,6 +191,17 @@ router.post('/feedback/:feedbackId/regenerate', async (req, res) => {
       return res.status(404).json({ error: 'Resposta do aluno não encontrada.' });
     }
 
+    let parsedCriteria = null;
+    if (response.rubric_criteria) {
+      try {
+        parsedCriteria = typeof response.rubric_criteria === 'string'
+          ? JSON.parse(response.rubric_criteria)
+          : response.rubric_criteria;
+      } catch (err) {
+        console.warn('Erro ao parsear rubric_criteria no regenerate:', err);
+      }
+    }
+
     // Regenera
     const result = await generateFeedback({
       studentName: response.student_name,
@@ -165,7 +209,11 @@ router.post('/feedback/:feedbackId/regenerate', async (req, res) => {
       rubric: response.rubric,
       studentResponse: response.original_response,
       educationLevel: response.education_level,
+      subject: response.subject,
+      rubricCriteria: parsedCriteria,
     });
+
+    const criteriaScores = result.parsed?.criterios_avaliacao || null;
 
     // Remove feedback antigo e salva novo
     deleteFeedbackByResponseId(feedback.student_response_id);
@@ -173,7 +221,8 @@ router.post('/feedback/:feedbackId/regenerate', async (req, res) => {
       feedback.student_response_id,
       result.raw,
       result.parsed.feedback_completo,
-      process.env.GEMINI_MODEL || 'gemini-2.5-flash'
+      process.env.GEMINI_MODEL || 'gemini-2.5-flash',
+      criteriaScores
     );
 
     res.json({
@@ -183,7 +232,7 @@ router.post('/feedback/:feedbackId/regenerate', async (req, res) => {
     });
   } catch (error) {
     console.error('Erro ao regenerar feedback:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: 'Erro interno ao regenerar feedback.' });
   }
 });
 
@@ -207,26 +256,51 @@ router.get('/activities/:id/export', (req, res) => {
       return res.status(404).json({ error: 'Nenhum dado para exportar.' });
     }
 
-    // Gera CSV
+    // Gera CSV com prevenção contra formula injection (DDE / CSV Injection)
+    // Células começando com =, +, -, @, \t ou \r são prefixadas com apóstrofo (')
+    const escapeCsvCell = (str) => {
+      let val = str === null || str === undefined ? '' : String(str);
+      if (/^[=+\-@\t\r]/.test(val)) {
+        val = `'${val}`;
+      }
+      return `"${val.replace(/"/g, '""')}"`;
+    };
+
     const header = 'nome_aluno,resposta_original,feedback_final,status';
     const rows = data.map((row) => {
-      const escape = (str) => `"${(str || '').replace(/"/g, '""')}"`;
       return [
-        escape(row.student_name),
-        escape(row.original_response),
-        escape(row.feedback_final),
-        escape(row.status),
+        escapeCsvCell(row.student_name),
+        escapeCsvCell(row.original_response),
+        escapeCsvCell(row.feedback_final),
+        escapeCsvCell(row.status),
       ].join(',');
     });
 
     const csv = [header, ...rows].join('\n');
 
+    // Nome de arquivo seguro: ASCII para filename="..." e RFC 5987 / RFC 6266 filename*=UTF-8''...
+    const rawTitle = (activity.title || 'atividade').trim();
+    const asciiTitle = rawTitle
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-zA-Z0-9_-]/g, '_')
+      .replace(/_+/g, '_')
+      .replace(/^_+|_+$/g, '')
+      .slice(0, 50) || 'atividade';
+    const safeAsciiFilename = `feedbacks_${asciiTitle}.csv`;
+    const utf8EncodedFilename = encodeURIComponent(`feedbacks_${rawTitle}.csv`)
+      .replace(/['()]/g, escape)
+      .replace(/\*/g, '%2A');
+
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-    res.setHeader('Content-Disposition', `attachment; filename="feedbacks_${activity.title.replace(/\s+/g, '_')}.csv"`);
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${safeAsciiFilename}"; filename*=UTF-8''${utf8EncodedFilename}`
+    );
     res.send('\uFEFF' + csv); // BOM for Excel compatibility
   } catch (error) {
     console.error('Erro ao exportar:', error);
-    res.status(500).json({ error: 'Erro interno ao exportar.' });
+    res.status(500).json({ error: 'Erro interno ao exportar feedbacks.' });
   }
 });
 

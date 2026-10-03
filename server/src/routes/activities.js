@@ -1,5 +1,12 @@
 import { Router } from 'express';
-import { createActivity, getActivityIfOwned, getAllActivities, getResponsesByActivity, getActivityStats } from '../database/db.js';
+import {
+  createActivity,
+  getActivityIfOwned,
+  getAllActivities,
+  getResponsesByActivity,
+  getActivityStats,
+  getClassById,
+} from '../database/db.js';
 
 const router = Router();
 
@@ -11,10 +18,50 @@ router.post('/', (req, res) => {
   try {
     const { title, question, rubric, educationLevel, subject, classId, dueDate, rubricCriteria } = req.body;
 
-    if (!title || !question || !rubric) {
+    if (!title || typeof title !== 'string' || !title.trim() ||
+        !question || typeof question !== 'string' || !question.trim() ||
+        !rubric || typeof rubric !== 'string' || !rubric.trim()) {
       return res.status(400).json({
         error: 'Campos obrigatórios: title, question, rubric',
       });
+    }
+
+    if (title.trim().length > 200) {
+      return res.status(400).json({
+        error: 'O título deve ter no máximo 200 caracteres.',
+      });
+    }
+
+    if (question.trim().length > 2000) {
+      return res.status(400).json({
+        error: 'A pergunta deve ter no máximo 2000 caracteres.',
+      });
+    }
+
+    if (rubric.trim().length > 4000) {
+      return res.status(400).json({
+        error: 'A rubrica deve ter no máximo 4000 caracteres.',
+      });
+    }
+
+    if (subject && String(subject).trim().length > 100) {
+      return res.status(400).json({
+        error: 'A disciplina deve ter no máximo 100 caracteres.',
+      });
+    }
+
+    if (rubricCriteria && Array.isArray(rubricCriteria) && rubricCriteria.length > 20) {
+      return res.status(400).json({
+        error: 'O limite é de 20 critérios de rubrica por atividade.',
+      });
+    }
+
+    // IDOR fix: se informado classId, valida se a turma pertence ao professor logado
+    if (classId) {
+      const cls = getClassById(Number(classId), req.teacher.id);
+      if (!cls) {
+        return res.status(404).json({ error: 'Turma não encontrada.' });
+      }
     }
 
     const result = createActivity({
@@ -26,7 +73,7 @@ router.post('/', (req, res) => {
       classId,
       dueDate,
       rubricCriteria,
-      teacherId: req.teacher?.id || null,
+      teacherId: req.teacher.id,
     });
 
     res.status(201).json({
@@ -41,11 +88,11 @@ router.post('/', (req, res) => {
 
 /**
  * GET /api/activities
- * Lista todas as atividades.
+ * Lista todas as atividades do professor logado.
  */
 router.get('/', (req, res) => {
   try {
-    const activities = getAllActivities(req.teacher?.id || null);
+    const activities = getAllActivities(req.teacher.id);
     res.json(activities);
   } catch (error) {
     console.error('Erro ao listar atividades:', error);

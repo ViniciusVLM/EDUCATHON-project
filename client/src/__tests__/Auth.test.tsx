@@ -100,9 +100,30 @@ describe('Register Page', () => {
     expect(screen.getByRole('heading', { name: /Cadastro de Professor/i })).toBeInTheDocument();
     expect(screen.getByLabelText(/Nome Completo/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/^E-mail/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/Senha \(mínimo 6 caracteres\)/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Senha \(mínimo 8 caracteres\)/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/Confirme sua Senha/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Criar Conta de Professor/i })).toBeInTheDocument();
+  });
+
+  it('valida se a senha tem pelo menos 8 caracteres', async () => {
+    const user = userEvent.setup();
+
+    render(
+      <MemoryRouter>
+        <AuthProvider>
+          <Register />
+        </AuthProvider>
+      </MemoryRouter>
+    );
+
+    await user.type(screen.getByLabelText(/Nome Completo/i), 'Profa. Clara');
+    await user.type(screen.getByLabelText(/^E-mail/i), 'clara@escola.org');
+    await user.type(screen.getByLabelText(/Senha \(mínimo 8 caracteres\)/i), 'curta');
+    await user.type(screen.getByLabelText(/Confirme sua Senha/i), 'curta');
+    await user.click(screen.getByRole('button', { name: /Criar Conta de Professor/i }));
+
+    expect(await screen.findByText(/A senha deve ter no mínimo 8 caracteres/i)).toBeInTheDocument();
+    expect(api.registerTeacher).not.toHaveBeenCalled();
   });
 
   it('valida se as senhas coincidem antes de enviar', async () => {
@@ -118,7 +139,7 @@ describe('Register Page', () => {
 
     await user.type(screen.getByLabelText(/Nome Completo/i), 'Profa. Clara');
     await user.type(screen.getByLabelText(/^E-mail/i), 'clara@escola.org');
-    await user.type(screen.getByLabelText(/Senha \(mínimo 6 caracteres\)/i), 'senha123');
+    await user.type(screen.getByLabelText(/Senha \(mínimo 8 caracteres\)/i), 'senha1234');
     await user.type(screen.getByLabelText(/Confirme sua Senha/i), 'senhaDiferente');
     await user.click(screen.getByRole('button', { name: /Criar Conta de Professor/i }));
 

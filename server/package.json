@@ -7,9 +7,10 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
-    "test": "node --test src/__tests__/*.test.js",
+    "test": "node --test --test-concurrency=1 src/__tests__/*.test.js",
     "test:unit": "node --test src/__tests__/parser.test.js",
-    "test:integration": "node --test src/__tests__/routes.test.js src/__tests__/auth.test.js src/__tests__/classes.test.js src/__tests__/idor.test.js",
+    "test:integration": "node --test src/__tests__/routes.test.js src/__tests__/auth.test.js src/__tests__/classes.test.js src/__tests__/idor.test.js src/__tests__/idor-rotas.test.js",
+    "eval": "node eval/evaluate.js --mock",
     "lint": "eslint src/"
   },
   "dependencies": {
@@ -20,7 +21,10 @@
     "csv-parse": "^5.5.6",
     "dotenv": "^16.4.5",
     "express": "^4.21.0",
-    "jsonwebtoken": "^9.0.3"
+    "express-rate-limit": "^8.7.0",
+    "helmet": "^8.3.0",
+    "jsonwebtoken": "^9.0.3",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

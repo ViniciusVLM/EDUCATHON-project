@@ -5,15 +5,17 @@
 ## 🚀 Como Rodar
 
 ### Pré-requisitos
-- **Node.js** v18+ 
+- **Node.js** v22+ (o servidor usa ESM nativo e `node:test`)
 - **API Key do Google Gemini** ([obter aqui](https://aistudio.google.com/))
 
 ### 1. Configurar variáveis de ambiente
 ```bash
 cd server
 cp ../.env.example .env
-# Edite o .env e adicione sua GEMINI_API_KEY
-# Opcionalmente configure GEMINI_MODEL (padrão: gemini-2.5-flash)
+# Edite o .env e:
+#   1. Adicione sua GEMINI_API_KEY
+#   2. Gere um JWT_SECRET seguro, ex: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+# Opcionalmente configure GEMINI_MODEL (padrão: gemini-3.8-flash)
 # Opcionalmente configure CORS_ORIGIN para produção (padrão: localhost:5173)
 ```
 

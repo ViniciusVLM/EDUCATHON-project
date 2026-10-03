@@ -22,8 +22,8 @@ export default function Register() {
       return;
     }
 
-    if (password.length < 6) {
-      setError('A senha deve ter no mínimo 6 caracteres.');
+    if (password.length < 8) {
+      setError('A senha deve ter no mínimo 8 caracteres.');
       return;
     }
 
@@ -109,7 +109,7 @@ export default function Register() {
 
           <div className="input-group">
             <label className="input-label" htmlFor="password">
-              Senha (mínimo 6 caracteres) *
+              Senha (mínimo 8 caracteres) *
             </label>
             <input
               id="password"

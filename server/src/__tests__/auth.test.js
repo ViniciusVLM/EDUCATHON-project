@@ -84,15 +84,15 @@ describe('POST /api/auth/register', () => {
     assert.match(res.body.error, /já está cadastrado/i);
   });
 
-  test('rejeita senha curta (< 6 caracteres)', async () => {
+  test('rejeita senha curta (< 8 caracteres)', async () => {
     const res = await request(app).post('/api/auth/register').send({
       name: 'Prof. João',
       email: 'joao@educathon.org',
-      password: '123',
+      password: '1234567',
     });
 
     assert.equal(res.status, 400);
-    assert.match(res.body.error, /pelo menos 6 caracteres/i);
+    assert.match(res.body.error, /pelo menos 8 caracteres/i);
   });
 
   test('rejeita formato de e-mail inválido', async () => {

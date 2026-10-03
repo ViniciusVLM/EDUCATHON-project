@@ -403,6 +403,12 @@ a:hover {
   border: 1px solid rgba(34, 197, 94, 0.2);
 }
 
+.badge-danger {
+  background: var(--error-bg);
+  color: var(--error-400);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
 /* ── Progress Bar ── */
 .progress-bar {
   width: 100%;

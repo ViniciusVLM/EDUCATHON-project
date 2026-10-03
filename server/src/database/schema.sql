@@ -31,6 +31,8 @@ CREATE TABLE IF NOT EXISTS feedbacks (
   FOREIGN KEY (student_response_id) REFERENCES student_responses(id) ON DELETE CASCADE
 );
 
+CREATE UNIQUE INDEX IF NOT EXISTS idx_feedbacks_student_response_id ON feedbacks(student_response_id);
+
 -- Rastreia o progresso de geração de feedbacks por atividade.
 -- Substitui o Map em memória do queue.js, sobrevivendo a restarts do servidor.
 CREATE TABLE IF NOT EXISTS processing_jobs (

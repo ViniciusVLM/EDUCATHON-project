@@ -1,187 +1,258 @@
 /**
- * Testes de integração para verificar proteção contra IDOR (Insecure Direct Object Reference).
- *
- * Cenário: Professor A cria uma atividade. Professor B (conta separada) tenta acessar
- * todos os endpoints que envolvem o ID dessa atividade ou de seus feedbacks.
- * Cada tentativa do Professor B deve retornar 404 — nunca 200, 403, ou dados alheios.
- *
- * Critério de pronto (do plano): confirmar que nenhum professor consegue acessar dados
- * do outro nem manipulando a URL/chamando a API diretamente.
+ * Testes de segurança e autorização (IDOR) - Fase 2
+ * Simula dois professores para validar que nenhum consegue acessar, modificar
+ * ou deletar recursos do outro, e que atividades sem dono não vazam.
  */
-import { test, describe, before } from 'node:test';
+import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
 import express from 'express';
 import cors from 'cors';
 
-// ── Configura banco em memória e segredos antes de importar módulos que dependem deles
 process.env.DB_PATH = ':memory:';
-process.env.GEMINI_API_KEY = 'test-key-placeholder';
-process.env.JWT_SECRET = 'test-secret-key-idor-tests';
+process.env.JWT_SECRET = 'test-secret-key-idor';
 
+const { default: classesRouter } = await import('../routes/classes.js');
 const { default: activitiesRouter } = await import('../routes/activities.js');
-const { default: studentsRouter }   = await import('../routes/students.js');
-const { default: feedbackRouter }   = await import('../routes/feedback.js');
-const { requireAuth }               = await import('../middleware/auth.js');
-const { generateToken }             = await import('../services/auth.js');
-const { createTeacher, saveFeedback, addResponses } = await import('../database/db.js');
+const { default: feedbackRouter } = await import('../routes/feedback.js');
+const { default: csvRouter } = await import('../routes/csv.js');
+const { requireAuth } = await import('../middleware/auth.js');
+const { generateToken } = await import('../services/auth.js');
+const { createTeacher, getDb } = await import('../database/db.js');
 
-// ── Monta o app de teste completo
 function buildApp() {
   const app = express();
   app.use(cors());
   app.use(express.json());
+  app.use('/api/classes', requireAuth, classesRouter);
   app.use('/api/activities', requireAuth, activitiesRouter);
-  app.use('/api/activities', requireAuth, studentsRouter);
-  app.use('/api',            requireAuth, feedbackRouter);
+  app.use('/api', requireAuth, feedbackRouter);
+  app.use('/api', requireAuth, csvRouter);
   return app;
 }
 
 const app = buildApp();
 
-// ── Cria dois professores distintos
-const teacherA = createTeacher({ name: 'Professor A', email: 'prof.a@escola.org', passwordHash: 'hash_a' });
-const teacherB = createTeacher({ name: 'Professor B', email: 'prof.b@escola.org', passwordHash: 'hash_b' });
+// Professor 1 (Alice)
+const teacherA = createTeacher({
+  name: 'Professora Alice',
+  email: 'alice@educathon.org',
+  passwordHash: 'hash_alice',
+});
 const tokenA = generateToken(teacherA);
+
+// Professor 2 (Bob)
+const teacherB = createTeacher({
+  name: 'Professor Bob',
+  email: 'bob@educathon.org',
+  passwordHash: 'hash_bob',
+});
 const tokenB = generateToken(teacherB);
 
-// IDs criados pelo Professor A — preenchidos em before()
-let activityIdA;
-let feedbackIdA;
+describe('Fase 2 — Prevenção de IDOR e Falhas de Autorização', () => {
 
-// ── Configuração: Professor A cria atividade, sobe respostas e gera um feedback
-before(async () => {
-  // Cria atividade pelo Professor A
-  const actRes = await request(app)
-    .post('/api/activities')
-    .set('Authorization', `Bearer ${tokenA}`)
-    .send({
-      title: 'Atividade do Professor A',
-      question: 'Explique fotossíntese.',
-      rubric: 'Processo de conversão de luz em energia.',
+  describe('Item 1: DELETE /api/classes/:id/students/:studentId (Cross-class student deletion)', () => {
+    test('impede que professor apague aluno de outra turma/professor', async () => {
+      // 1. Alice cria Turma A e adiciona Aluno A
+      const classARes = await request(app)
+        .post('/api/classes')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ name: 'Turma Alice 1A' });
+      const classAId = classARes.body.class.id;
+
+      const studentARes = await request(app)
+        .post(`/api/classes/${classAId}/students`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ name: 'Aluno da Alice' });
+      const studentAId = studentARes.body.student.id;
+
+      // 2. Bob cria Turma B e adiciona Aluno B
+      const classBRes = await request(app)
+        .post('/api/classes')
+        .set('Authorization', `Bearer ${tokenB}`)
+        .send({ name: 'Turma Bob 2B' });
+      const classBId = classBRes.body.class.id;
+
+      const studentBRes = await request(app)
+        .post(`/api/classes/${classBId}/students`)
+        .set('Authorization', `Bearer ${tokenB}`)
+        .send({ name: 'Aluno do Bob' });
+      const studentBId = studentBRes.body.student.id;
+
+      // 3. Bob tenta apagar o Aluno A informando a turma de Alice (não é dono da turma) -> 404
+      const idorBobOnClassA = await request(app)
+        .delete(`/api/classes/${classAId}/students/${studentAId}`)
+        .set('Authorization', `Bearer ${tokenB}`);
+      assert.equal(idorBobOnClassA.status, 404);
+
+      // 4. Bob tenta apagar o Aluno A passando a sua própria turma (Aluno A não pertence à Turma B) -> 404
+      const idorBobOnClassB = await request(app)
+        .delete(`/api/classes/${classBId}/students/${studentAId}`)
+        .set('Authorization', `Bearer ${tokenB}`);
+      assert.equal(idorBobOnClassB.status, 404);
+      assert.match(idorBobOnClassB.body.error, /Aluno não encontrado nesta turma/i);
+
+      // 5. Verifica que o Aluno A continua intacto na Turma A
+      const verifyClassA = await request(app)
+        .get(`/api/classes/${classAId}`)
+        .set('Authorization', `Bearer ${tokenA}`);
+      const stillHasStudentA = verifyClassA.body.students.some((s) => s.id === studentAId);
+      assert.equal(stillHasStudentA, true);
+
+      // 6. Alice consegue apagar seu próprio aluno com sucesso
+      const deleteSuccess = await request(app)
+        .delete(`/api/classes/${classAId}/students/${studentAId}`)
+        .set('Authorization', `Bearer ${tokenA}`);
+      assert.equal(deleteSuccess.status, 200);
+
+      // 7. Bob consegue apagar o aluno dele com sucesso
+      const deleteSuccessBob = await request(app)
+        .delete(`/api/classes/${classBId}/students/${studentBId}`)
+        .set('Authorization', `Bearer ${tokenB}`);
+      assert.equal(deleteSuccessBob.status, 200);
     });
-  activityIdA = actRes.body.id;
-
-  // Adiciona resposta do aluno
-  const { addResponses: ar } = await import('../database/db.js');
-  addResponses(activityIdA, [{ student_name: 'Aluno X', original_response: 'A planta usa luz solar.' }], 'manual');
-
-  // Cria feedback manualmente (sem chamar a API do Gemini)
-  const { getResponsesByActivity } = await import('../database/db.js');
-  const responses = getResponsesByActivity(activityIdA);
-  const fb = saveFeedback(responses[0].id, '{"nota":8}', 'Bom texto', 'gemini-test');
-  feedbackIdA = Number(fb.id);
-});
-
-// ──────────────────────────────────────────
-// Professor B tentando acessar recursos do Professor A
-// ──────────────────────────────────────────
-
-describe('IDOR — Professor B não pode acessar atividade do Professor A', () => {
-  test('GET /api/activities/:id → 404', async () => {
-    const res = await request(app)
-      .get(`/api/activities/${activityIdA}`)
-      .set('Authorization', `Bearer ${tokenB}`);
-    assert.equal(res.status, 404, `Esperado 404, recebeu ${res.status}`);
   });
 
-  test('POST /api/activities/:id/upload → 404', async () => {
-    const res = await request(app)
-      .post(`/api/activities/${activityIdA}/upload`)
-      .set('Authorization', `Bearer ${tokenB}`)
-      .send({ csvContent: 'nome_aluno,resposta\nJoão,Texto' });
-    assert.equal(res.status, 404, `Esperado 404, recebeu ${res.status}`);
+  describe('Item 2: GET /api/activities/:id/progress (Progress endpoint ownership check)', () => {
+    test('impede que professor acesse progresso de atividade de outro professor', async () => {
+      // 1. Alice cria uma atividade
+      const actRes = await request(app)
+        .post('/api/activities')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({
+          title: 'Redação sobre Meio Ambiente',
+          question: 'Discorra sobre a preservação.',
+          rubric: 'Critérios claros.',
+        });
+      const activityId = actRes.body.id;
+
+      // 2. Bob tenta acessar o progresso da atividade de Alice -> 404
+      const bobAccess = await request(app)
+        .get(`/api/activities/${activityId}/progress`)
+        .set('Authorization', `Bearer ${tokenB}`);
+      assert.equal(bobAccess.status, 404);
+      assert.match(bobAccess.body.error, /Atividade não encontrada/i);
+
+      // 3. Alice acessa o progresso de sua própria atividade -> 200
+      const aliceAccess = await request(app)
+        .get(`/api/activities/${activityId}/progress`)
+        .set('Authorization', `Bearer ${tokenA}`);
+      assert.equal(aliceAccess.status, 200);
+      assert.equal(aliceAccess.body.status, 'idle');
+      assert.equal(typeof aliceAccess.body.processed, 'number');
+    });
   });
 
-  test('POST /api/activities/:id/manual → 404', async () => {
-    const res = await request(app)
-      .post(`/api/activities/${activityIdA}/manual`)
-      .set('Authorization', `Bearer ${tokenB}`)
-      .send({ responses: [{ student_name: 'Invasor', original_response: 'Texto invasor' }] });
-    assert.equal(res.status, 404, `Esperado 404, recebeu ${res.status}`);
+  describe('Item 3: POST /api/activities (Class ID ownership validation)', () => {
+    test('impede vincular atividade a turma que pertence a outro professor', async () => {
+      // 1. Alice cria uma turma
+      const classRes = await request(app)
+        .post('/api/classes')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ name: 'Biologia 1º Ano' });
+      const aliceClassId = classRes.body.class.id;
+
+      // 2. Bob tenta criar atividade vinculando à turma de Alice -> 404
+      const bobCreateRes = await request(app)
+        .post('/api/activities')
+        .set('Authorization', `Bearer ${tokenB}`)
+        .send({
+          title: 'Atividade Indevida',
+          question: 'Pergunta?',
+          rubric: 'Rubrica',
+          classId: aliceClassId,
+        });
+      assert.equal(bobCreateRes.status, 404);
+      assert.match(bobCreateRes.body.error, /Turma não encontrada/i);
+
+      // 3. Alice cria atividade vinculando à sua própria turma -> 201
+      const aliceCreateRes = await request(app)
+        .post('/api/activities')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({
+          title: 'Atividade Legítima',
+          question: 'Pergunta?',
+          rubric: 'Rubrica',
+          classId: aliceClassId,
+        });
+      assert.equal(aliceCreateRes.status, 201);
+    });
   });
 
-  test('POST /api/activities/:id/generate → 404', async () => {
-    const res = await request(app)
-      .post(`/api/activities/${activityIdA}/generate`)
-      .set('Authorization', `Bearer ${tokenB}`);
-    assert.equal(res.status, 404, `Esperado 404, recebeu ${res.status}`);
+  describe('Item 4: GET /api/activities e getAllActivities (Data isolation & no unowned leak)', () => {
+    test('retorna apenas atividades do professor logado, sem vazar de outros ou sem dono', async () => {
+      // 1. Alice cria uma atividade exclusiva
+      const actAlice = await request(app)
+        .post('/api/activities')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({
+          title: 'Atividade da Alice - Isolamento',
+          question: 'Q Alice',
+          rubric: 'R Alice',
+        });
+      const aliceActId = actAlice.body.id;
+
+      // 2. Bob cria uma atividade exclusiva
+      const actBob = await request(app)
+        .post('/api/activities')
+        .set('Authorization', `Bearer ${tokenB}`)
+        .send({
+          title: 'Atividade do Bob - Isolamento',
+          question: 'Q Bob',
+          rubric: 'R Bob',
+        });
+      const bobActId = actBob.body.id;
+
+      // 3. Insere atividade sem dono (teacher_id = NULL) diretamente no DB
+      const db = getDb();
+      const insertUnowned = db.prepare(`
+        INSERT INTO activities (title, question, rubric, teacher_id)
+        VALUES ('Atividade Órfã Antiga', 'Q Órfã', 'R Órfã', NULL)
+      `);
+      const unownedResult = insertUnowned.run();
+      const unownedId = Number(unownedResult.lastInsertRowid);
+
+      // 4. Bob lista atividades: NÃO deve ver a da Alice nem a órfã
+      const bobListRes = await request(app)
+        .get('/api/activities')
+        .set('Authorization', `Bearer ${tokenB}`);
+      assert.equal(bobListRes.status, 200);
+      const bobIds = bobListRes.body.map((a) => a.id);
+      assert.ok(bobIds.includes(bobActId), 'Bob deve ver sua própria atividade');
+      assert.ok(!bobIds.includes(aliceActId), 'Bob NÃO deve ver a atividade de Alice');
+      assert.ok(!bobIds.includes(unownedId), 'Bob NÃO deve ver atividade com teacher_id NULL');
+
+      // 5. Alice lista atividades: NÃO deve ver a do Bob nem a órfã
+      const aliceListRes = await request(app)
+        .get('/api/activities')
+        .set('Authorization', `Bearer ${tokenA}`);
+      assert.equal(aliceListRes.status, 200);
+      const aliceIds = aliceListRes.body.map((a) => a.id);
+      assert.ok(aliceIds.includes(aliceActId), 'Alice deve ver sua própria atividade');
+      assert.ok(!aliceIds.includes(bobActId), 'Alice NÃO deve ver a atividade de Bob');
+      assert.ok(!aliceIds.includes(unownedId), 'Alice NÃO deve ver atividade com teacher_id NULL');
+    });
   });
 
-  test('GET /api/activities/:id/progress → seguro (progress vazio, não vaza dados)', async () => {
-    // /progress consulta apenas a fila em memória por ID — não retorna dados do DB.
-    // O comportamento esperado é 200 com progresso zerado/vazio (não há dado sensível).
-    const res = await request(app)
-      .get(`/api/activities/${activityIdA}/progress`)
-      .set('Authorization', `Bearer ${tokenB}`);
-    // Aceita 200 com objeto vazio/null OU 404 — o importante é não retornar dados de alunos do Prof A
-    assert.ok(
-      res.status === 200 || res.status === 404,
-      `Status inesperado: ${res.status}`
-    );
-    if (res.status === 200) {
-      // Se retornar 200, não pode conter dados de alunos
-      assert.ok(!res.body.responses, 'Não deve vazar respostas de alunos via /progress');
-    }
+  describe('Item 5: POST /api/csv/preview (Authentication requirement check)', () => {
+    test('exige autenticação para prévia e funciona com usuário autenticado', async () => {
+      const csvContent = 'Nome,Resposta\nJoão,Minha resposta dissertativa aqui';
+
+      // Sem autenticação -> 401
+      const unauthRes = await request(app)
+        .post('/api/csv/preview')
+        .send({ csvContent });
+      assert.equal(unauthRes.status, 401);
+
+      // Com autenticação -> 200 com resultado
+      const authRes = await request(app)
+        .post('/api/csv/preview')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ csvContent });
+      assert.equal(authRes.status, 200);
+      assert.equal(authRes.body.total, 1);
+      assert.equal(authRes.body.rows[0].student_name, 'João');
+    });
   });
 
-  test('GET /api/activities/:id/export → 404', async () => {
-    const res = await request(app)
-      .get(`/api/activities/${activityIdA}/export`)
-      .set('Authorization', `Bearer ${tokenB}`);
-    assert.equal(res.status, 404, `Esperado 404, recebeu ${res.status}`);
-  });
-
-  test('PATCH /api/feedback/:feedbackId → 404', async () => {
-    const res = await request(app)
-      .patch(`/api/feedback/${feedbackIdA}`)
-      .set('Authorization', `Bearer ${tokenB}`)
-      .send({ teacherFeedback: 'Texto invasor editado' });
-    assert.equal(res.status, 404, `Esperado 404, recebeu ${res.status}`);
-  });
-
-  test('POST /api/feedback/:feedbackId/approve → 404', async () => {
-    const res = await request(app)
-      .post(`/api/feedback/${feedbackIdA}/approve`)
-      .set('Authorization', `Bearer ${tokenB}`);
-    assert.equal(res.status, 404, `Esperado 404, recebeu ${res.status}`);
-  });
-});
-
-// ──────────────────────────────────────────
-// Professor A ainda pode acessar seus próprios recursos
-// ──────────────────────────────────────────
-
-describe('Controle positivo — Professor A acessa normalmente seus próprios recursos', () => {
-  test('GET /api/activities/:id → 200 para o Professor A', async () => {
-    const res = await request(app)
-      .get(`/api/activities/${activityIdA}`)
-      .set('Authorization', `Bearer ${tokenA}`);
-    assert.equal(res.status, 200, `Esperado 200, recebeu ${res.status}`);
-    assert.equal(res.body.id, activityIdA);
-    assert.ok(Array.isArray(res.body.responses));
-  });
-
-  test('GET /api/activities/:id/export → 200 para o Professor A', async () => {
-    const res = await request(app)
-      .get(`/api/activities/${activityIdA}/export`)
-      .set('Authorization', `Bearer ${tokenA}`);
-    assert.equal(res.status, 200, `Esperado 200, recebeu ${res.status}`);
-    assert.ok(res.text.includes('nome_aluno'), 'CSV deve conter cabeçalho nome_aluno');
-  });
-
-  test('PATCH /api/feedback/:feedbackId → 200 para o Professor A', async () => {
-    const res = await request(app)
-      .patch(`/api/feedback/${feedbackIdA}`)
-      .set('Authorization', `Bearer ${tokenA}`)
-      .send({ teacherFeedback: 'Feedback revisado pelo dono' });
-    assert.equal(res.status, 200, `Esperado 200, recebeu ${res.status}`);
-  });
-
-  test('POST /api/feedback/:feedbackId/approve → 200 para o Professor A', async () => {
-    const res = await request(app)
-      .post(`/api/feedback/${feedbackIdA}/approve`)
-      .set('Authorization', `Bearer ${tokenA}`);
-    assert.equal(res.status, 200, `Esperado 200, recebeu ${res.status}`);
-  });
 });

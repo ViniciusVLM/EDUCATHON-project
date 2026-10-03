@@ -7,7 +7,7 @@ import {
   deleteClass,
   createStudent,
   createStudentsBatch,
-  deleteStudent,
+  deleteStudentFromClass,
 } from '../database/db.js';
 
 const router = Router();
@@ -177,12 +177,18 @@ router.delete('/:id/students/:studentId', (req, res) => {
     const classId = Number(req.params.id);
     const studentId = Number(req.params.studentId);
 
+    // Verifica que a turma pertence ao professor logado
     const cls = getClassById(classId, req.teacher.id);
     if (!cls) {
       return res.status(404).json({ error: 'Turma não encontrada.' });
     }
 
-    deleteStudent(studentId);
+    // IDOR fix: apaga somente se o aluno pertencer à turma já validada
+    const result = deleteStudentFromClass(studentId, classId);
+    if (result.changes === 0) {
+      return res.status(404).json({ error: 'Aluno não encontrado nesta turma.' });
+    }
+
     res.json({ message: 'Aluno removido com sucesso!' });
   } catch (err) {
     console.error('Erro ao remover aluno:', err);

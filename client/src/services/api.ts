@@ -11,6 +11,7 @@ import type {
   Class,
   ClassWithStudents,
   Student,
+  CriterionScore,
 } from '../types';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
@@ -158,13 +159,23 @@ export async function getProgress(activityId: number): Promise<Progress> {
   return request(`/activities/${activityId}/progress`);
 }
 
-export async function updateFeedback(feedbackId: number, teacherFeedback: string): Promise<{
+export async function updateFeedback(
+  feedbackId: number,
+  data:
+    | {
+        teacherFeedback?: string;
+        teacherRating?: -1 | 0 | 1 | null;
+        criteriaScores?: CriterionScore[] | null;
+      }
+    | string
+): Promise<{
   message: string;
   status: string;
 }> {
+  const body = typeof data === 'string' ? { teacherFeedback: data } : data;
   return request(`/feedback/${feedbackId}`, {
     method: 'PATCH',
-    body: JSON.stringify({ teacherFeedback }),
+    body: JSON.stringify(body),
   });
 }
 
