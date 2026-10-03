@@ -66,6 +66,7 @@ export interface FeedbackParsed {
   lacunas: string;
   sugestao_melhoria: string;
   feedback_completo: string;
+  criterios_avaliacao?: CriterionScore[];
 }
 
 export interface Progress {
@@ -121,6 +122,7 @@ export interface RubricCriterion {
 export interface CriterionScore {
   criterio: string;
   atendido: boolean;
+  evidencia?: string;
 }
 
 // ── Fase 5.1: Autenticação ────────────────────────────────────────────────

@@ -8,7 +8,7 @@ import {
   approveFeedback,
   regenerateFeedback,
 } from '../services/api';
-import type { ActivityWithResponses, StudentResponse, Progress, FilterType, FeedbackParsed } from '../types';
+import type { ActivityWithResponses, StudentResponse, Progress, FilterType, FeedbackParsed, CriterionScore } from '../types';
 
 export default function ReviewDashboard() {
   const { activityId } = useParams<{ activityId: string }>();
@@ -17,6 +17,7 @@ export default function ReviewDashboard() {
   const [activity, setActivity] = useState<ActivityWithResponses | null>(null);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [editText, setEditText] = useState('');
+  const [currentCriteriaScores, setCurrentCriteriaScores] = useState<CriterionScore[]>([]);
   const [filter, setFilter] = useState<FilterType>('todos');
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState('');
@@ -45,8 +46,9 @@ export default function ReviewDashboard() {
       if (responses.length > 0 && selectedIndex >= responses.length) {
         setSelectedIndex(0);
       }
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Erro ao carregar atividade.';
+      setError(msg);
       setLoading(false);
     }
   }, [activityId]);
@@ -85,19 +87,51 @@ export default function ReviewDashboard() {
   const filteredResponses = activity ? filterResponses(activity.responses, filter) : [];
   const selected = filteredResponses[selectedIndex] || null;
 
-  // Sync edit text when selection changes
+  // Sync edit text and criteria when selection changes
   useEffect(() => {
     if (selected) {
       setEditText(selected.teacher_feedback || selected.ai_feedback_text || '');
+
+      let scores: CriterionScore[] = [];
+      if (selected.criteria_scores) {
+        try {
+          scores = typeof selected.criteria_scores === 'string'
+            ? JSON.parse(selected.criteria_scores)
+            : selected.criteria_scores;
+        } catch (e) {
+          console.warn('Erro ao parsear criteria_scores:', e);
+        }
+      } else if (selected.ai_feedback_json) {
+        try {
+          const parsed = JSON.parse(selected.ai_feedback_json);
+          if (parsed?.criterios_avaliacao) {
+            scores = parsed.criterios_avaliacao;
+          }
+        } catch {
+          // ignore
+        }
+      }
+      setCurrentCriteriaScores(scores || []);
+    } else {
+      setCurrentCriteriaScores([]);
     }
-  }, [selected?.id, selected?.teacher_feedback, selected?.ai_feedback_text]);
+  }, [selected?.id, selected?.teacher_feedback, selected?.ai_feedback_text, selected?.criteria_scores, selected?.ai_feedback_json]);
+
+  function handleToggleCriterion(idx: number) {
+    setCurrentCriteriaScores((prev) => {
+      const updated = [...prev];
+      updated[idx] = { ...updated[idx], atendido: !updated[idx].atendido };
+      return updated;
+    });
+  }
 
   async function handleGenerate() {
     setGenerating(true);
     try {
       await generateFeedbacks(Number(activityId));
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Erro ao gerar feedbacks.';
+      setError(msg);
       setGenerating(false);
     }
   }
@@ -106,10 +140,14 @@ export default function ReviewDashboard() {
     if (!selected?.feedback_id) return;
     setActionLoading('save');
     try {
-      await updateFeedback(selected.feedback_id, editText);
+      await updateFeedback(selected.feedback_id, {
+        teacherFeedback: editText,
+        criteriaScores: currentCriteriaScores,
+      });
       await loadActivity();
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Erro ao salvar feedback.';
+      setError(msg);
     }
     setActionLoading('');
   }
@@ -118,10 +156,10 @@ export default function ReviewDashboard() {
     if (!selected?.feedback_id) return;
     setActionLoading('approve');
     try {
-      // Save current edit first if modified
-      if (editText !== (selected.teacher_feedback || selected.ai_feedback_text)) {
-        await updateFeedback(selected.feedback_id, editText);
-      }
+      await updateFeedback(selected.feedback_id, {
+        teacherFeedback: editText,
+        criteriaScores: currentCriteriaScores,
+      });
       await approveFeedback(selected.feedback_id);
       await loadActivity();
 
@@ -130,8 +168,9 @@ export default function ReviewDashboard() {
         (r, i) => i > selectedIndex && r.status !== 'aprovado'
       );
       if (nextPending !== -1) setSelectedIndex(nextPending);
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Erro ao aprovar feedback.';
+      setError(msg);
     }
     setActionLoading('');
   }
@@ -142,8 +181,9 @@ export default function ReviewDashboard() {
     try {
       await regenerateFeedback(selected.feedback_id);
       await loadActivity();
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Erro ao regenerar feedback.';
+      setError(msg);
     }
     setActionLoading('');
   }
@@ -382,7 +422,7 @@ export default function ReviewDashboard() {
 
               {/* Side-by-side panels */}
               <div className="review-panels">
-                {/* Left: Student Response */}
+                {/* Left: Student Response & Criteria */}
                 <div className="review-panel">
                   <div className="review-panel-header">
                     <span className="review-panel-title">📄 Resposta do Aluno</span>
@@ -390,9 +430,62 @@ export default function ReviewDashboard() {
                       {selected.student_name}
                     </span>
                   </div>
-                  <div className="review-content">
+                  <div className="review-content" style={{ whiteSpace: 'pre-wrap' }}>
                     {selected.original_response}
                   </div>
+
+                  {/* Rubric Criteria Evaluation */}
+                  {currentCriteriaScores.length > 0 && (
+                    <div style={{ marginTop: '1.25rem', paddingTop: '1rem', borderTop: '1px solid var(--glass-border)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                        <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)' }}>
+                          🎯 Avaliação por Critério
+                        </span>
+                        <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>
+                          {currentCriteriaScores.filter((c) => c.atendido).length} de {currentCriteriaScores.length} atendidos
+                        </span>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                        {currentCriteriaScores.map((c, idx) => (
+                          <div
+                            key={idx}
+                            style={{
+                              padding: '0.75rem',
+                              borderRadius: 'var(--radius-lg, 8px)',
+                              background: 'var(--surface-800)',
+                              border: `1px solid ${c.atendido ? 'rgba(34, 197, 94, 0.25)' : 'rgba(239, 68, 68, 0.25)'}`,
+                            }}
+                          >
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem' }}>
+                              <span style={{ fontWeight: 600, fontSize: 'var(--text-sm)', color: 'var(--text-primary)' }}>
+                                {c.criterio}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => handleToggleCriterion(idx)}
+                                className={`badge ${c.atendido ? 'badge-approved' : 'badge-danger'}`}
+                                style={{
+                                  cursor: 'pointer',
+                                  border: 'none',
+                                  padding: '0.25rem 0.6rem',
+                                  fontSize: 'var(--text-xs)',
+                                  fontWeight: 600,
+                                }}
+                                title="Clique para alternar se o critério foi atendido"
+                              >
+                                {c.atendido ? '✅ Atendido' : '❌ Não atendido'}
+                              </button>
+                            </div>
+                            {c.evidencia && (
+                              <div style={{ marginTop: '0.4rem', fontSize: 'var(--text-xs)', color: 'var(--text-secondary)', fontStyle: 'italic', background: 'rgba(15, 23, 42, 0.6)', padding: '0.35rem 0.5rem', borderRadius: '4px', borderLeft: '3px solid var(--primary-400)' }}>
+                                🔍 Evidência: "{c.evidencia}"
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Right: Feedback Editor */}
