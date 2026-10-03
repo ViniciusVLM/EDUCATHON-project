@@ -1,9 +1,8 @@
 import { Router } from 'express';
 import {
-  getActivity,
   getActivityIfOwned,
   getResponsesByActivity,
-  getFeedback,
+  getFeedbackIfOwned,
   updateFeedback,
   approveFeedback,
   deleteFeedbackByResponseId,
@@ -26,7 +25,8 @@ const router = Router();
 router.post('/activities/:id/generate', aiGenerateLimiter, async (req, res) => {
   try {
     const activityId = Number(req.params.id);
-    const activity = getActivity(activityId);
+    // Verifica posse antes de qualquer operação (prevenção de IDOR)
+    const activity = getActivityIfOwned(activityId, req.teacher.id);
 
     if (!activity) {
       return res.status(404).json({ error: 'Atividade não encontrada.' });
@@ -119,7 +119,8 @@ router.patch('/feedback/:feedbackId', (req, res) => {
       });
     }
 
-    const feedback = getFeedback(feedbackId);
+    // Verifica posse via JOIN feedbacks → student_responses → activities (prevenção de IDOR)
+    const feedback = getFeedbackIfOwned(feedbackId, req.teacher.id);
     if (!feedback) {
       return res.status(404).json({ error: 'Feedback não encontrado.' });
     }
@@ -144,7 +145,8 @@ router.post('/feedback/:feedbackId/approve', (req, res) => {
   try {
     const feedbackId = Number(req.params.feedbackId);
 
-    const feedback = getFeedback(feedbackId);
+    // Verifica posse via JOIN feedbacks → student_responses → activities (prevenção de IDOR)
+    const feedback = getFeedbackIfOwned(feedbackId, req.teacher.id);
     if (!feedback) {
       return res.status(404).json({ error: 'Feedback não encontrado.' });
     }
@@ -170,19 +172,20 @@ router.post('/feedback/:feedbackId/regenerate', aiGenerateLimiter, async (req, r
   try {
     const feedbackId = Number(req.params.feedbackId);
 
-    const feedback = getFeedback(feedbackId);
+    // Verifica posse via JOIN feedbacks → student_responses → activities (prevenção de IDOR)
+    const feedback = getFeedbackIfOwned(feedbackId, req.teacher.id);
     if (!feedback) {
       return res.status(404).json({ error: 'Feedback não encontrado.' });
     }
 
-    // Busca a atividade associada
+    // Busca a atividade associada (teacher_id já validado acima)
     const db = (await import('../database/db.js'));
     const response = db.getDb().prepare(`
       SELECT sr.*, a.question, a.rubric, a.education_level, a.subject, a.rubric_criteria
       FROM student_responses sr
       JOIN activities a ON a.id = sr.activity_id
-      WHERE sr.id = ?
-    `).get(feedback.student_response_id);
+      WHERE sr.id = ? AND a.teacher_id = ?
+    `).get(feedback.student_response_id, req.teacher.id);
 
     if (!response) {
       return res.status(404).json({ error: 'Resposta do aluno não encontrada.' });
@@ -240,7 +243,8 @@ router.post('/feedback/:feedbackId/regenerate', aiGenerateLimiter, async (req, r
 router.get('/activities/:id/export', (req, res) => {
   try {
     const activityId = Number(req.params.id);
-    const activity = getActivity(activityId);
+    // Verifica posse antes de exportar dados de alunos (prevenção de IDOR)
+    const activity = getActivityIfOwned(activityId, req.teacher.id);
 
     if (!activity) {
       return res.status(404).json({ error: 'Atividade não encontrada.' });

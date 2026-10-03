@@ -318,7 +318,27 @@ export function getAllActivities(teacherId) {
  */
 export function getActivityIfOwned(activityId, teacherId) {
   const db = getDb();
-  return db.prepare('SELECT * FROM activities WHERE id = ? AND teacher_id = ?').get(activityId, teacherId);
+  return db
+    .prepare('SELECT * FROM activities WHERE id = ? AND teacher_id = ?')
+    .get(activityId, teacherId) || null;
+}
+
+/**
+ * Retorna o feedback somente se a atividade-pai pertencer ao professor informado.
+ * Faz JOIN: feedbacks → student_responses → activities para checar posse.
+ * Retorna null tanto quando o ID não existe quanto quando pertence a outro professor.
+ */
+export function getFeedbackIfOwned(feedbackId, teacherId) {
+  const db = getDb();
+  return db
+    .prepare(`
+      SELECT f.*
+      FROM feedbacks f
+      JOIN student_responses sr ON sr.id = f.student_response_id
+      JOIN activities a         ON a.id  = sr.activity_id
+      WHERE f.id = ? AND a.teacher_id = ?
+    `)
+    .get(feedbackId, teacherId) || null;
 }
 
 // ──────────────────────────────────────────

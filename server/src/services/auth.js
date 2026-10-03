@@ -6,9 +6,20 @@ const isTest =
   process.execArgv.includes('--test') ||
   process.env.NODE_TEST_CONTEXT !== undefined;
 
-export const JWT_SECRET = process.env.JWT_SECRET || 'educathon-dev-secret-key-2026';
+// JWT_SECRET é OBRIGATÓRIO. Nunca use um valor padrão fixo fora de testes:
+// quem vir o código poderia forjar tokens.
+if (!process.env.JWT_SECRET && !isTest) {
+  throw new Error(
+    '❌ JWT_SECRET não definido. Gere um valor forte e adicione ao .env:\n' +
+    '  node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"\n' +
+    'Nunca use um valor padrão fixo — qualquer pessoa que veja o código pode forjar tokens.'
+  );
+}
+
+export const JWT_SECRET = process.env.JWT_SECRET || 'segredo-somente-para-testes';
 export const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '24h';
 export const BCRYPT_ROUNDS = Number(process.env.BCRYPT_ROUNDS) || (isTest ? 4 : 12);
+
 
 /**
  * Gera o hash de uma senha em texto plano.

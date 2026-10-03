@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { parseCSV } from '../services/parser.js';
-import { addResponses, getActivity } from '../database/db.js';
+import { addResponses, getActivityIfOwned } from '../database/db.js';
 
 const router = Router();
 
@@ -11,9 +11,10 @@ const router = Router();
 router.post('/:id/upload', (req, res) => {
   try {
     const activityId = Number(req.params.id);
-    const activity = getActivity(activityId);
+    const activity = getActivityIfOwned(activityId, req.teacher.id);
 
     if (!activity) {
+      // 404 para ID inexistente e para atividade de outro professor (prevenção de IDOR)
       return res.status(404).json({ error: 'Atividade não encontrada.' });
     }
 
@@ -60,9 +61,10 @@ router.post('/:id/upload', (req, res) => {
 router.post('/:id/manual', (req, res) => {
   try {
     const activityId = Number(req.params.id);
-    const activity = getActivity(activityId);
+    const activity = getActivityIfOwned(activityId, req.teacher.id);
 
     if (!activity) {
+      // 404 para ID inexistente e para atividade de outro professor (prevenção de IDOR)
       return res.status(404).json({ error: 'Atividade não encontrada.' });
     }
 

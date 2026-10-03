@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenAI } from '@google/genai';
 import { SYSTEM_INSTRUCTION, buildUserPrompt, getFeedbackSchema } from '../prompts/feedback.js';
 
 let genAI = null;
@@ -71,7 +71,7 @@ export function isTransientError(error) {
 }
 
 /**
- * Inicializa o cliente do Gemini com a API key.
+ * Inicializa o cliente do Gemini (SDK @google/genai) com a API key.
  */
 function getModel() {
   if (!model) {
@@ -84,12 +84,21 @@ function getModel() {
       );
     }
 
-    genAI = new GoogleGenerativeAI(apiKey);
+    genAI = new GoogleGenAI({ apiKey });
     const modelName = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
-    model = genAI.getGenerativeModel({
-      model: modelName,
-      systemInstruction: SYSTEM_INSTRUCTION,
-    });
+    const client = genAI;
+    // Adaptador: mantém a interface `generateContent({ contents, generationConfig })` →
+    // `{ response: { text() } }` usada pelos testes e pelo eval, mas usa o SDK atual (@google/genai).
+    model = {
+      async generateContent({ contents, generationConfig }) {
+        const result = await client.models.generateContent({
+          model: modelName,
+          contents,
+          config: { systemInstruction: SYSTEM_INSTRUCTION, ...generationConfig },
+        });
+        return { response: { text: () => result.text } };
+      },
+    };
     console.log(`🤖 Usando modelo Gemini: ${modelName}`);
   }
   return model;

@@ -11,6 +11,7 @@ import cors from 'cors';
 // ── Configura banco em memória antes de importar os módulos que dependem dele
 process.env.DB_PATH = ':memory:';
 process.env.GEMINI_API_KEY = 'test-key-placeholder';
+process.env.JWT_SECRET = 'test-secret-key-routes-tests';
 
 // Importa routers e helpers do DB
 const { default: activitiesRouter } = await import('../routes/activities.js');

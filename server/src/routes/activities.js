@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import {
   createActivity,
-  getActivity,
+  getActivityIfOwned,
   getAllActivities,
   getResponsesByActivity,
   getActivityStats,
@@ -106,8 +106,10 @@ router.get('/', (req, res) => {
  */
 router.get('/:id', (req, res) => {
   try {
-    const activity = getActivity(Number(req.params.id));
+    const activity = getActivityIfOwned(Number(req.params.id), req.teacher.id);
     if (!activity) {
+      // Retorna 404 tanto para ID inexistente quanto para atividade de outro professor
+      // (não revelar a existência de recursos alheios — prevenção de IDOR)
       return res.status(404).json({ error: 'Atividade não encontrada.' });
     }
 
