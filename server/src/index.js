@@ -2,6 +2,7 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import { getDb } from './database/db.js';
+import { resetOrphanJobs } from './services/queue.js';
 import activitiesRouter from './routes/activities.js';
 import studentsRouter from './routes/students.js';
 import feedbackRouter from './routes/feedback.js';
@@ -30,9 +31,13 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
 // ──────────────────────────────────────────
-// Inicializa banco de dados
+// Inicializa banco de dados e recupera jobs órfãos
 // ──────────────────────────────────────────
 getDb();
+const recovered = resetOrphanJobs();
+if (recovered && recovered.changes > 0) {
+  console.log(`⚠️ ${recovered.changes} job(s) órfão(s) em processamento marcado(s) como erro.`);
+}
 
 // ──────────────────────────────────────────
 // Rotas

@@ -64,6 +64,14 @@ const MIGRATIONS = [
       'ALTER TABLE activities ADD COLUMN teacher_id INTEGER REFERENCES teachers(id) ON DELETE SET NULL',
     ],
   },
+  // ── Fase 3: unicidade de feedback por resposta ─────────────────────────────
+  {
+    name: '008_feedbacks_unique_student_response',
+    sqls: [
+      'DELETE FROM feedbacks WHERE id NOT IN (SELECT MAX(id) FROM feedbacks GROUP BY student_response_id)',
+      'CREATE UNIQUE INDEX IF NOT EXISTS idx_feedbacks_student_response_id ON feedbacks(student_response_id)',
+    ],
+  },
 ];
 
 /**

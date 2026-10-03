@@ -10,7 +10,7 @@ import {
   saveFeedback,
   getExportData,
 } from '../database/db.js';
-import { processResponses, getProgress } from '../services/queue.js';
+import { processResponses, getProgress, markJobError } from '../services/queue.js';
 import { generateFeedback } from '../services/gemini.js';
 
 const router = Router();
@@ -19,6 +19,7 @@ const router = Router();
  * POST /api/activities/:id/generate
  * Dispara a geração de feedbacks para todos os alunos da atividade.
  * Retorna imediatamente e processa em background.
+ * Previne geração concorrente com 409 Conflict.
  */
 router.post('/activities/:id/generate', async (req, res) => {
   try {
@@ -27,6 +28,14 @@ router.post('/activities/:id/generate', async (req, res) => {
 
     if (!activity) {
       return res.status(404).json({ error: 'Atividade não encontrada.' });
+    }
+
+    // Previne duplo clique / processamento paralelo concorrente
+    const currentProgress = getProgress(activityId);
+    if (currentProgress && currentProgress.status === 'processing') {
+      return res.status(409).json({
+        error: 'Já existe um processamento de feedbacks em andamento para esta atividade.',
+      });
     }
 
     const responses = getResponsesByActivity(activityId);
@@ -50,6 +59,7 @@ router.post('/activities/:id/generate', async (req, res) => {
     // Inicia processamento em background
     processResponses(activity, pendingResponses).catch((error) => {
       console.error('Erro no processamento em background:', error);
+      markJobError(activityId);
     });
 
     res.status(202).json({

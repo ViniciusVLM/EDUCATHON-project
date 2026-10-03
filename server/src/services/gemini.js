@@ -5,6 +5,72 @@ let genAI = null;
 let model = null;
 
 /**
+ * Permite injetar um modelo mockado para testes automatizados.
+ */
+export function setModel(customModel) {
+  model = customModel;
+}
+
+/**
+ * Reseta o modelo e cliente inicializados.
+ */
+export function resetModel() {
+  model = null;
+  genAI = null;
+}
+
+/**
+ * Identifica se um erro é transitório (rede, 429, 5xx ou JSON truncado) e elegível a retry.
+ */
+export function isTransientError(error) {
+  if (!error) return false;
+  if (error instanceof SyntaxError) return true;
+
+  const status = error.status || error.statusCode;
+  if (status === 429 || (status >= 500 && status < 600)) {
+    return true;
+  }
+
+  const msg = (error.message || '').toLowerCase();
+
+  // Erros permanentes explícitos não são transitórios
+  if (
+    msg.includes('api_key_invalid') ||
+    msg.includes('api key not valid') ||
+    msg.includes('invalid api key') ||
+    msg.includes('permission_denied') ||
+    msg.includes('invalid argument') ||
+    status === 400 ||
+    status === 401 ||
+    status === 403
+  ) {
+    return false;
+  }
+
+  // Padrões transitórios conhecidos
+  if (
+    msg.includes('429') ||
+    msg.includes('resource_exhausted') ||
+    msg.includes('quota') ||
+    msg.includes('rate limit') ||
+    msg.includes('500') ||
+    msg.includes('502') ||
+    msg.includes('503') ||
+    msg.includes('504') ||
+    msg.includes('service unavailable') ||
+    msg.includes('internal error') ||
+    msg.includes('fetch failed') ||
+    msg.includes('econnreset') ||
+    msg.includes('etimedout') ||
+    msg.includes('network error')
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
  * Inicializa o cliente do Gemini com a API key.
  */
 function getModel() {
@@ -31,6 +97,8 @@ function getModel() {
 
 /**
  * Gera feedback pedagógico para um único aluno usando Gemini API.
+ * Aplica retry com backoff exponencial para erros transitórios (429, 5xx, JSON truncado).
+ * Lança o erro caso persistente ou esgotadas as tentativas.
  *
  * @param {Object} params
  * @param {string} params.studentName - Nome do aluno
@@ -38,7 +106,7 @@ function getModel() {
  * @param {string} params.rubric - Rubrica/gabarito do professor
  * @param {string} params.studentResponse - Resposta do aluno
  * @param {string} params.educationLevel - Nível de ensino
- * @returns {Promise<{pontos_fortes, lacunas, sugestao_melhoria, feedback_completo}>}
+ * @returns {Promise<{raw: string, parsed: Object}>}
  */
 export async function generateFeedback({ studentName, question, rubric, studentResponse, educationLevel }) {
   const geminiModel = getModel();
@@ -51,36 +119,46 @@ export async function generateFeedback({ studentName, question, rubric, studentR
     educationLevel,
   });
 
-  try {
-    const result = await geminiModel.generateContent({
-      contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
-      generationConfig: {
-        responseMimeType: 'application/json',
-        responseSchema: FEEDBACK_SCHEMA,
-        temperature: 0.7,
-        maxOutputTokens: 1024,
-      },
-    });
+  const MAX_ATTEMPTS = 3;
+  const BASE_DELAY_MS = process.env.NODE_ENV === 'test' ? 30 : 1000;
 
-    const responseText = result.response.text();
-    const parsed = JSON.parse(responseText);
+  let lastError;
 
-    return {
-      raw: responseText,
-      parsed,
-    };
-  } catch (error) {
-    console.error(`❌ Erro ao gerar feedback para ${studentName}:`, error.message);
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      const result = await geminiModel.generateContent({
+        contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
+        generationConfig: {
+          responseMimeType: 'application/json',
+          responseSchema: FEEDBACK_SCHEMA,
+          temperature: 0.3,
+          maxOutputTokens: 4096,
+        },
+      });
 
-    // Retorna um feedback de erro amigável
-    return {
-      raw: JSON.stringify({ error: error.message }),
-      parsed: {
-        pontos_fortes: 'Não foi possível analisar automaticamente.',
-        lacunas: 'A IA não conseguiu processar esta resposta.',
-        sugestao_melhoria: 'O professor deve revisar manualmente.',
-        feedback_completo: `${studentName}, não foi possível gerar o feedback automático para a sua resposta. O professor irá revisar pessoalmente.`,
-      },
-    };
+      const responseText = result.response.text();
+      const parsed = JSON.parse(responseText);
+
+      return {
+        raw: responseText,
+        parsed,
+      };
+    } catch (error) {
+      lastError = error;
+      const transient = isTransientError(error);
+
+      console.warn(
+        `⚠️ Tentativa ${attempt}/${MAX_ATTEMPTS} falhou para ${studentName}: ${error.message} (transitório: ${transient})`
+      );
+
+      if (!transient || attempt >= MAX_ATTEMPTS) {
+        throw error;
+      }
+
+      const backoffMs = BASE_DELAY_MS * Math.pow(2, attempt - 1);
+      await new Promise((resolve) => setTimeout(resolve, backoffMs));
+    }
   }
+
+  throw lastError;
 }
