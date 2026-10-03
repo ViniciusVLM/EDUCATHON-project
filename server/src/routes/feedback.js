@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import {
   getActivity,
+  getActivityIfOwned,
   getResponsesByActivity,
   getFeedback,
   updateFeedback,
@@ -64,9 +65,17 @@ router.post('/activities/:id/generate', async (req, res) => {
 /**
  * GET /api/activities/:id/progress
  * Retorna o progresso da geração de feedbacks.
+ * IDOR fix: verifica posse da atividade antes de expor dados.
  */
 router.get('/activities/:id/progress', (req, res) => {
   const activityId = Number(req.params.id);
+
+  // Garante que a atividade pertence ao professor logado
+  const activity = getActivityIfOwned(activityId, req.teacher.id);
+  if (!activity) {
+    return res.status(404).json({ error: 'Atividade não encontrada.' });
+  }
+
   const progress = getProgress(activityId);
   res.json(progress);
 });

@@ -8,6 +8,10 @@ const router = Router();
  * Roda o parseCSV no servidor sem salvar nada.
  * Retorna as linhas parseadas para prévia no frontend.
  *
+ * Segurança / IDOR: Esta rota requer autenticação (requireAuth no index.js), o que é suficiente
+ * pois o processamento é puramente stateless (em memória) e não acessa nem modifica entidades
+ * do banco de dados ou dados de outros professores.
+ *
  * Body: { csvContent: string }
  * Response: { rows: [{student_name, original_response}], total: number }
  */

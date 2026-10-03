@@ -240,6 +240,17 @@ export function deleteStudent(studentId) {
   return db.prepare('DELETE FROM students WHERE id = ?').run(studentId);
 }
 
+/**
+ * Remove um aluno garantindo que ele pertence à turma informada.
+ * Impede IDOR: professor A não pode apagar aluno da turma de professor B.
+ * Retorna o resultado do run() — changes === 0 significa que o aluno
+ * não existe ou não pertence à turma especificada.
+ */
+export function deleteStudentFromClass(studentId, classId) {
+  const db = getDb();
+  return db.prepare('DELETE FROM students WHERE id = ? AND class_id = ?').run(studentId, classId);
+}
+
 // ──────────────────────────────────────────
 // Helpers: Activities
 // ──────────────────────────────────────────
@@ -281,12 +292,25 @@ export function getActivity(id) {
   return db.prepare('SELECT * FROM activities WHERE id = ?').get(id);
 }
 
-export function getAllActivities(teacherId = null) {
+/**
+ * Lista atividades do professor logado.
+ * IDOR fix: removido o filtro `OR teacher_id IS NULL` que expunha
+ * atividades sem dono a todos os professores autenticados.
+ * As rotas já estão atrás de requireAuth, então teacherId nunca é null
+ * num contexto de request real.
+ */
+export function getAllActivities(teacherId) {
   const db = getDb();
-  if (teacherId) {
-    return db.prepare('SELECT * FROM activities WHERE teacher_id = ? OR teacher_id IS NULL ORDER BY created_at DESC').all(teacherId);
-  }
-  return db.prepare('SELECT * FROM activities ORDER BY created_at DESC').all();
+  return db.prepare('SELECT * FROM activities WHERE teacher_id = ? ORDER BY created_at DESC').all(teacherId);
+}
+
+/**
+ * Retorna uma atividade se e somente se o teacher_id coincidir.
+ * Usar em rotas que precisam checar posse antes de agir.
+ */
+export function getActivityIfOwned(activityId, teacherId) {
+  const db = getDb();
+  return db.prepare('SELECT * FROM activities WHERE id = ? AND teacher_id = ?').get(activityId, teacherId);
 }
 
 // ──────────────────────────────────────────

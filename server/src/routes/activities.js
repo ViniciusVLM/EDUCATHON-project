@@ -1,5 +1,12 @@
 import { Router } from 'express';
-import { createActivity, getActivity, getAllActivities, getResponsesByActivity, getActivityStats } from '../database/db.js';
+import {
+  createActivity,
+  getActivity,
+  getAllActivities,
+  getResponsesByActivity,
+  getActivityStats,
+  getClassById,
+} from '../database/db.js';
 
 const router = Router();
 
@@ -17,6 +24,14 @@ router.post('/', (req, res) => {
       });
     }
 
+    // IDOR fix: se informado classId, valida se a turma pertence ao professor logado
+    if (classId) {
+      const cls = getClassById(Number(classId), req.teacher.id);
+      if (!cls) {
+        return res.status(404).json({ error: 'Turma não encontrada.' });
+      }
+    }
+
     const result = createActivity({
       title,
       question,
@@ -26,7 +41,7 @@ router.post('/', (req, res) => {
       classId,
       dueDate,
       rubricCriteria,
-      teacherId: req.teacher?.id || null,
+      teacherId: req.teacher.id,
     });
 
     res.status(201).json({
@@ -41,11 +56,11 @@ router.post('/', (req, res) => {
 
 /**
  * GET /api/activities
- * Lista todas as atividades.
+ * Lista todas as atividades do professor logado.
  */
 router.get('/', (req, res) => {
   try {
-    const activities = getAllActivities(req.teacher?.id || null);
+    const activities = getAllActivities(req.teacher.id);
     res.json(activities);
   } catch (error) {
     console.error('Erro ao listar atividades:', error);
