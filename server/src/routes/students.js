@@ -19,13 +19,26 @@ router.post('/:id/upload', (req, res) => {
 
     const { csvContent } = req.body;
 
-    if (!csvContent) {
+    if (!csvContent || typeof csvContent !== 'string') {
       return res.status(400).json({
         error: 'Envie o campo "csvContent" com o conteúdo do CSV.',
       });
     }
 
+    if (csvContent.length > 2 * 1024 * 1024) {
+      return res.status(413).json({
+        error: 'Arquivo CSV excede o limite permitido de 2MB.',
+      });
+    }
+
     const parsed = parseCSV(csvContent);
+
+    if (parsed.length > 200) {
+      return res.status(400).json({
+        error: 'Quantidade de respostas excede o limite permitido (máximo 200 alunos por upload).',
+      });
+    }
+
     const ids = addResponses(activityId, parsed, 'csv');
 
     res.status(201).json({
@@ -61,11 +74,30 @@ router.post('/:id/manual', (req, res) => {
       });
     }
 
+    if (responses.length > 100) {
+      return res.status(400).json({
+        error: 'Envie no máximo 100 respostas por lote.',
+      });
+    }
+
     // Valida cada resposta
     for (const [i, r] of responses.entries()) {
-      if (!r.student_name || !r.original_response) {
+      if (!r.student_name || typeof r.student_name !== 'string' || !r.student_name.trim() ||
+          !r.original_response || typeof r.original_response !== 'string' || !r.original_response.trim()) {
         return res.status(400).json({
           error: `Resposta ${i + 1} inválida: campos student_name e original_response são obrigatórios.`,
+        });
+      }
+
+      if (r.student_name.trim().length > 100) {
+        return res.status(400).json({
+          error: `Resposta ${i + 1} inválida: o nome do aluno deve ter no máximo 100 caracteres.`,
+        });
+      }
+
+      if (r.original_response.trim().length > 10000) {
+        return res.status(400).json({
+          error: `Resposta ${i + 1} inválida: a resposta do aluno deve ter no máximo 10.000 caracteres.`,
         });
       }
     }

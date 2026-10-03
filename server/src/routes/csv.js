@@ -22,8 +22,19 @@ router.post('/csv/preview', (req, res) => {
     return res.status(400).json({ error: 'csvContent é obrigatório.' });
   }
 
+  if (csvContent.length > 2 * 1024 * 1024) {
+    return res.status(413).json({
+      error: 'Arquivo CSV excede o limite permitido de 2MB.',
+    });
+  }
+
   try {
     const rows = parseCSV(csvContent);
+    if (rows.length > 200) {
+      return res.status(400).json({
+        error: 'Quantidade de respostas excede o limite permitido (máximo 200 alunos por upload).',
+      });
+    }
     res.json({ rows, total: rows.length });
   } catch (err) {
     res.status(422).json({ error: err.message });

@@ -18,9 +18,41 @@ router.post('/', (req, res) => {
   try {
     const { title, question, rubric, educationLevel, subject, classId, dueDate, rubricCriteria } = req.body;
 
-    if (!title || !question || !rubric) {
+    if (!title || typeof title !== 'string' || !title.trim() ||
+        !question || typeof question !== 'string' || !question.trim() ||
+        !rubric || typeof rubric !== 'string' || !rubric.trim()) {
       return res.status(400).json({
         error: 'Campos obrigatórios: title, question, rubric',
+      });
+    }
+
+    if (title.trim().length > 200) {
+      return res.status(400).json({
+        error: 'O título deve ter no máximo 200 caracteres.',
+      });
+    }
+
+    if (question.trim().length > 2000) {
+      return res.status(400).json({
+        error: 'A pergunta deve ter no máximo 2000 caracteres.',
+      });
+    }
+
+    if (rubric.trim().length > 4000) {
+      return res.status(400).json({
+        error: 'A rubrica deve ter no máximo 4000 caracteres.',
+      });
+    }
+
+    if (subject && String(subject).trim().length > 100) {
+      return res.status(400).json({
+        error: 'A disciplina deve ter no máximo 100 caracteres.',
+      });
+    }
+
+    if (rubricCriteria && Array.isArray(rubricCriteria) && rubricCriteria.length > 20) {
+      return res.status(400).json({
+        error: 'O limite é de 20 critérios de rubrica por atividade.',
       });
     }
 
