@@ -97,6 +97,17 @@ export async function processResponses(activity, responses) {
   const BATCH_SIZE = 3;
   const DELAY_MS = process.env.NODE_ENV === 'test' ? 10 : 1500;
 
+  let parsedCriteria = null;
+  if (activity.rubric_criteria) {
+    try {
+      parsedCriteria = typeof activity.rubric_criteria === 'string'
+        ? JSON.parse(activity.rubric_criteria)
+        : activity.rubric_criteria;
+    } catch (err) {
+      console.warn('Erro ao parsear rubric_criteria:', err);
+    }
+  }
+
   // Cria / atualiza job como 'processing'
   upsertJob(activityId, 'processing', responses.length, 0, 0);
 
@@ -114,14 +125,19 @@ export async function processResponses(activity, responses) {
               rubric: activity.rubric,
               studentResponse: response.original_response,
               educationLevel: activity.education_level,
+              subject: activity.subject,
+              rubricCriteria: parsedCriteria,
             });
 
-            // Salva no banco com registro do modelo utilizado
+            const criteriaScores = result.parsed?.criterios_avaliacao || null;
+
+            // Salva no banco com registro do modelo utilizado e critérios avaliados
             saveFeedback(
               response.id,
               result.raw,
               result.parsed.feedback_completo,
-              process.env.GEMINI_MODEL || 'gemini-2.5-flash'
+              process.env.GEMINI_MODEL || 'gemini-2.5-flash',
+              criteriaScores
             );
 
             return { success: true, studentName: response.student_name, responseId: response.id };

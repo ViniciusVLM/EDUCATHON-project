@@ -422,13 +422,16 @@ export function getResponseCount(activityId) {
 // Helpers: Feedbacks
 // ──────────────────────────────────────────
 
-export function saveFeedback(studentResponseId, aiFeedbackJson, aiFeedbackText, aiModel = null) {
+export function saveFeedback(studentResponseId, aiFeedbackJson, aiFeedbackText, aiModel = null, criteriaScores = null) {
   const db = getDb();
   const stmt = db.prepare(`
-    INSERT INTO feedbacks (student_response_id, ai_feedback_json, ai_feedback_text, ai_model, status, generated_at)
-    VALUES (?, ?, ?, ?, 'pendente', datetime('now'))
+    INSERT INTO feedbacks (student_response_id, ai_feedback_json, ai_feedback_text, ai_model, criteria_scores, status, generated_at)
+    VALUES (?, ?, ?, ?, ?, 'pendente', datetime('now'))
   `);
-  const result = stmt.run(studentResponseId, aiFeedbackJson, aiFeedbackText, aiModel);
+  const formattedCriteria = criteriaScores !== null && criteriaScores !== undefined
+    ? (typeof criteriaScores === 'string' ? criteriaScores : JSON.stringify(criteriaScores))
+    : null;
+  const result = stmt.run(studentResponseId, aiFeedbackJson, aiFeedbackText, aiModel, formattedCriteria);
   return { id: result.lastInsertRowid };
 }
 

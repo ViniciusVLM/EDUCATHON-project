@@ -1,5 +1,5 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { SYSTEM_INSTRUCTION, buildUserPrompt, FEEDBACK_SCHEMA } from '../prompts/feedback.js';
+import { SYSTEM_INSTRUCTION, buildUserPrompt, getFeedbackSchema } from '../prompts/feedback.js';
 
 let genAI = null;
 let model = null;
@@ -106,9 +106,19 @@ function getModel() {
  * @param {string} params.rubric - Rubrica/gabarito do professor
  * @param {string} params.studentResponse - Resposta do aluno
  * @param {string} params.educationLevel - Nível de ensino
+ * @param {string} [params.subject] - Disciplina / matéria
+ * @param {Array|string} [params.rubricCriteria] - Critérios de avaliação da rubrica
  * @returns {Promise<{raw: string, parsed: Object}>}
  */
-export async function generateFeedback({ studentName, question, rubric, studentResponse, educationLevel }) {
+export async function generateFeedback({
+  studentName,
+  question,
+  rubric,
+  studentResponse,
+  educationLevel,
+  subject,
+  rubricCriteria,
+}) {
   const geminiModel = getModel();
 
   const userPrompt = buildUserPrompt({
@@ -117,7 +127,11 @@ export async function generateFeedback({ studentName, question, rubric, studentR
     rubric,
     studentResponse,
     educationLevel,
+    subject,
+    rubricCriteria,
   });
+
+  const responseSchema = getFeedbackSchema(rubricCriteria);
 
   const MAX_ATTEMPTS = 3;
   const BASE_DELAY_MS = process.env.NODE_ENV === 'test' ? 30 : 1000;
@@ -130,7 +144,7 @@ export async function generateFeedback({ studentName, question, rubric, studentR
         contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
         generationConfig: {
           responseMimeType: 'application/json',
-          responseSchema: FEEDBACK_SCHEMA,
+          responseSchema,
           temperature: 0.3,
           maxOutputTokens: 4096,
         },

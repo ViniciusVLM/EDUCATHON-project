@@ -163,7 +163,7 @@ router.post('/feedback/:feedbackId/regenerate', async (req, res) => {
     // Busca a atividade associada
     const db = (await import('../database/db.js'));
     const response = db.getDb().prepare(`
-      SELECT sr.*, a.question, a.rubric, a.education_level
+      SELECT sr.*, a.question, a.rubric, a.education_level, a.subject, a.rubric_criteria
       FROM student_responses sr
       JOIN activities a ON a.id = sr.activity_id
       WHERE sr.id = ?
@@ -173,6 +173,17 @@ router.post('/feedback/:feedbackId/regenerate', async (req, res) => {
       return res.status(404).json({ error: 'Resposta do aluno não encontrada.' });
     }
 
+    let parsedCriteria = null;
+    if (response.rubric_criteria) {
+      try {
+        parsedCriteria = typeof response.rubric_criteria === 'string'
+          ? JSON.parse(response.rubric_criteria)
+          : response.rubric_criteria;
+      } catch (err) {
+        console.warn('Erro ao parsear rubric_criteria no regenerate:', err);
+      }
+    }
+
     // Regenera
     const result = await generateFeedback({
       studentName: response.student_name,
@@ -180,7 +191,11 @@ router.post('/feedback/:feedbackId/regenerate', async (req, res) => {
       rubric: response.rubric,
       studentResponse: response.original_response,
       educationLevel: response.education_level,
+      subject: response.subject,
+      rubricCriteria: parsedCriteria,
     });
+
+    const criteriaScores = result.parsed?.criterios_avaliacao || null;
 
     // Remove feedback antigo e salva novo
     deleteFeedbackByResponseId(feedback.student_response_id);
@@ -188,7 +203,8 @@ router.post('/feedback/:feedbackId/regenerate', async (req, res) => {
       feedback.student_response_id,
       result.raw,
       result.parsed.feedback_completo,
-      process.env.GEMINI_MODEL || 'gemini-2.5-flash'
+      process.env.GEMINI_MODEL || 'gemini-2.5-flash',
+      criteriaScores
     );
 
     res.json({
