@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import Home from './pages/Home';
+import Dashboard from './pages/Dashboard';
 import SetupActivity from './pages/SetupActivity';
 import UploadResponses from './pages/UploadResponses';
 import ReviewDashboard from './pages/ReviewDashboard';
@@ -37,6 +38,14 @@ export default function App() {
             <Route path="/register" element={<Register />} />
 
             {/* ── Rotas Protegidas (com AppLayout) ── */}
+            <Route
+              path="/painel"
+              element={
+                <ProtectedLayout>
+                  <Dashboard />
+                </ProtectedLayout>
+              }
+            />
             <Route
               path="/activities"
               element={

@@ -12,6 +12,7 @@ import type {
   ClassWithStudents,
   Student,
   CriterionScore,
+  DashboardSummary,
 } from '../types';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
@@ -328,3 +329,12 @@ export async function deleteStudent(
     method: 'DELETE',
   });
 }
+
+// ──────────────────────────────────────────
+// Dashboard (Fase 6B)
+// ──────────────────────────────────────────
+
+export async function getDashboardSummary(): Promise<DashboardSummary> {
+  return request<DashboardSummary>('/dashboard/summary');
+}
+

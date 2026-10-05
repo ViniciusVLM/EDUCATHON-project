@@ -4,10 +4,11 @@
  */
 import React from 'react';
 
-interface CardProps {
+interface CardProps extends React.HTMLAttributes<HTMLElement> {
   children?: React.ReactNode;
   className?: string;
   dashed?: boolean;
+  variant?: 'default' | 'hover' | 'dashed';
   onAdd?: () => void;
   addLabel?: string;
   style?: React.CSSProperties;
@@ -18,16 +19,22 @@ export function Card({
   children,
   className = '',
   dashed = false,
+  variant,
   onAdd,
   addLabel = 'Adicionar',
   style,
   as: Tag = 'div',
+  ...rest
 }: CardProps) {
-  if (dashed) {
+  const isDashed = dashed || variant === 'dashed';
+  const isHover = variant === 'hover';
+
+  if (isDashed) {
     return (
       <Tag
         className={`ui-card ui-card--dashed ${className}`}
         style={style}
+        {...rest}
       >
         {onAdd ? (
           <button
@@ -47,7 +54,7 @@ export function Card({
   }
 
   return (
-    <Tag className={`ui-card ${className}`} style={style}>
+    <Tag className={`ui-card ${isHover ? 'ui-card--hover' : ''} ${className}`} style={style} {...rest}>
       {children}
     </Tag>
   );

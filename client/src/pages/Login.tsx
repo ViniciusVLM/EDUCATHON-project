@@ -12,7 +12,7 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const from = (location.state as { from?: { pathname: string } })?.from?.pathname || '/activities';
+  const from = (location.state as { from?: { pathname: string } })?.from?.pathname || '/painel';
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();

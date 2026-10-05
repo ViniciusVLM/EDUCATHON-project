@@ -23,6 +23,7 @@ export default function SetupActivity() {
     educationLevel: 'medio',
     subject: '',
     classId: '',
+    dueDate: '',
   });
 
   useEffect(() => {
@@ -91,6 +92,7 @@ export default function SetupActivity() {
         educationLevel: form.educationLevel,
         subject: form.subject.trim() || undefined,
         classId: form.classId ? Number(form.classId) : undefined,
+        dueDate: form.dueDate ? form.dueDate : undefined,
         rubricCriteria,
       });
       navigate(`/upload/${result.id}`);
@@ -178,6 +180,20 @@ export default function SetupActivity() {
                   </option>
                 ))}
               </select>
+            </div>
+
+            <div className="input-group">
+              <label className="input-label" htmlFor="dueDate">
+                Prazo de Entrega (opcional)
+              </label>
+              <input
+                id="dueDate"
+                name="dueDate"
+                type="date"
+                className="input"
+                value={form.dueDate}
+                onChange={handleChange}
+              />
             </div>
           </div>
 

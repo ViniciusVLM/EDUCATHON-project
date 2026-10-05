@@ -21,6 +21,7 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   size?: ButtonSize;
   iconOnly?: boolean;
   loading?: boolean;
+  icon?: React.ReactNode;
   children?: React.ReactNode;
 }
 
@@ -29,6 +30,7 @@ export function Button({
   size = 'md',
   iconOnly = false,
   loading = false,
+  icon,
   className = '',
   children,
   disabled,
@@ -48,6 +50,7 @@ export function Button({
   return (
     <button type="button" className={cls} disabled={disabled || loading} {...rest}>
       {loading ? <span className="ui-btn__spinner" aria-hidden="true" /> : null}
+      {!loading && icon ? <span className="ui-btn__icon" aria-hidden="true" style={{ display: 'inline-flex', alignItems: 'center' }}>{icon}</span> : null}
       {children}
     </button>
   );

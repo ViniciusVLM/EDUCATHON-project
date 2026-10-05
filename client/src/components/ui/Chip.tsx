@@ -6,17 +6,20 @@
 import React from 'react';
 
 type ChipColor = 'pink' | 'green' | 'purple' | 'blue' | 'amber';
+type ChipSize = 'sm' | 'md';
 
 interface ChipProps {
-  label: string;
+  label?: string;
+  children?: React.ReactNode;
   color?: ChipColor;
+  size?: ChipSize;
   className?: string;
 }
 
-export function Chip({ label, color = 'purple', className = '' }: ChipProps) {
+export function Chip({ label, children, color = 'purple', size = 'md', className = '' }: ChipProps) {
   return (
-    <span className={`ui-chip ui-chip--${color} ${className}`}>
-      {label}
+    <span className={`ui-chip ui-chip--${color} ui-chip--${size} ${className}`}>
+      {children ?? label}
     </span>
   );
 }

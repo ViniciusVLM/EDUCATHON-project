@@ -7,6 +7,7 @@
 @import './tokens.css';
 @import './animations.css';
 @import './layout.css';
+@import './dashboard.css';
 
 /* ── Reset ── */
 *, *::before, *::after {

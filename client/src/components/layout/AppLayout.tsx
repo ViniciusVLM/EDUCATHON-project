@@ -13,7 +13,7 @@
  * Em telas ≤ 768px a sidebar vira uma barra de navegação inferior.
  */
 import React, { useState, useRef, useEffect } from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
+import { NavLink, Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import {
@@ -37,7 +37,7 @@ interface NavItem {
 }
 
 const navItems: NavItem[] = [
-  { to: '/activities', label: 'Painel',         icon: <IconGrid />,     id: 'nav-painel'     },
+  { to: '/painel',     label: 'Painel',         icon: <IconGrid />,     id: 'nav-painel'     },
   { to: '/activities', label: 'Atividades',      icon: <IconDocument />, id: 'nav-atividades' },
   { to: '/classes',    label: 'Turmas',          icon: <IconUsers />,    id: 'nav-turmas'     },
   { to: '/setup',      label: 'Nova Atividade',  icon: <IconPlus />,     id: 'nav-nova'       },
@@ -45,6 +45,7 @@ const navItems: NavItem[] = [
 
 // Abas exibidas na topbar (mapeadas às rotas)
 const tabItems = [
+  { to: '/painel',     label: 'Painel'     },
   { to: '/activities', label: 'Atividades' },
   { to: '/classes',    label: 'Turmas'     },
   { to: '/setup',      label: 'Nova'       },
@@ -83,11 +84,11 @@ export function AppLayout({ children }: AppLayoutProps) {
       {/* ── Sidebar ── */}
       <aside className="app-sidebar" aria-label="Navegação principal">
         {/* Logo */}
-        <div className="app-sidebar__logo" aria-label="Educathon">
+        <Link to="/painel" className="app-sidebar__logo" aria-label="Educathon" title="Educathon">
           <div className="app-sidebar__logo-icon">
             <IconCap size={22} />
           </div>
-        </div>
+        </Link>
 
         {/* Itens de navegação */}
         <nav className="app-sidebar__nav">

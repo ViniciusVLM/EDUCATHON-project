@@ -117,3 +117,63 @@ export function IconCap({ size = 28, className = '', style }: IconProps) {
     </svg>
   );
 }
+
+// ── Faísca / IA ──
+export function IconSparkles({ size = 20, className = '', style }: IconProps) {
+  return (
+    <svg aria-hidden="true" width={size} height={size} viewBox="0 0 20 20" fill="none" className={className} style={style}>
+      <path d="M10 2l1.8 5.2L17 9l-5.2 1.8L10 16l-1.8-5.2L3 9l5.2-1.8L10 2z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+      <path d="M15 14l.8 2.2L18 17l-2.2.8L15 20l-.8-2.2L12 17l2.2-.8L15 14z" fill="currentColor" opacity=".7"/>
+    </svg>
+  );
+}
+
+// ── Check / Aprovado ──
+export function IconCheckCircle({ size = 20, className = '', style }: IconProps) {
+  return (
+    <svg aria-hidden="true" width={size} height={size} viewBox="0 0 20 20" fill="none" className={className} style={style}>
+      <circle cx="10" cy="10" r="8" stroke="currentColor" strokeWidth="1.5"/>
+      <path d="M7 10l2 2 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  );
+}
+
+// ── Alerta / Erro ──
+export function IconAlertCircle({ size = 20, className = '', style }: IconProps) {
+  return (
+    <svg aria-hidden="true" width={size} height={size} viewBox="0 0 20 20" fill="none" className={className} style={style}>
+      <circle cx="10" cy="10" r="8" stroke="currentColor" strokeWidth="1.5"/>
+      <path d="M10 6v5M10 14h.01" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+    </svg>
+  );
+}
+
+// ── Relógio / Prazo ──
+export function IconClock({ size = 20, className = '', style }: IconProps) {
+  return (
+    <svg aria-hidden="true" width={size} height={size} viewBox="0 0 20 20" fill="none" className={className} style={style}>
+      <circle cx="10" cy="10" r="8" stroke="currentColor" strokeWidth="1.5"/>
+      <path d="M10 5v5l3 2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  );
+}
+
+// ── Pasta / Organizar ──
+export function IconFolder({ size = 20, className = '', style }: IconProps) {
+  return (
+    <svg aria-hidden="true" width={size} height={size} viewBox="0 0 20 20" fill="none" className={className} style={style}>
+      <path d="M3 5a2 2 0 012-2h4l2 2h6a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V5z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/>
+    </svg>
+  );
+}
+
+// ── Refresh / Tentar de novo ──
+export function IconRefresh({ size = 20, className = '', style }: IconProps) {
+  return (
+    <svg aria-hidden="true" width={size} height={size} viewBox="0 0 20 20" fill="none" className={className} style={style}>
+      <path d="M16 4v4h-4M4 16v-4h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+      <path d="M6.34 6.34A7 7 0 0117 10M3 10a7 7 0 0010.66 3.66" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+    </svg>
+  );
+}
+

@@ -7,11 +7,15 @@
  */
 import React from 'react';
 
+type RingColor = 'green' | 'red' | 'purple' | 'amber' | 'success' | 'danger';
+
 interface ProgressRingProps {
   value: number;
   size?: number;
   stroke?: number;
-  color?: 'green' | 'red' | 'purple' | 'amber';
+  strokeWidth?: number;
+  color?: RingColor;
+  variant?: RingColor;
   label?: string;
   showPercent?: boolean;
   className?: string;
@@ -20,22 +24,28 @@ interface ProgressRingProps {
 export function ProgressRing({
   value,
   size = 72,
-  stroke = 6,
-  color = 'purple',
+  stroke,
+  strokeWidth,
+  color,
+  variant = 'purple',
   label,
   showPercent = true,
   className = '',
 }: ProgressRingProps) {
+  const finalStroke = strokeWidth ?? stroke ?? 6;
+  const chosenColor = color || variant;
   const clamped = Math.min(100, Math.max(0, value));
-  const radius = (size - stroke) / 2;
+  const radius = (size - finalStroke) / 2;
   const circumference = 2 * Math.PI * radius;
   const offset = circumference - (clamped / 100) * circumference;
 
   const colorMap: Record<string, string> = {
-    green:  'var(--success-500)',
-    red:    'var(--error-500)',
-    purple: 'var(--primary-500)',
-    amber:  'var(--warning-500)',
+    green:   'var(--success-500)',
+    success: 'var(--success-500)',
+    red:     'var(--error-500)',
+    danger:  'var(--error-500)',
+    purple:  'var(--primary-500)',
+    amber:   'var(--warning-500)',
   };
 
   return (
@@ -57,7 +67,7 @@ export function ProgressRing({
           r={radius}
           fill="none"
           stroke="var(--surface-border)"
-          strokeWidth={stroke}
+          strokeWidth={finalStroke}
         />
         {/* Preenchimento */}
         <circle
@@ -65,8 +75,8 @@ export function ProgressRing({
           cy={size / 2}
           r={radius}
           fill="none"
-          stroke={colorMap[color]}
-          strokeWidth={stroke}
+          stroke={colorMap[chosenColor || 'purple']}
+          strokeWidth={finalStroke}
           strokeLinecap="round"
           strokeDasharray={circumference}
           strokeDashoffset={offset}
