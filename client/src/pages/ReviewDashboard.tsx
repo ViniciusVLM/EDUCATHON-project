@@ -8,7 +8,24 @@ import {
   approveFeedback,
   regenerateFeedback,
 } from '../services/api';
-import type { ActivityWithResponses, StudentResponse, Progress, FilterType, FeedbackParsed, CriterionScore } from '../types';
+import type {
+  ActivityWithResponses,
+  StudentResponse,
+  Progress,
+  FilterType,
+  FeedbackParsed,
+  CriterionScore,
+} from '../types';
+import { Card } from '../components/ui/Card';
+import { Button } from '../components/ui/Button';
+import { Chip } from '../components/ui/Chip';
+import { ProgressBar } from '../components/ui/ProgressBar';
+import {
+  IconCheckCircle,
+  IconAlertCircle,
+  IconRefresh,
+  IconSparkles,
+} from '../components/ui/Icons';
 
 export default function ReviewDashboard() {
   const { activityId } = useParams<{ activityId: string }>();
@@ -24,6 +41,11 @@ export default function ReviewDashboard() {
   const [error, setError] = useState('');
   const [progress, setProgress] = useState<Progress | null>(null);
   const [generating, setGenerating] = useState(false);
+
+  function filterResponses(responses: StudentResponse[], f: FilterType): StudentResponse[] {
+    if (f === 'todos') return responses;
+    return responses.filter((r) => r.status === f);
+  }
 
   const loadActivity = useCallback(async () => {
     try {
@@ -41,17 +63,20 @@ export default function ReviewDashboard() {
         // ignora erro ao buscar progresso inicial
       }
 
-      // Auto-select first response
+      // Auto-select first response if out of range
       const responses = filterResponses(data.responses, filter);
       if (responses.length > 0 && selectedIndex >= responses.length) {
         setSelectedIndex(0);
       }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Erro ao carregar atividade.';
+      const msg =
+        err instanceof Error
+          ? err.message
+          : 'Não foi possível conectar ao servidor. Tente novamente em instantes.';
       setError(msg);
       setLoading(false);
     }
-  }, [activityId]);
+  }, [activityId, filter, selectedIndex]);
 
   useEffect(() => {
     loadActivity();
@@ -79,11 +104,6 @@ export default function ReviewDashboard() {
     return () => clearInterval(interval);
   }, [generating, activityId, loadActivity]);
 
-  function filterResponses(responses: StudentResponse[], f: FilterType): StudentResponse[] {
-    if (f === 'todos') return responses;
-    return responses.filter((r) => r.status === f);
-  }
-
   const filteredResponses = activity ? filterResponses(activity.responses, filter) : [];
   const selected = filteredResponses[selectedIndex] || null;
 
@@ -95,9 +115,10 @@ export default function ReviewDashboard() {
       let scores: CriterionScore[] = [];
       if (selected.criteria_scores) {
         try {
-          scores = typeof selected.criteria_scores === 'string'
-            ? JSON.parse(selected.criteria_scores)
-            : selected.criteria_scores;
+          scores =
+            typeof selected.criteria_scores === 'string'
+              ? JSON.parse(selected.criteria_scores)
+              : selected.criteria_scores;
         } catch (e) {
           console.warn('Erro ao parsear criteria_scores:', e);
         }
@@ -115,7 +136,84 @@ export default function ReviewDashboard() {
     } else {
       setCurrentCriteriaScores([]);
     }
-  }, [selected?.id, selected?.teacher_feedback, selected?.ai_feedback_text, selected?.criteria_scores, selected?.ai_feedback_json]);
+  }, [
+    selected?.id,
+    selected?.teacher_feedback,
+    selected?.ai_feedback_text,
+    selected?.criteria_scores,
+    selected?.ai_feedback_json,
+  ]);
+
+  // Checa se há edições locais não salvas
+  const isDirty = useCallback((): boolean => {
+    if (!selected) return false;
+    const initialText = selected.teacher_feedback || selected.ai_feedback_text || '';
+    if (editText !== initialText) return true;
+
+    let initialScores: CriterionScore[] = [];
+    if (selected.criteria_scores) {
+      try {
+        initialScores =
+          typeof selected.criteria_scores === 'string'
+            ? JSON.parse(selected.criteria_scores)
+            : selected.criteria_scores;
+      } catch {
+        // ignore
+      }
+    } else if (selected.ai_feedback_json) {
+      try {
+        const parsed = JSON.parse(selected.ai_feedback_json);
+        if (parsed?.criterios_avaliacao) initialScores = parsed.criterios_avaliacao;
+      } catch {
+        // ignore
+      }
+    }
+
+    if (currentCriteriaScores.length !== initialScores.length) return true;
+    for (let i = 0; i < currentCriteriaScores.length; i++) {
+      if (currentCriteriaScores[i].atendido !== initialScores[i]?.atendido) return true;
+    }
+
+    return false;
+  }, [selected, editText, currentCriteriaScores]);
+
+  // Troca de aluno com proteção contra descarte acidental
+  function handleSelectStudent(newIndex: number) {
+    if (newIndex === selectedIndex) return;
+
+    if (isDirty()) {
+      const confirmed = window.confirm(
+        'Você tem alterações não salvas no feedback atual. Deseja descartar as alterações e continuar?'
+      );
+      if (!confirmed) return;
+    }
+    setSelectedIndex(newIndex);
+  }
+
+  // Navegação relativa (próximo / anterior)
+  const handleNavigateRelative = useCallback(
+    (delta: number) => {
+      const newIndex = selectedIndex + delta;
+      if (newIndex >= 0 && newIndex < filteredResponses.length) {
+        handleSelectStudent(newIndex);
+      }
+    },
+    [selectedIndex, filteredResponses.length, isDirty]
+  );
+
+  // Troca de filtro com proteção contra descarte acidental
+  function handleFilterChange(newFilter: FilterType) {
+    if (newFilter === filter) return;
+
+    if (isDirty()) {
+      const confirmed = window.confirm(
+        'Você tem alterações não salvas no feedback atual. Deseja descartar as alterações e mudar de filtro?'
+      );
+      if (!confirmed) return;
+    }
+    setFilter(newFilter);
+    setSelectedIndex(0);
+  }
 
   function handleToggleCriterion(idx: number) {
     setCurrentCriteriaScores((prev) => {
@@ -127,10 +225,14 @@ export default function ReviewDashboard() {
 
   async function handleGenerate() {
     setGenerating(true);
+    setError('');
     try {
       await generateFeedbacks(Number(activityId));
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Erro ao gerar feedbacks.';
+      const msg =
+        err instanceof Error
+          ? err.message
+          : 'Não foi possível conectar ao servidor. Tente novamente em instantes.';
       setError(msg);
       setGenerating(false);
     }
@@ -139,6 +241,7 @@ export default function ReviewDashboard() {
   async function handleSave() {
     if (!selected?.feedback_id) return;
     setActionLoading('save');
+    setError('');
     try {
       await updateFeedback(selected.feedback_id, {
         teacherFeedback: editText,
@@ -146,15 +249,20 @@ export default function ReviewDashboard() {
       });
       await loadActivity();
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Erro ao salvar feedback.';
+      const msg =
+        err instanceof Error
+          ? err.message
+          : 'Não foi possível conectar ao servidor. Tente novamente em instantes.';
       setError(msg);
+    } finally {
+      setActionLoading('');
     }
-    setActionLoading('');
   }
 
-  async function handleApprove() {
+  const handleApprove = useCallback(async () => {
     if (!selected?.feedback_id) return;
     setActionLoading('approve');
+    setError('');
     try {
       await updateFeedback(selected.feedback_id, {
         teacherFeedback: editText,
@@ -163,41 +271,141 @@ export default function ReviewDashboard() {
       await approveFeedback(selected.feedback_id);
       await loadActivity();
 
-      // Auto-advance to next pending
-      const nextPending = filteredResponses.findIndex(
+      // Avanço automático para o próximo não aprovado
+      let nextIndex = filteredResponses.findIndex(
         (r, i) => i > selectedIndex && r.status !== 'aprovado'
       );
-      if (nextPending !== -1) setSelectedIndex(nextPending);
+      if (nextIndex === -1) {
+        nextIndex = filteredResponses.findIndex(
+          (r, i) => i !== selectedIndex && r.status !== 'aprovado'
+        );
+      }
+      if (nextIndex !== -1) {
+        setSelectedIndex(nextIndex);
+      }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Erro ao aprovar feedback.';
+      const msg =
+        err instanceof Error
+          ? err.message
+          : 'Não foi possível conectar ao servidor. Tente novamente em instantes.';
       setError(msg);
+    } finally {
+      setActionLoading('');
     }
-    setActionLoading('');
-  }
+  }, [selected?.feedback_id, editText, currentCriteriaScores, loadActivity, filteredResponses, selectedIndex]);
 
   async function handleRegenerate() {
     if (!selected?.feedback_id) return;
     setActionLoading('regenerate');
+    setError('');
     try {
       await regenerateFeedback(selected.feedback_id);
       await loadActivity();
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Erro ao regenerar feedback.';
+      const msg =
+        err instanceof Error
+          ? err.message
+          : 'Não foi possível conectar ao servidor. Tente novamente em instantes.';
       setError(msg);
+    } finally {
+      setActionLoading('');
     }
-    setActionLoading('');
   }
 
-  function getStatusBadge(status: string | null) {
+  // Aprovar todos os pendentes com confirmação
+  async function handleApproveAllPending() {
+    const pendingWithFeedback =
+      activity?.responses.filter((r) => r.feedback_id && r.status !== 'aprovado') || [];
+    if (pendingWithFeedback.length === 0) return;
+
+    const confirmed = window.confirm(
+      `Tem certeza de que deseja aprovar todos os ${pendingWithFeedback.length} feedbacks pendentes de uma vez?\n\nLembrete de produto: a IA nunca dá nota; o professor é o responsável pedagógico final.`
+    );
+    if (!confirmed) return;
+
+    setActionLoading('approve-all');
+    setError('');
+    try {
+      await Promise.all(pendingWithFeedback.map((p) => approveFeedback(p.feedback_id!)));
+      await loadActivity();
+    } catch (err: unknown) {
+      const msg =
+        err instanceof Error
+          ? err.message
+          : 'Não foi possível conectar ao servidor. Tente novamente em instantes.';
+      setError(msg);
+    } finally {
+      setActionLoading('');
+    }
+  }
+
+  // Atalhos de teclado (Alt+A para aprovar, Alt+→ para próximo, Alt+← para anterior)
+  // Não conflitam com a digitação em textarea/input
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      const target = e.target as HTMLElement | null;
+      const isTyping =
+        target?.tagName === 'INPUT' ||
+        target?.tagName === 'TEXTAREA' ||
+        target?.isContentEditable;
+
+      // 1. Aprovar feedback atual:
+      // Se estiver digitando: Alt+A ou Ctrl+Enter
+      // Se fora de inputs: 'a' ou Alt+A ou Ctrl+Enter
+      const isApprove =
+        (e.altKey && e.key.toLowerCase() === 'a') ||
+        (e.ctrlKey && e.key === 'Enter') ||
+        (!isTyping && e.key.toLowerCase() === 'a');
+
+      if (isApprove) {
+        if (selected?.feedback_id && selected.status !== 'aprovado' && !actionLoading) {
+          e.preventDefault();
+          handleApprove();
+        }
+        return;
+      }
+
+      // 2. Próximo aluno:
+      // Se digitando: Alt+ArrowRight ou Alt+J
+      // Se fora de inputs: ArrowRight ou 'j' ou Alt+ArrowRight
+      const isNext =
+        (e.altKey && (e.key === 'ArrowRight' || e.key.toLowerCase() === 'j')) ||
+        (!isTyping && (e.key === 'ArrowRight' || e.key.toLowerCase() === 'j'));
+
+      if (isNext) {
+        e.preventDefault();
+        handleNavigateRelative(1);
+        return;
+      }
+
+      // 3. Aluno anterior:
+      // Se digitando: Alt+ArrowLeft ou Alt+K
+      // Se fora de inputs: ArrowLeft ou 'k' ou Alt+ArrowLeft
+      const isPrev =
+        (e.altKey && (e.key === 'ArrowLeft' || e.key.toLowerCase() === 'k')) ||
+        (!isTyping && (e.key === 'ArrowLeft' || e.key.toLowerCase() === 'k'));
+
+      if (isPrev) {
+        e.preventDefault();
+        handleNavigateRelative(-1);
+        return;
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selected?.feedback_id, selected?.status, actionLoading, handleApprove, handleNavigateRelative]);
+
+  function getStatusChip(status: string | null) {
     switch (status) {
       case 'aprovado':
-        return <span className="badge badge-approved">✅ Aprovado</span>;
+        return <Chip variant="green">✅ Aprovado</Chip>;
       case 'revisado':
-        return <span className="badge badge-reviewed">✏️ Editado</span>;
+        return <Chip variant="blue">✏️ Editado</Chip>;
       case 'pendente':
-        return <span className="badge badge-pending">🟡 Pendente</span>;
+        return <Chip variant="amber">🟡 Pendente</Chip>;
       default:
-        return <span className="badge badge-pending">⏳ Sem feedback</span>;
+        return <Chip variant="pink">⏳ Sem feedback</Chip>;
     }
   }
 
@@ -212,10 +420,10 @@ export default function ReviewDashboard() {
 
   if (loading) {
     return (
-      <div className="page-container" style={{ display: 'flex', justifyContent: 'center', paddingTop: '4rem' }}>
-        <div style={{ textAlign: 'center' }}>
-          <div className="spinner spinner-lg" style={{ margin: '0 auto 1rem' }}></div>
-          <p>Carregando atividade...</p>
+      <div className="page-container page-container--center">
+        <div>
+          <div className="spinner spinner-lg" style={{ margin: '0 auto var(--space-4)' }}></div>
+          <p style={{ color: 'var(--text-muted)' }}>Carregando atividade...</p>
         </div>
       </div>
     );
@@ -224,33 +432,55 @@ export default function ReviewDashboard() {
   if (!activity) {
     return (
       <div className="page-container">
-        <div className="empty-state">
+        <Card className="empty-state">
           <div className="empty-state-icon">😕</div>
           <h3 className="empty-state-title">Atividade não encontrada</h3>
-          <button className="btn btn-primary" onClick={() => navigate('/')}>Voltar ao início</button>
-        </div>
+          <Button variant="primary" onClick={() => navigate('/')}>
+            Voltar ao início
+          </Button>
+        </Card>
       </div>
     );
   }
 
-  // Check if feedbacks need to be generated
   const needsGeneration = activity.responses.some((r) => !r.feedback_id);
+  const pendingFeedbacksCount = activity.responses.filter(
+    (r) => r.feedback_id && r.status !== 'aprovado'
+  ).length;
 
   return (
     <div className="page-container animate-fade-in">
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
-        <div>
+      <div className="page-header-row">
+        <div className="page-header-row__text">
           <h2 className="page-title">📋 {activity.title}</h2>
-          <p className="page-subtitle" style={{ marginBottom: 0 }}>{activity.question}</p>
+          <p className="page-subtitle" style={{ marginBottom: 0 }}>
+            {activity.question}
+          </p>
         </div>
-        <button className="btn btn-secondary" onClick={() => navigate(`/export/${activityId}`)}>
-          📥 Exportar Resultados
-        </button>
+        <div className="table-actions">
+          {pendingFeedbacksCount > 0 && (
+            <Button
+              variant="success"
+              onClick={handleApproveAllPending}
+              loading={actionLoading === 'approve-all'}
+              disabled={!!actionLoading}
+              icon={<IconCheckCircle size={16} />}
+            >
+              Aprovar todos os pendentes ({pendingFeedbacksCount})
+            </Button>
+          )}
+          <Button
+            variant="ghost"
+            onClick={() => navigate(`/export/${activityId}`)}
+          >
+            📥 Exportar Resultados
+          </Button>
+        </div>
       </div>
 
-      {/* Stats Bar */}
-      <div className="stats-bar" style={{ marginBottom: '1.5rem' }}>
+      {/* Stats Bar com Progresso */}
+      <div className="stats-bar" style={{ marginBottom: 'var(--space-6)' }}>
         <div className="stat-item">
           <div>
             <div className="stat-value">{activity.stats.total_students}</div>
@@ -259,171 +489,188 @@ export default function ReviewDashboard() {
         </div>
         <div className="stat-item">
           <div>
-            <div className="stat-value" style={{ color: 'var(--warning-400)' }}>{activity.stats.pending || 0}</div>
+            <div className="stat-value" style={{ color: 'var(--warning-500)' }}>
+              {activity.stats.pending || 0}
+            </div>
             <div className="stat-label">Pendentes</div>
           </div>
         </div>
         <div className="stat-item">
           <div>
-            <div className="stat-value" style={{ color: 'var(--success-400)' }}>{activity.stats.approved || 0}</div>
+            <div className="stat-value" style={{ color: 'var(--success-500)' }}>
+              {activity.stats.approved || 0}
+            </div>
             <div className="stat-label">Aprovados</div>
           </div>
         </div>
-        <div style={{ flex: 1 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
-            <span className="stat-label">Progresso</span>
-            <span className="stat-label">
-              {activity.stats.approved || 0} / {activity.stats.total_students}
-            </span>
-          </div>
-          <div className="progress-bar">
-            <div
-              className="progress-bar-fill"
-              style={{
-                width: `${activity.stats.total_students > 0
-                  ? ((activity.stats.approved || 0) / activity.stats.total_students) * 100
-                  : 0}%`
-              }}
-            />
-          </div>
+        <div style={{ flex: 1, minWidth: '220px' }}>
+          <ProgressBar
+            value={activity.stats.approved || 0}
+            max={activity.stats.total_students || 1}
+            color="green"
+            label="Progresso de Aprovação"
+          />
         </div>
       </div>
 
-      {/* Generate button if needed */}
+      {/* Barra de Progresso e Geração de Lote */}
       {needsGeneration && (
-        <div className="card" style={{ marginBottom: '1.5rem', textAlign: 'center', padding: '2rem' }}>
+        <Card style={{ marginBottom: 'var(--space-6)', textAlign: 'center', padding: 'var(--space-6)' }}>
           {generating ? (
             <div>
-              <div className="spinner spinner-lg" style={{ margin: '0 auto 1rem' }}></div>
-              <p style={{ fontWeight: 600, marginBottom: '0.5rem' }}>
+              <div className="spinner spinner-lg" style={{ margin: '0 auto var(--space-4)' }}></div>
+              <p style={{ fontWeight: 600, marginBottom: 'var(--space-2)' }}>
                 Gerando feedbacks com IA...
               </p>
               {progress && (
-                <>
-                  <p style={{ color: 'var(--text-muted)' }}>
+                <div style={{ maxWidth: 400, margin: '0 auto' }}>
+                  <p style={{ color: 'var(--text-muted)', fontSize: 'var(--text-xs)', marginBottom: 'var(--space-2)' }}>
                     {progress.processed} de {progress.total} processados
                     {progress.errors > 0 && ` (${progress.errors} erros)`}
                   </p>
-                  <div className="progress-bar" style={{ maxWidth: 300, margin: '1rem auto 0' }}>
-                    <div
-                      className="progress-bar-fill"
-                      style={{
-                        width: `${progress.total > 0 ? (progress.processed / progress.total) * 100 : 0}%`,
-                      }}
-                    />
-                  </div>
-                </>
+                  <ProgressBar
+                    value={progress.processed}
+                    max={progress.total || 1}
+                    color="purple"
+                    showValue
+                  />
+                </div>
               )}
             </div>
           ) : (
             <div>
               {progress && (progress.errors > 0 || progress.status === 'error') ? (
-                <div style={{ marginBottom: '1rem' }}>
-                  <div style={{ color: 'var(--danger-400, #ef4444)', fontWeight: 600, marginBottom: '0.5rem' }}>
+                <div>
+                  <div style={{ color: 'var(--error-500)', fontWeight: 600, marginBottom: 'var(--space-2)' }}>
                     ⚠️ {progress.errors > 0
                       ? `${progress.errors} resposta(s) falharam na geração.`
                       : 'O processamento anterior foi interrompido ou falhou.'}
                   </div>
-                  <p style={{ color: 'var(--text-secondary)', marginBottom: '1rem' }}>
+                  <p style={{ color: 'var(--text-secondary)', marginBottom: 'var(--space-4)' }}>
                     {activity.responses.filter((r) => !r.feedback_id).length} aluno(s) ainda sem feedback.
                   </p>
-                  <button className="btn btn-primary btn-lg" onClick={handleGenerate}>
-                    🔄 Tentar Novamente
-                  </button>
+                  <Button
+                    variant="primary"
+                    size="lg"
+                    onClick={handleGenerate}
+                    icon={<IconRefresh size={18} />}
+                  >
+                    Tentar Novamente
+                  </Button>
                 </div>
               ) : (
                 <div>
-                  <p style={{ marginBottom: '1rem', color: 'var(--text-secondary)' }}>
+                  <p style={{ marginBottom: 'var(--space-4)', color: 'var(--text-secondary)' }}>
                     {activity.responses.filter((r) => !r.feedback_id).length} alunos ainda não possuem feedback.
                   </p>
-                  <button className="btn btn-primary btn-lg" onClick={handleGenerate}>
-                    🤖 Gerar Feedbacks com IA
-                  </button>
+                  <Button
+                    variant="primary"
+                    size="lg"
+                    onClick={handleGenerate}
+                    icon={<IconSparkles size={18} />}
+                  >
+                    Gerar Feedbacks com IA
+                  </Button>
                 </div>
               )}
             </div>
           )}
-        </div>
+        </Card>
       )}
 
-      {/* Filter Tabs */}
-      <div className="filter-tabs">
-        <button
-          className={`filter-tab ${filter === 'todos' ? 'active' : ''}`}
-          onClick={() => { setFilter('todos'); setSelectedIndex(0); }}
-        >
-          Todos ({activity.responses.length})
-        </button>
-        <button
-          className={`filter-tab ${filter === 'pendente' ? 'active' : ''}`}
-          onClick={() => { setFilter('pendente'); setSelectedIndex(0); }}
-        >
-          🟡 Pendentes ({activity.stats.pending || 0})
-        </button>
-        <button
-          className={`filter-tab ${filter === 'aprovado' ? 'active' : ''}`}
-          onClick={() => { setFilter('aprovado'); setSelectedIndex(0); }}
-        >
-          ✅ Aprovados ({activity.stats.approved || 0})
-        </button>
+      {/* Filter Tabs e Dica de Atalhos */}
+      <div className="page-header-row" style={{ marginBottom: 'var(--space-4)' }}>
+        <div className="filter-tabs" style={{ margin: 0 }}>
+          <button
+            className={`filter-tab ${filter === 'todos' ? 'active' : ''}`}
+            onClick={() => handleFilterChange('todos')}
+          >
+            Todos ({activity.responses.length})
+          </button>
+          <button
+            className={`filter-tab ${filter === 'pendente' ? 'active' : ''}`}
+            onClick={() => handleFilterChange('pendente')}
+          >
+            🟡 Pendentes ({activity.stats.pending || 0})
+          </button>
+          <button
+            className={`filter-tab ${filter === 'aprovado' ? 'active' : ''}`}
+            onClick={() => handleFilterChange('aprovado')}
+          >
+            ✅ Aprovados ({activity.stats.approved || 0})
+          </button>
+        </div>
+
+        <div className="review-shortcuts-hint">
+          <span>⌨️ Atalhos:</span>
+          <kbd>Alt+A</kbd> aprovar • <kbd>Alt+→</kbd> próximo • <kbd>Alt+←</kbd> anterior
+        </div>
       </div>
 
-      {/* Main Review Layout */}
+      {/* Layout Principal de Revisão */}
       {filteredResponses.length > 0 ? (
         <div className="review-layout">
-          {/* Sidebar - Student List */}
+          {/* Barra Lateral: Lista de Alunos */}
           <div className="review-sidebar">
             {filteredResponses.map((response, i) => (
               <div
                 key={response.id}
                 className={`review-student-card ${i === selectedIndex ? 'selected' : ''}`}
-                onClick={() => setSelectedIndex(i)}
+                onClick={() => handleSelectStudent(i)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    handleSelectStudent(i);
+                  }
+                }}
               >
                 <span className="review-student-name">{response.student_name}</span>
-                {getStatusBadge(response.status)}
+                {getStatusChip(response.status)}
               </div>
             ))}
           </div>
 
-          {/* Main Panel */}
+          {/* Painel Principal */}
           {selected && (
             <div className="review-main animate-fade-in" key={selected.id}>
-              {/* AI Analysis Card (if available) */}
+              {/* Cartão de Destaques da Análise da IA */}
               {getParsedFeedback() && (
-                <div className="card" style={{ padding: '1rem 1.5rem' }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem' }}>
+                <Card style={{ padding: 'var(--space-4) var(--space-5)' }}>
+                  <div className="review-analysis-grid">
                     <div>
-                      <div style={{ fontSize: 'var(--text-xs)', color: 'var(--success-400)', fontWeight: 600, marginBottom: '0.25rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                      <div className="review-analysis-col__title review-analysis-col__title--green">
                         ✅ Pontos Fortes
                       </div>
-                      <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
+                      <p className="review-analysis-col__text">
                         {getParsedFeedback()?.pontos_fortes}
                       </p>
                     </div>
                     <div>
-                      <div style={{ fontSize: 'var(--text-xs)', color: 'var(--warning-400)', fontWeight: 600, marginBottom: '0.25rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                      <div className="review-analysis-col__title review-analysis-col__title--amber">
                         ⚠️ Lacunas
                       </div>
-                      <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
+                      <p className="review-analysis-col__text">
                         {getParsedFeedback()?.lacunas}
                       </p>
                     </div>
                     <div>
-                      <div style={{ fontSize: 'var(--text-xs)', color: 'var(--info-400)', fontWeight: 600, marginBottom: '0.25rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                      <div className="review-analysis-col__title review-analysis-col__title--blue">
                         💡 Sugestão
                       </div>
-                      <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
+                      <p className="review-analysis-col__text">
                         {getParsedFeedback()?.sugestao_melhoria}
                       </p>
                     </div>
                   </div>
-                </div>
+                </Card>
               )}
 
-              {/* Side-by-side panels */}
+              {/* Painéis Lado a Lado */}
               <div className="review-panels">
-                {/* Left: Student Response & Criteria */}
-                <div className="review-panel">
+                {/* Lado Esquerdo: Resposta do Aluno & Critérios da Rubrica */}
+                <Card className="review-panel">
                   <div className="review-panel-header">
                     <span className="review-panel-title">📄 Resposta do Aluno</span>
                     <span style={{ fontSize: 'var(--text-sm)', fontWeight: 600 }}>
@@ -434,36 +681,38 @@ export default function ReviewDashboard() {
                     {selected.original_response}
                   </div>
 
-                  {/* Rubric Criteria Evaluation */}
+                  {/* Avaliação por Critério da Rubrica */}
                   {currentCriteriaScores.length > 0 && (
-                    <div style={{ marginTop: '1.25rem', paddingTop: '1rem', borderTop: '1px solid var(--glass-border)' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-                        <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)' }}>
+                    <div className="review-criteria-container">
+                      <div className="review-criteria-header">
+                        <span className="review-criteria-title">
                           🎯 Avaliação por Critério
                         </span>
-                        <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>
-                          {currentCriteriaScores.filter((c) => c.atendido).length} de {currentCriteriaScores.length} atendidos
+                        <span className="review-criteria-count">
+                          {currentCriteriaScores.filter((c) => c.atendido).length} de{' '}
+                          {currentCriteriaScores.length} atendidos
                         </span>
                       </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                      <div className="review-criteria-list">
                         {currentCriteriaScores.map((c, idx) => (
                           <div
                             key={idx}
-                            style={{
-                              padding: '0.75rem',
-                              borderRadius: 'var(--radius-lg, 8px)',
-                              background: 'var(--surface-800)',
-                              border: `1px solid ${c.atendido ? 'rgba(34, 197, 94, 0.25)' : 'rgba(239, 68, 68, 0.25)'}`,
-                            }}
+                            className={`review-criterion-card ${
+                              c.atendido
+                                ? 'review-criterion-card--attended'
+                                : 'review-criterion-card--unattended'
+                            }`}
                           >
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem' }}>
-                              <span style={{ fontWeight: 600, fontSize: 'var(--text-sm)', color: 'var(--text-primary)' }}>
+                            <div className="review-criterion-card__row">
+                              <span className="review-criterion-card__name">
                                 {c.criterio}
                               </span>
                               <button
                                 type="button"
                                 onClick={() => handleToggleCriterion(idx)}
-                                className={`badge ${c.atendido ? 'badge-approved' : 'badge-danger'}`}
+                                className={`badge ${
+                                  c.atendido ? 'badge-approved' : 'badge-danger'
+                                }`}
                                 style={{
                                   cursor: 'pointer',
                                   border: 'none',
@@ -477,7 +726,7 @@ export default function ReviewDashboard() {
                               </button>
                             </div>
                             {c.evidencia && (
-                              <div style={{ marginTop: '0.4rem', fontSize: 'var(--text-xs)', color: 'var(--text-secondary)', fontStyle: 'italic', background: 'rgba(15, 23, 42, 0.6)', padding: '0.35rem 0.5rem', borderRadius: '4px', borderLeft: '3px solid var(--primary-400)' }}>
+                              <div className="review-criterion-card__evidence">
                                 🔍 Evidência: "{c.evidencia}"
                               </div>
                             )}
@@ -486,13 +735,20 @@ export default function ReviewDashboard() {
                       </div>
                     </div>
                   )}
-                </div>
+                </Card>
 
-                {/* Right: Feedback Editor */}
-                <div className="review-panel">
+                {/* Lado Direito: Editor de Feedback */}
+                <Card className="review-panel">
                   <div className="review-panel-header">
-                    <span className="review-panel-title">✍️ Feedback para o Aluno</span>
-                    {getStatusBadge(selected.status)}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                      <span className="review-panel-title">✍️ Feedback para o Aluno</span>
+                      {isDirty() && (
+                        <Chip variant="amber" size="sm">
+                          ⚠️ Não salvo
+                        </Chip>
+                      )}
+                    </div>
+                    {getStatusChip(selected.status)}
                   </div>
                   {selected.ai_feedback_text ? (
                     <textarea
@@ -502,65 +758,81 @@ export default function ReviewDashboard() {
                       placeholder="O feedback será gerado pela IA..."
                     />
                   ) : (
-                    <div className="review-content" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <div
+                      className="review-content"
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        textAlign: 'center',
+                      }}
+                    >
                       <p style={{ color: 'var(--text-muted)' }}>
-                        Clique em "Gerar Feedbacks" para a IA analisar esta resposta.
+                        Clique em "Gerar Feedbacks com IA" para processar esta resposta.
                       </p>
                     </div>
                   )}
-                </div>
+                </Card>
               </div>
 
-              {/* Actions */}
+              {/* Barra de Ações */}
               {selected.feedback_id && (
                 <div className="review-actions">
-                  <button
-                    className="btn btn-ghost"
+                  <Button
+                    type="button"
+                    variant="ghost"
                     onClick={handleRegenerate}
+                    loading={actionLoading === 'regenerate'}
                     disabled={!!actionLoading}
+                    icon={<IconRefresh size={16} />}
                   >
-                    {actionLoading === 'regenerate' ? (
-                      <span className="spinner" style={{ width: 16, height: 16, borderWidth: 2 }}></span>
-                    ) : '🔄'} Regenerar
-                  </button>
-                  <button
-                    className="btn btn-secondary"
+                    Regenerar
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
                     onClick={handleSave}
+                    loading={actionLoading === 'save'}
                     disabled={!!actionLoading}
                   >
-                    {actionLoading === 'save' ? (
-                      <span className="spinner" style={{ width: 16, height: 16, borderWidth: 2 }}></span>
-                    ) : '💾'} Salvar Edição
-                  </button>
-                  <button
-                    className="btn btn-success"
+                    💾 Salvar Edição
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="success"
                     onClick={handleApprove}
+                    loading={actionLoading === 'approve'}
                     disabled={!!actionLoading || selected.status === 'aprovado'}
+                    icon={<IconCheckCircle size={16} />}
                   >
-                    {actionLoading === 'approve' ? (
-                      <span className="spinner" style={{ width: 16, height: 16, borderWidth: 2 }}></span>
-                    ) : '✅'} Aprovar
-                  </button>
+                    Aprovar
+                  </Button>
                 </div>
               )}
             </div>
           )}
         </div>
       ) : (
-        <div className="empty-state">
+        <Card className="empty-state">
           <div className="empty-state-icon">📭</div>
           <h3 className="empty-state-title">Nenhuma resposta neste filtro</h3>
           <p className="empty-state-text">Altere o filtro ou envie mais respostas.</p>
-        </div>
+        </Card>
       )}
 
-      {/* Error Toast */}
+      {/* Alerta de Erro */}
       {error && (
-        <div className="toast-container">
-          <div className="toast toast-error">
-            ❌ {error}
-            <button className="btn btn-ghost btn-sm" onClick={() => setError('')} style={{ marginLeft: 'auto' }}>✕</button>
-          </div>
+        <div className="alert-box alert-box--error" role="alert" style={{ marginTop: 'var(--space-6)' }}>
+          <IconAlertCircle size={18} />
+          <span style={{ flex: 1 }}>❌ {error}</span>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => setError('')}
+          >
+            ✕
+          </Button>
         </div>
       )}
     </div>

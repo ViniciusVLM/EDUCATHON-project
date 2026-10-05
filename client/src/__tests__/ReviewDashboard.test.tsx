@@ -1,8 +1,8 @@
 /**
- * Testes da página ReviewDashboard (Fase 4: exibição e correção de critérios).
+ * Testes da página ReviewDashboard (Fase 4 e Fase 6D).
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import ReviewDashboard from '../pages/ReviewDashboard';
@@ -20,6 +20,7 @@ vi.mock('../services/api', () => ({
 
 const mockGetActivity = vi.mocked(api.getActivity);
 const mockUpdateFeedback = vi.mocked(api.updateFeedback);
+const mockApproveFeedback = vi.mocked(api.approveFeedback);
 
 const sampleActivity: ActivityWithResponses = {
   id: 1,
@@ -66,6 +67,54 @@ const sampleActivity: ActivityWithResponses = {
           evidencia: 'não citou CO2',
         },
       ]),
+    },
+  ],
+};
+
+const multiStudentActivity: ActivityWithResponses = {
+  id: 1,
+  title: 'Atividade de Biologia',
+  question: 'Explique a fotossíntese.',
+  rubric: 'Citar luz, CO2 e glicose.',
+  education_level: 'medio',
+  created_at: '2026-09-01T10:00:00Z',
+  stats: {
+    total_students: 2,
+    total_feedbacks: 2,
+    pending: 2,
+    reviewed: 0,
+    approved: 0,
+  },
+  responses: [
+    {
+      id: 101,
+      activity_id: 1,
+      student_name: 'Beatriz Santos',
+      original_response: 'As plantas usam a luz do sol e água para crescer.',
+      created_at: '2026-09-01T10:00:00Z',
+      feedback_id: 201,
+      ai_feedback_json: null,
+      ai_feedback_text: 'Beatriz, parabéns pelo esforço!',
+      teacher_feedback: null,
+      status: 'pendente',
+      generated_at: '2026-09-01T10:05:00Z',
+      approved_at: null,
+      criteria_scores: null,
+    },
+    {
+      id: 102,
+      activity_id: 1,
+      student_name: 'Carlos Dias',
+      original_response: 'Fotossíntese converte energia luminosa em glicose.',
+      created_at: '2026-09-01T10:00:00Z',
+      feedback_id: 202,
+      ai_feedback_json: null,
+      ai_feedback_text: 'Carlos, excelente!',
+      teacher_feedback: null,
+      status: 'pendente',
+      generated_at: '2026-09-01T10:05:00Z',
+      approved_at: null,
+      criteria_scores: null,
     },
   ],
 };
@@ -132,6 +181,133 @@ describe('ReviewDashboard — Critérios de Avaliação', () => {
           ],
         })
       );
+    });
+  });
+});
+
+describe('ReviewDashboard — Recursos da Fase 6D', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('alerta antes de descartar edição não salva ao trocar de aluno', async () => {
+    const user = userEvent.setup();
+    mockGetActivity.mockResolvedValue(multiStudentActivity);
+    const confirmSpy = vi.spyOn(window, 'confirm');
+
+    renderDashboard();
+
+    await waitFor(() => {
+      expect(screen.getAllByText('Beatriz Santos').length).toBeGreaterThan(0);
+      expect(screen.getAllByText('Carlos Dias').length).toBeGreaterThan(0);
+    });
+
+    // Edita o texto do feedback de Beatriz
+    const editor = screen.getByRole('textbox');
+    await user.type(editor, ' Nota adicional do professor.');
+
+    // 1. Tenta trocar para Carlos, mas clica em Cancelar na confirmação
+    confirmSpy.mockReturnValueOnce(false);
+    const carlosCard = screen.getByRole('button', { name: /Carlos Dias/i });
+    await user.click(carlosCard);
+
+    expect(confirmSpy).toHaveBeenCalled();
+    // Continua na resposta da Beatriz
+    expect(screen.getByText('As plantas usam a luz do sol e água para crescer.')).toBeInTheDocument();
+
+    // 2. Tenta trocar para Carlos e clica em OK (descartar)
+    confirmSpy.mockReturnValueOnce(true);
+    await user.click(carlosCard);
+
+    // Agora exibe a resposta de Carlos
+    expect(
+      await screen.findByText('Fotossíntese converte energia luminosa em glicose.')
+    ).toBeInTheDocument();
+  });
+
+  it('avança automaticamente para o próximo aluno não aprovado ao clicar em Aprovar', async () => {
+    const user = userEvent.setup();
+    mockGetActivity.mockResolvedValue(multiStudentActivity);
+
+    renderDashboard();
+
+    await waitFor(() => {
+      expect(screen.getAllByText('Beatriz Santos').length).toBeGreaterThan(0);
+    });
+
+    // Clica em Aprovar na Beatriz
+    const approveBtn = screen.getByRole('button', { name: /Aprovar$/i });
+    await user.click(approveBtn);
+
+    await waitFor(() => {
+      expect(mockApproveFeedback).toHaveBeenCalledWith(201);
+      // Avança automaticamente para o próximo não aprovado (Carlos Dias)
+      expect(screen.getByText('Fotossíntese converte energia luminosa em glicose.')).toBeInTheDocument();
+    });
+  });
+
+  it('aprova todos os pendentes com confirmação prévia', async () => {
+    const user = userEvent.setup();
+    mockGetActivity.mockResolvedValue(multiStudentActivity);
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+    renderDashboard();
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Aprovar todos os pendentes/i })).toBeInTheDocument();
+    });
+
+    const approveAllBtn = screen.getByRole('button', { name: /Aprovar todos os pendentes/i });
+    await user.click(approveAllBtn);
+
+    expect(confirmSpy).toHaveBeenCalledWith(
+      expect.stringContaining('aprovar todos os 2 feedbacks pendentes')
+    );
+
+    await waitFor(() => {
+      expect(mockApproveFeedback).toHaveBeenCalledWith(201);
+      expect(mockApproveFeedback).toHaveBeenCalledWith(202);
+    });
+  });
+
+  it('executa atalho de teclado Alt+A para aprovar o aluno atual', async () => {
+    mockGetActivity.mockResolvedValue(sampleActivity);
+
+    renderDashboard();
+
+    await waitFor(() => {
+      expect(screen.getAllByText('Beatriz Santos').length).toBeGreaterThan(0);
+    });
+
+    // Dispara atalho Alt+A no window
+    fireEvent.keyDown(window, { key: 'a', altKey: true });
+
+    await waitFor(() => {
+      expect(mockApproveFeedback).toHaveBeenCalledWith(201);
+    });
+  });
+
+  it('navega entre alunos com os atalhos Alt+ArrowRight e Alt+ArrowLeft', async () => {
+    mockGetActivity.mockResolvedValue(multiStudentActivity);
+
+    renderDashboard();
+
+    await waitFor(() => {
+      expect(screen.getAllByText('Beatriz Santos').length).toBeGreaterThan(0);
+    });
+
+    // Pressiona Alt+ArrowRight para ir para Carlos Dias
+    fireEvent.keyDown(window, { key: 'ArrowRight', altKey: true });
+
+    await waitFor(() => {
+      expect(screen.getByText('Fotossíntese converte energia luminosa em glicose.')).toBeInTheDocument();
+    });
+
+    // Pressiona Alt+ArrowLeft para voltar para Beatriz Santos
+    fireEvent.keyDown(window, { key: 'ArrowLeft', altKey: true });
+
+    await waitFor(() => {
+      expect(screen.getByText('As plantas usam a luz do sol e água para crescer.')).toBeInTheDocument();
     });
   });
 });
