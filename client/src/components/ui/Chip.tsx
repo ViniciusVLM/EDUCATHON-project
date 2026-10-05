@@ -12,13 +12,15 @@ interface ChipProps {
   label?: string;
   children?: React.ReactNode;
   color?: ChipColor;
+  variant?: ChipColor;
   size?: ChipSize;
   className?: string;
 }
 
-export function Chip({ label, children, color = 'purple', size = 'md', className = '' }: ChipProps) {
+export function Chip({ label, children, color, variant = 'purple', size = 'md', className = '' }: ChipProps) {
+  const chosenColor = color || variant;
   return (
-    <span className={`ui-chip ui-chip--${color} ui-chip--${size} ${className}`}>
+    <span className={`ui-chip ui-chip--${chosenColor} ui-chip--${size} ${className}`}>
       {children ?? label}
     </span>
   );

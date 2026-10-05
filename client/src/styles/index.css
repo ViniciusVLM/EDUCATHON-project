@@ -890,32 +890,54 @@ a:hover {
 }
 
 /* ── Export Page ── */
-.export-summary {
+.export-summary,
+.export-stats-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: var(--space-4);
-  margin-bottom: var(--space-8);
+  margin-bottom: var(--space-6);
 }
 
 .export-stat-card {
   text-align: center;
-  padding: var(--space-6);
+  padding: var(--space-5);
+  border-radius: var(--radius-2xl);
 }
 
-.export-stat-value {
+.export-stat-value,
+.export-stat-card__value {
   font-family: var(--font-heading);
-  font-size: var(--text-4xl);
+  font-size: var(--text-3xl);
   font-weight: 800;
+  line-height: 1.2;
+}
+
+.export-stat-card__value--purple {
   background: var(--gradient-primary);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
-  background-clip: text;
 }
 
-.export-stat-label {
-  font-size: var(--text-sm);
+.export-stat-card__value--green {
+  color: var(--success-500);
+}
+
+.export-stat-card__value--blue {
+  color: var(--info-500);
+}
+
+.export-stat-card__value--amber {
+  color: var(--warning-500);
+}
+
+.export-stat-label,
+.export-stat-card__label {
+  font-size: var(--text-xs);
   color: var(--text-muted);
   margin-top: var(--space-1);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 /* ── Filter Tabs ── */

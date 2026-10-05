@@ -11,6 +11,7 @@ interface ProgressBarProps {
   color?: 'purple' | 'green' | 'red' | 'amber';
   variant?: 'purple' | 'green' | 'red' | 'amber';
   height?: number;
+  showValue?: boolean;
   className?: string;
 }
 
@@ -21,6 +22,7 @@ export function ProgressBar({
   color,
   variant = 'purple',
   height = 6,
+  showValue = true,
   className = '',
 }: ProgressBarProps) {
   const chosenColor = color || variant;
@@ -31,7 +33,7 @@ export function ProgressBar({
       {label && (
         <div className="ui-progress-bar__header">
           <span className="ui-progress-bar__label">{label}</span>
-          <span className="ui-progress-bar__value">{clamped}%</span>
+          {showValue && <span className="ui-progress-bar__value">{clamped}%</span>}
         </div>
       )}
       <div

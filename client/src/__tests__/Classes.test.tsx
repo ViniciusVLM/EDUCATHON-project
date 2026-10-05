@@ -23,10 +23,10 @@ vi.mock('../services/api', () => ({
 const mockGetClasses = vi.mocked(api.getClasses);
 const mockGetClass = vi.mocked(api.getClass);
 const mockCreateClass = vi.mocked(api.createClass);
-const mockDeleteClass = vi.mocked(api.deleteClass);
-const mockAddStudent = vi.mocked(api.addStudent);
-const mockAddStudentsBatch = vi.mocked(api.addStudentsBatch);
-const mockDeleteStudent = vi.mocked(api.deleteStudent);
+const _mockDeleteClass = vi.mocked(api.deleteClass);
+const _mockAddStudent = vi.mocked(api.addStudent);
+const _mockAddStudentsBatch = vi.mocked(api.addStudentsBatch);
+const _mockDeleteStudent = vi.mocked(api.deleteStudent);
 
 function renderClassesManagement() {
   return render(

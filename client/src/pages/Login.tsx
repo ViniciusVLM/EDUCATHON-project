@@ -1,6 +1,8 @@
-import React, { useState, FormEvent } from 'react';
+import { useState, FormEvent } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { Button } from '../components/ui/Button';
+import { IconCap, IconAlertCircle } from '../components/ui/Icons';
 
 export default function Login() {
   const { login } = useAuth();
@@ -28,7 +30,7 @@ export default function Login() {
       await login({ email: email.trim(), password });
       navigate(from, { replace: true });
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Erro ao entrar. Verifique suas credenciais.';
+      const msg = err instanceof Error ? err.message : 'Não foi possível conectar ao servidor. Tente novamente em instantes.';
       setError(msg);
     } finally {
       setLoading(false);
@@ -36,95 +38,95 @@ export default function Login() {
   }
 
   return (
-    <div className="page-container page-container-narrow animate-fade-in">
-      <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
-        <h2 className="page-title">🔐 Acesso do Professor</h2>
-        <p className="page-subtitle">
-          Entre com seu e-mail e senha para gerenciar suas turmas, atividades e correções.
-        </p>
-      </div>
-
-      <div className="card" style={{ maxWidth: '440px', margin: '0 auto' }}>
-        {error && (
-          <div
-            style={{
-              padding: '0.75rem 1rem',
-              borderRadius: 'var(--radius-md, 8px)',
-              backgroundColor: 'rgba(239, 68, 68, 0.15)',
-              border: '1px solid rgba(239, 68, 68, 0.4)',
-              color: '#f87171',
-              fontSize: '0.9rem',
-              marginBottom: '1.25rem',
-            }}
-          >
-            ⚠️ {error}
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="form-grid">
-          <div className="input-group">
-            <label className="input-label" htmlFor="email">
-              E-mail institucional ou pessoal *
-            </label>
-            <input
-              id="email"
-              type="email"
-              className="input"
-              placeholder="exemplo@escola.org"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              autoComplete="email"
-              required
-            />
-          </div>
-
-          <div className="input-group">
-            <label className="input-label" htmlFor="password">
-              Senha *
-            </label>
-            <input
-              id="password"
-              type="password"
-              className="input"
-              placeholder="Sua senha"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoComplete="current-password"
-              required
-            />
-          </div>
-
-          <button
-            type="submit"
-            className="btn btn-primary"
-            style={{ width: '100%', marginTop: '0.5rem' }}
-            disabled={loading}
-          >
-            {loading ? 'Entrando...' : 'Entrar na Plataforma'}
-          </button>
-        </form>
-
-        <div
-          style={{
-            marginTop: '1.5rem',
-            paddingTop: '1rem',
-            borderTop: '1px solid var(--color-border, rgba(255,255,255,0.1))',
-            textAlign: 'center',
-            fontSize: '0.9rem',
-            color: 'var(--color-text-muted)',
-          }}
-        >
-          Novo por aqui?{' '}
-          <Link
-            to="/register"
-            style={{
-              color: 'var(--color-primary, #6366f1)',
-              fontWeight: 600,
-              textDecoration: 'none',
-            }}
-          >
-            Cadastre-se como professor
+    <div className="auth-split">
+      <div className="auth-split__container animate-fade-in">
+        {/* Painel roxo curvo decorativo com marca e frase pedagógica */}
+        <div className="auth-split__hero">
+          <Link to="/" className="auth-split__hero-brand" aria-label="Educathon - Página Inicial">
+            <div className="auth-split__hero-logo">
+              <IconCap size={28} />
+            </div>
+            <span className="auth-split__hero-title">Educathon</span>
           </Link>
+
+          <div className="auth-split__hero-body">
+            <h1 className="auth-split__hero-tagline">Copiloto Pedagógico com IA</h1>
+            <p className="auth-split__hero-desc">
+              A IA nunca dá nota; o professor decide. Feedbacks formativos com precisão, agilidade e empatia para potencializar a aprendizagem.
+            </p>
+          </div>
+
+          <div className="auth-split__hero-footer">
+            <span>✨ Desenvolvido para professores e educadores</span>
+          </div>
+        </div>
+
+        {/* Formulário em cartão branco arredondado */}
+        <div className="auth-split__form-side">
+          <div className="auth-split__form-header">
+            <h2 className="auth-split__form-title">🔐 Acesso do Professor</h2>
+            <p className="auth-split__form-subtitle">
+              Entre com seu e-mail e senha para gerenciar suas turmas, atividades e correções.
+            </p>
+          </div>
+
+          {error && (
+            <div className="auth-split__error" role="alert">
+              <IconAlertCircle size={18} />
+              <span>{error}</span>
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit} className="form-grid">
+            <div className="input-group">
+              <label className="input-label" htmlFor="email">
+                E-mail institucional ou pessoal *
+              </label>
+              <input
+                id="email"
+                type="email"
+                className="input"
+                placeholder="exemplo@escola.org"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                autoComplete="email"
+                required
+              />
+            </div>
+
+            <div className="input-group">
+              <label className="input-label" htmlFor="password">
+                Senha *
+              </label>
+              <input
+                id="password"
+                type="password"
+                className="input"
+                placeholder="Sua senha"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete="current-password"
+                required
+              />
+            </div>
+
+            <Button
+              type="submit"
+              variant="primary"
+              size="lg"
+              loading={loading}
+              className="ui-btn--full"
+            >
+              {loading ? 'Entrando...' : 'Entrar na Plataforma'}
+            </Button>
+          </form>
+
+          <div className="auth-split__footer-link">
+            Novo por aqui?{' '}
+            <Link to="/register">
+              Cadastre-se como professor
+            </Link>
+          </div>
         </div>
       </div>
     </div>
