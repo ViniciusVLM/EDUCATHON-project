@@ -33,6 +33,23 @@ body {
   transition: background var(--transition-base), color var(--transition-base);
 }
 
+/* ── Foco visível global para tudo que é interativo (WCAG 2.4.7 AA) ── */
+:focus-visible {
+  outline: 2px solid var(--primary-500);
+  outline-offset: 2px;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[role="button"]:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--primary-500);
+  outline-offset: 2px;
+}
+
 /* ── Linhas curvas decorativas no fundo (apenas fundo, não sobre o conteúdo) ── */
 body::before {
   content: '';
@@ -537,7 +554,7 @@ a:hover {
 .table-wrapper {
   overflow-x: auto;
   border-radius: var(--radius-xl);
-  border: 1px solid var(--glass-border);
+  border: 1px solid var(--surface-border);
 }
 
 .table {
@@ -546,24 +563,24 @@ a:hover {
 }
 
 .table th {
-  background: var(--surface-800);
+  background: var(--surface-overlay);
   padding: var(--space-3) var(--space-4);
   text-align: left;
   font-size: var(--text-sm);
   font-weight: 600;
   color: var(--text-secondary);
-  border-bottom: 1px solid var(--glass-border);
+  border-bottom: 1px solid var(--surface-border);
 }
 
 .table td {
   padding: var(--space-3) var(--space-4);
   font-size: var(--text-sm);
   color: var(--text-primary);
-  border-bottom: 1px solid rgba(148, 163, 184, 0.05);
+  border-bottom: 1px solid var(--surface-border);
 }
 
 .table tr:hover td {
-  background: rgba(99, 102, 241, 0.03);
+  background: var(--surface-hover);
 }
 
 /* ── Spinner ── */
@@ -1138,6 +1155,12 @@ a:hover {
     grid-template-columns: 1fr;
   }
 
+  .review-sidebar {
+    max-height: 240px;
+    border-bottom: 1px solid var(--surface-border);
+    padding-bottom: var(--space-2);
+  }
+
   .review-panels {
     grid-template-columns: 1fr;
   }
@@ -1162,3 +1185,62 @@ a:hover {
     flex-wrap: wrap;
   }
 }
+
+@media (max-width: 480px) {
+  .page-container {
+    padding: var(--space-3);
+  }
+
+  .stats-bar {
+    padding: var(--space-3) var(--space-4);
+    gap: var(--space-3);
+  }
+
+  .stat-value {
+    font-size: var(--text-xl);
+  }
+
+  .table-actions {
+    width: 100%;
+    justify-content: stretch;
+    flex-wrap: wrap;
+  }
+
+  .table-actions .ui-btn,
+  .table-actions .btn {
+    flex: 1;
+    min-width: 120px;
+  }
+
+  .filter-tabs {
+    flex-wrap: wrap;
+    gap: var(--space-1);
+  }
+
+  .filter-tab {
+    padding: var(--space-1) var(--space-3);
+    font-size: var(--text-xs);
+  }
+
+  .review-actions {
+    justify-content: stretch;
+  }
+
+  .review-actions .ui-btn {
+    flex: 1;
+    min-width: 130px;
+  }
+}
+
+/* ── Desligamento estrito em prefers-reduced-motion (Acessibilidade WCAG 2.2.2/2.3.3) ── */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+

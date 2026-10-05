@@ -94,4 +94,15 @@ describe('AppLayout', () => {
     await user.click(userBtn);
     expect(screen.getByRole('menuitem', { name: /Sair/i })).toBeInTheDocument();
   });
+
+  it('renderiza a barra de navegação inferior para dispositivos móveis com os 4 links', () => {
+    renderLayout();
+    const bottomNav = screen.getByRole('navigation', { name: /Navegação inferior/i });
+    expect(bottomNav).toBeInTheDocument();
+    expect(within(bottomNav).getByRole('link', { name: /Painel/i })).toBeInTheDocument();
+    expect(within(bottomNav).getByRole('link', { name: /Atividades/i })).toBeInTheDocument();
+    expect(within(bottomNav).getByRole('link', { name: /Turmas/i })).toBeInTheDocument();
+    expect(within(bottomNav).getByRole('link', { name: /Nova Atividade/i })).toBeInTheDocument();
+  });
 });
+

@@ -13,12 +13,18 @@ import { ThemeProvider, useTheme } from '../contexts/ThemeContext';
 
 // Componente auxiliar que expõe o estado do contexto
 function ThemeConsumer() {
-  const { theme, toggleTheme } = useTheme();
+  const { theme, toggleTheme, setTheme } = useTheme();
   return (
     <>
       <p data-testid="theme-value">{theme}</p>
       <button type="button" onClick={toggleTheme} id="btn-toggle-theme">
         Alternar tema
+      </button>
+      <button type="button" onClick={() => setTheme('dark')} id="btn-set-dark">
+        Definir escuro
+      </button>
+      <button type="button" onClick={() => setTheme('light')} id="btn-set-light">
+        Definir claro
       </button>
     </>
   );
@@ -131,5 +137,17 @@ describe('ThemeContext', () => {
 
     // matchMedia = undefined → não deve lançar TypeError
     expect(() => renderWithTheme()).not.toThrow();
+  });
+
+  it('setTheme define o tema diretamente e atualiza data-theme', async () => {
+    const user = userEvent.setup();
+    renderWithTheme();
+    await user.click(screen.getByRole('button', { name: /Definir escuro/i }));
+    expect(screen.getByTestId('theme-value').textContent).toBe('dark');
+    expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
+
+    await user.click(screen.getByRole('button', { name: /Definir claro/i }));
+    expect(screen.getByTestId('theme-value').textContent).toBe('light');
+    expect(document.documentElement.getAttribute('data-theme')).toBe('light');
   });
 });

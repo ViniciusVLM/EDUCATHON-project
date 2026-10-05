@@ -950,6 +950,18 @@
   }
 }
 
+@media (max-width: 480px) {
+  .auth-split {
+    padding: var(--space-3);
+  }
+  .auth-split__hero {
+    padding: var(--space-5) var(--space-4);
+  }
+  .auth-split__form-side {
+    padding: var(--space-5) var(--space-4);
+  }
+}
+
 /* ════════════════════════════════════════════
    PAGE UTILITIES (Fase 6C)
    ════════════════════════════════════════════ */
@@ -1058,6 +1070,16 @@
 
 .classes-form-inline .input-group--action {
   min-width: 130px;
+}
+
+@media (max-width: 640px) {
+  .classes-form-inline .input-group--name,
+  .classes-form-inline .input-group--year,
+  .classes-form-inline .input-group--action {
+    width: 100%;
+    min-width: 0;
+    flex: 1 1 100%;
+  }
 }
 
 .classes-list {

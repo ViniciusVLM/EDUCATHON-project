@@ -84,10 +84,10 @@
   --surface-border:  #e2e0f5;
   --surface-hover:   #ece9ff;
 
-  /* Texto — modo claro */
-  --text-primary:   #1a1535;   /* azul-marinho escuro */
-  --text-secondary: #5c5880;
-  --text-muted:     #9490b5;
+  /* Texto — modo claro (contraste AA >= 4.5:1) */
+  --text-primary:   #1a1535;   /* azul-marinho escuro (~15:1) */
+  --text-secondary: #5c5880;   /* ~6.3:1 */
+  --text-muted:     #6e6a94;   /* ~4.7:1 (passa AA em fundo claro) */
   --text-inverse:   #ffffff;
   --text-on-primary:#ffffff;
 
@@ -207,10 +207,10 @@
   --surface-border:  #2e2b50;
   --surface-hover:   #252245;
 
-  /* Texto escuro */
-  --text-primary:   #e8e5ff;
-  --text-secondary: #a09cc4;
-  --text-muted:     #6b6890;
+  /* Texto escuro (contraste AA >= 4.5:1) */
+  --text-primary:   #e8e5ff;   /* (~13:1) */
+  --text-secondary: #a09cc4;   /* (~6.1:1) */
+  --text-muted:     #8884b2;   /* (~4.6:1 no fundo escuro) */
   --text-inverse:   #0e0c1c;
   --text-on-primary:#ffffff;
 

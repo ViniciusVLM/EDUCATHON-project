@@ -209,4 +209,28 @@ describe('Dashboard Component (/painel)', () => {
 
     expect(api.getDashboardSummary).toHaveBeenCalledTimes(2);
   });
+
+  it('verifica que os atalhos rápidos e pendências possuem links corretos para as páginas', async () => {
+    vi.mocked(api.getDashboardSummary).mockResolvedValue(mockSummaryPopulated);
+
+    renderDashboard();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('dashboard-content')).toBeInTheDocument();
+    });
+
+    const shortcuts = screen.getByRole('region', { name: /Atalhos rápidos/i });
+    expect(within(shortcuts).getByRole('link', { name: /Nova atividade/i })).toHaveAttribute('href', '/setup');
+    expect(within(shortcuts).getByRole('link', { name: /Organize suas atividades/i })).toHaveAttribute('href', '/activities');
+    expect(within(shortcuts).getByRole('link', { name: /Gere feedback com IA/i })).toHaveAttribute('href', '/setup');
+    expect(within(shortcuts).getByRole('link', { name: /Revise e aprove/i })).toHaveAttribute('href', '/activities');
+
+    // Valida links de revisão e retry na lista de pendências
+    const reviewBtns = screen.getAllByRole('link', { name: /Revisar/i });
+    expect(reviewBtns.length).toBeGreaterThan(0);
+    expect(reviewBtns[0]).toHaveAttribute('href', '/review/101');
+
+    const retryBtn = screen.getByRole('link', { name: /Tentar de novo/i });
+    expect(retryBtn).toHaveAttribute('href', '/upload/102');
+  });
 });
