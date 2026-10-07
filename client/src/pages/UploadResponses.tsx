@@ -2,6 +2,10 @@ import { useState, useRef, useEffect, DragEvent } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { uploadCSV, addManualResponses, previewCSV, getActivity } from '../services/api';
 import type { ActivityWithResponses } from '../types';
+import { Card } from '../components/ui/Card';
+import { Button } from '../components/ui/Button';
+import { Chip } from '../components/ui/Chip';
+import { IconAlertCircle } from '../components/ui/Icons';
 
 export default function UploadResponses() {
   const { activityId } = useParams<{ activityId: string }>();
@@ -45,7 +49,10 @@ export default function UploadResponses() {
         const { rows } = await previewCSV(content);
         setCsvPreview(rows);
       } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : 'Erro ao ler o CSV.';
+        const message =
+          err instanceof Error
+            ? err.message
+            : 'Não foi possível conectar ao servidor. Tente novamente em instantes.';
         setError(message);
       } finally {
         setLoading(false);
@@ -109,8 +116,12 @@ export default function UploadResponses() {
       }
 
       navigate(`/review/${activityId}`);
-    } catch (err: any) {
-      setError(err.message || 'Erro ao enviar respostas.');
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : 'Não foi possível conectar ao servidor. Tente novamente em instantes.';
+      setError(message);
     } finally {
       setLoading(false);
     }
@@ -118,47 +129,31 @@ export default function UploadResponses() {
 
   return (
     <div className="page-container page-container-narrow animate-fade-in">
-      <h2 className="page-title">📤 Enviar Respostas</h2>
-      <p className="page-subtitle">
-        Envie as respostas dos alunos via arquivo CSV ou digite manualmente.
-      </p>
+      <div className="page-header-row">
+        <div className="page-header-row__text">
+          <h2 className="page-title">📤 Enviar Respostas</h2>
+          <p className="page-subtitle">
+            Envie as respostas dos alunos via arquivo CSV ou digite manualmente.
+          </p>
+        </div>
+      </div>
 
       {activity && (
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.85rem',
-            padding: '0.85rem 1.15rem',
-            background: 'var(--surface-800)',
-            borderRadius: 'var(--radius-md)',
-            border: '1px solid var(--surface-700)',
-            marginBottom: '1.75rem',
-          }}
-        >
-          <span style={{ fontSize: '1.4rem' }}>📋</span>
+        <div className="activity-banner">
+          <span className="activity-banner__icon">📋</span>
           <div style={{ flex: 1 }}>
-            <div style={{ fontWeight: 600, color: 'var(--color-text-primary)' }}>
-              {activity.title}
-            </div>
-            <div style={{ fontSize: '0.825rem', color: 'var(--color-text-muted)', marginTop: '0.15rem' }}>
+            <div className="activity-banner__title">{activity.title}</div>
+            <div className="activity-banner__meta">
               {activity.class_name ? (
-                <span>
-                  🏫 Turma: <strong style={{ color: 'var(--color-primary-light, #818cf8)' }}>{activity.class_name}</strong>
-                  {activity.class_code && ` (${activity.class_code})`}
-                  <span
-                    style={{
-                      marginLeft: '0.75rem',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '0.25rem',
-                      color: 'var(--color-success, #10b981)',
-                      fontWeight: 500,
-                    }}
-                  >
-                    ✓ Vínculo e e-mails automáticos ativos
+                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+                  <span>
+                    🏫 Turma: <strong>{activity.class_name}</strong>
+                    {activity.class_code && ` (${activity.class_code})`}
                   </span>
-                </span>
+                  <Chip variant="green" size="sm">
+                    ✓ Vínculo e e-mails automáticos ativos
+                  </Chip>
+                </div>
               ) : (
                 <span>Sem turma vinculada (avulso)</span>
               )}
@@ -168,7 +163,7 @@ export default function UploadResponses() {
       )}
 
       {/* Mode Toggle */}
-      <div className="filter-tabs" style={{ marginBottom: '2rem' }}>
+      <div className="filter-tabs" style={{ marginBottom: 'var(--space-6)' }}>
         <button
           className={`filter-tab ${mode === 'csv' ? 'active' : ''}`}
           onClick={() => setMode('csv')}
@@ -186,7 +181,7 @@ export default function UploadResponses() {
       </div>
 
       {mode === 'csv' ? (
-        <div className="card">
+        <Card>
           {/* Drop Zone */}
           <div
             className={`dropzone ${dragging ? 'dragging' : ''}`}
@@ -215,8 +210,8 @@ export default function UploadResponses() {
 
           {/* Preview Table */}
           {csvPreview.length > 0 && (
-            <div style={{ marginTop: '1.5rem' }}>
-              <h4 style={{ marginBottom: '1rem' }}>Prévia dos dados</h4>
+            <div style={{ marginTop: 'var(--space-6)' }}>
+              <h4 style={{ marginBottom: 'var(--space-4)' }}>Prévia dos dados</h4>
               <div className="table-wrapper">
                 <table className="table">
                   <thead>
@@ -230,38 +225,42 @@ export default function UploadResponses() {
                     {csvPreview.slice(0, 10).map((row, i) => (
                       <tr key={i}>
                         <td>{i + 1}</td>
-                        <td>{row.student_name}</td>
-                        <td>{row.original_response.length > 100
-                          ? row.original_response.substring(0, 100) + '...'
-                          : row.original_response}</td>
+                        <td className="table-cell-strong">{row.student_name}</td>
+                        <td>
+                          {row.original_response.length > 100
+                            ? row.original_response.substring(0, 100) + '...'
+                            : row.original_response}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
               {csvPreview.length > 10 && (
-                <p className="input-hint" style={{ marginTop: '0.5rem' }}>
+                <p className="input-hint" style={{ marginTop: 'var(--space-2)' }}>
                   Mostrando 10 de {csvPreview.length} respostas.
                 </p>
               )}
             </div>
           )}
-        </div>
+        </Card>
       ) : (
-        <div className="card">
+        <Card>
           <div className="form-grid">
             {manualEntries.map((entry, i) => (
-              <div key={i} className="card" style={{ padding: '1rem', background: 'var(--surface-800)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+              <div key={i} className="criterion-card" style={{ gridTemplateColumns: '1fr', gap: 'var(--space-3)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>Aluno {i + 1}</span>
                   {manualEntries.length > 1 && (
-                    <button
+                    <Button
                       type="button"
-                      className="btn btn-ghost btn-sm"
+                      variant="ghost"
+                      size="sm"
                       onClick={() => removeManualRow(i)}
+                      style={{ color: 'var(--error-500)' }}
                     >
                       🗑️ Remover
-                    </button>
+                    </Button>
                   )}
                 </div>
                 <div className="form-row">
@@ -280,52 +279,49 @@ export default function UploadResponses() {
                       value={entry.original_response}
                       onChange={(e) => updateManualRow(i, 'original_response', e.target.value)}
                       rows={2}
-                      style={{ minHeight: '60px' }}
                     />
                   </div>
                 </div>
               </div>
             ))}
-            <button
-              type="button"
-              className="btn btn-secondary"
-              onClick={addManualRow}
-            >
-              ➕ Adicionar Aluno
-            </button>
+            <div>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={addManualRow}
+              >
+                ➕ Adicionar Aluno
+              </Button>
+            </div>
           </div>
-        </div>
+        </Card>
       )}
 
       {error && (
-        <div className="toast toast-error animate-slide-up" style={{ position: 'static', marginTop: '1rem' }}>
-          ❌ {error}
+        <div className="alert-box alert-box--error" role="alert" style={{ marginTop: 'var(--space-4)' }}>
+          <IconAlertCircle size={18} />
+          <span>❌ {error}</span>
         </div>
       )}
 
-      <div className="form-actions" style={{ marginTop: '1.5rem' }}>
-        <button
+      <div className="form-actions" style={{ marginTop: 'var(--space-6)' }}>
+        <Button
           type="button"
-          className="btn btn-ghost"
+          variant="ghost"
           onClick={() => navigate('/setup')}
         >
           ← Voltar
-        </button>
-        <button
-          className="btn btn-primary btn-lg"
+        </Button>
+        <Button
+          variant="primary"
+          size="lg"
           onClick={handleSubmit}
+          loading={loading}
           disabled={loading}
           id="btn-submit-responses"
         >
-          {loading ? (
-            <>
-              <span className="spinner" style={{ width: 18, height: 18, borderWidth: 2 }}></span>
-              Enviando...
-            </>
-          ) : (
-            <>Enviar e Gerar Feedbacks 🚀</>
-          )}
-        </button>
+          {loading ? 'Enviando...' : 'Enviar e Gerar Feedbacks 🚀'}
+        </Button>
       </div>
     </div>
   );

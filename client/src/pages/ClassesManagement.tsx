@@ -9,6 +9,10 @@ import {
   addStudentsBatch,
   deleteStudent,
 } from '../services/api';
+import { Card } from '../components/ui/Card';
+import { Button } from '../components/ui/Button';
+import { Chip } from '../components/ui/Chip';
+import { IconPlus, IconAlertCircle, IconCheckCircle } from '../components/ui/Icons';
 
 export default function ClassesManagement() {
   const [classes, setClasses] = useState<Class[]>([]);
@@ -41,7 +45,11 @@ export default function ClassesManagement() {
       const data = await getClasses();
       setClasses(data);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Erro ao carregar turmas.');
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Não foi possível conectar ao servidor. Tente novamente em instantes.'
+      );
     } finally {
       setLoading(false);
     }
@@ -54,7 +62,11 @@ export default function ClassesManagement() {
       const data = await getClass(id);
       setSelectedClass(data);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Erro ao carregar detalhes da turma.');
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Não foi possível conectar ao servidor. Tente novamente em instantes.'
+      );
     }
   }
 
@@ -74,7 +86,11 @@ export default function ClassesManagement() {
       setSuccessMessage('Turma criada com sucesso!');
       await loadClasses();
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Erro ao criar turma.');
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Não foi possível conectar ao servidor. Tente novamente em instantes.'
+      );
     } finally {
       setCreatingClass(false);
     }
@@ -91,7 +107,11 @@ export default function ClassesManagement() {
       setSuccessMessage('Turma excluída com sucesso!');
       await loadClasses();
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Erro ao excluir turma.');
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Não foi possível conectar ao servidor. Tente novamente em instantes.'
+      );
     }
   }
 
@@ -112,7 +132,11 @@ export default function ClassesManagement() {
       await handleSelectClass(selectedClass.id);
       await loadClasses();
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Erro ao adicionar aluno.');
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Não foi possível conectar ao servidor. Tente novamente em instantes.'
+      );
     } finally {
       setAddingStudent(false);
     }
@@ -141,7 +165,11 @@ export default function ClassesManagement() {
       await handleSelectClass(selectedClass.id);
       await loadClasses();
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Erro ao adicionar alunos em lote.');
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Não foi possível conectar ao servidor. Tente novamente em instantes.'
+      );
     } finally {
       setAddingStudent(false);
     }
@@ -155,66 +183,55 @@ export default function ClassesManagement() {
       await handleSelectClass(selectedClass.id);
       await loadClasses();
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Erro ao remover aluno.');
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Não foi possível conectar ao servidor. Tente novamente em instantes.'
+      );
     }
   }
 
   return (
     <div className="page-container animate-fade-in">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-        <div>
+      <div className="page-header-row">
+        <div className="page-header-row__text">
           <h2 className="page-title">🏫 Gestão de Turmas e Alunos</h2>
           <p className="page-subtitle">
             Organize suas turmas para vincular em atividades e casar respostas automaticamente.
           </p>
         </div>
-        <button
+        <Button
           type="button"
+          variant="primary"
           onClick={() => setShowCreateClass(!showCreateClass)}
-          className="btn btn-primary"
+          icon={!showCreateClass ? <IconPlus size={18} /> : undefined}
         >
           {showCreateClass ? 'Cancelar' : '+ Nova Turma'}
-        </button>
+        </Button>
       </div>
 
       {error && (
-        <div
-          style={{
-            padding: '0.75rem 1rem',
-            borderRadius: 'var(--radius-md, 8px)',
-            backgroundColor: 'rgba(239, 68, 68, 0.15)',
-            border: '1px solid rgba(239, 68, 68, 0.4)',
-            color: '#f87171',
-            fontSize: '0.9rem',
-            marginBottom: '1rem',
-          }}
-        >
-          ⚠️ {error}
+        <div className="alert-box alert-box--error" role="alert">
+          <IconAlertCircle size={18} />
+          <span>⚠️ {error}</span>
         </div>
       )}
 
       {successMessage && (
-        <div
-          style={{
-            padding: '0.75rem 1rem',
-            borderRadius: 'var(--radius-md, 8px)',
-            backgroundColor: 'rgba(16, 185, 129, 0.15)',
-            border: '1px solid rgba(16, 185, 129, 0.4)',
-            color: '#34d399',
-            fontSize: '0.9rem',
-            marginBottom: '1rem',
-          }}
-        >
-          ✅ {successMessage}
+        <div className="alert-box alert-box--success" role="status">
+          <IconCheckCircle size={18} />
+          <span>✅ {successMessage}</span>
         </div>
       )}
 
       {/* Card de Criação de Turma */}
       {showCreateClass && (
-        <div className="card" style={{ marginBottom: '2rem' }}>
-          <h3 style={{ marginBottom: '1rem', fontSize: '1.1rem' }}>Criar Nova Turma</h3>
-          <form onSubmit={handleCreateClass} style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-            <div className="input-group" style={{ flex: '2', minWidth: '220px' }}>
+        <Card style={{ marginBottom: 'var(--space-6)' }}>
+          <h3 style={{ marginBottom: 'var(--space-4)', fontSize: 'var(--text-lg)' }}>
+            Criar Nova Turma
+          </h3>
+          <form onSubmit={handleCreateClass} className="classes-form-inline">
+            <div className="input-group input-group--name">
               <label className="input-label" htmlFor="newClassName">
                 Nome da Turma *
               </label>
@@ -228,7 +245,7 @@ export default function ClassesManagement() {
                 required
               />
             </div>
-            <div className="input-group" style={{ flex: '1', minWidth: '120px' }}>
+            <div className="input-group input-group--year">
               <label className="input-label" htmlFor="newClassYear">
                 Ano Letivo
               </label>
@@ -241,107 +258,94 @@ export default function ClassesManagement() {
                 onChange={(e) => setNewClassYear(e.target.value)}
               />
             </div>
-            <div style={{ display: 'flex', alignItems: 'flex-end', minWidth: '120px' }}>
-              <button
+            <div className="input-group input-group--action">
+              <Button
                 type="submit"
-                className="btn btn-primary"
+                variant="primary"
+                loading={creatingClass}
                 disabled={creatingClass || !newClassName.trim()}
-                style={{ width: '100%', height: '42px' }}
               >
                 {creatingClass ? 'Salvando...' : 'Salvar Turma'}
-              </button>
+              </Button>
             </div>
           </form>
-        </div>
+        </Card>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: selectedClass ? '1fr 1.3fr' : '1fr', gap: '1.5rem' }}>
+      <div className={`classes-grid ${selectedClass ? 'classes-grid--split' : ''}`}>
         {/* Lista de Turmas */}
         <div>
-          <h3 style={{ fontSize: '1.15rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <span>📚 Suas Turmas</span>
-            <span style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>({classes.length})</span>
-          </h3>
+          <div className="page-header-row" style={{ marginBottom: 'var(--space-3)' }}>
+            <h3 style={{ fontSize: 'var(--text-lg)', margin: 0, display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+              <span>📚 Suas Turmas</span>
+              <span className="classes-header-count">({classes.length})</span>
+            </h3>
+          </div>
 
           {loading ? (
-            <div style={{ textAlign: 'center', padding: '3rem 0' }}>
-              <div className="spinner" style={{ margin: '0 auto 1rem auto' }} />
-              <p style={{ color: 'var(--color-text-muted)' }}>Carregando turmas...</p>
+            <div className="page-container--center">
+              <div className="spinner spinner-lg" />
             </div>
           ) : classes.length === 0 ? (
-            <div className="card" style={{ textAlign: 'center', padding: '3rem 1.5rem' }}>
-              <p style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>🏫</p>
-              <h4 style={{ marginBottom: '0.5rem' }}>Nenhuma turma cadastrada</h4>
-              <p style={{ color: 'var(--color-text-muted)', fontSize: '0.9rem', marginBottom: '1rem' }}>
+            <Card className="empty-state">
+              <div className="empty-state-icon">🏫</div>
+              <h3 className="empty-state-title">Nenhuma turma cadastrada</h3>
+              <p className="empty-state-text">
                 Crie sua primeira turma para gerenciar alunos e facilitar correções.
               </p>
-              <button
+              <Button
                 type="button"
+                variant="primary"
+                size="sm"
                 onClick={() => setShowCreateClass(true)}
-                className="btn btn-primary btn-sm"
+                icon={<IconPlus size={16} />}
               >
                 Criar Turma Agora
-              </button>
-            </div>
+              </Button>
+            </Card>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            <div className="classes-list">
               {classes.map((cls) => {
                 const isSelected = selectedClass?.id === cls.id;
                 return (
                   <div
                     key={cls.id}
-                    className="card"
-                    style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      padding: '1rem 1.25rem',
-                      cursor: 'pointer',
-                      border: isSelected ? '1px solid var(--color-primary, #6366f1)' : undefined,
-                      backgroundColor: isSelected ? 'rgba(99, 102, 241, 0.08)' : undefined,
-                      transition: 'all 0.2s ease',
-                    }}
+                    className={`class-card ${isSelected ? 'class-card--selected' : ''}`}
                     onClick={() => handleSelectClass(cls.id)}
                   >
                     <div>
-                      <div style={{ fontWeight: 600, fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <div className="class-card__title-row">
                         <span>{cls.name}</span>
                         {cls.school_year && (
-                          <span
-                            style={{
-                              fontSize: '0.75rem',
-                              padding: '0.15rem 0.45rem',
-                              borderRadius: '4px',
-                              backgroundColor: 'rgba(255, 255, 255, 0.1)',
-                              color: 'var(--color-text-muted)',
-                            }}
-                          >
+                          <Chip variant="purple" size="sm">
                             {cls.school_year}
-                          </span>
+                          </Chip>
                         )}
                       </div>
-                      <div style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)', marginTop: '0.25rem' }}>
+                      <div className="class-card__meta">
                         👥 {cls.student_count || 0} aluno{cls.student_count === 1 ? '' : 's'}
                       </div>
                     </div>
 
-                    <div style={{ display: 'flex', gap: '0.5rem' }} onClick={(e) => e.stopPropagation()}>
-                      <button
+                    <div className="table-actions" onClick={(e) => e.stopPropagation()}>
+                      <Button
                         type="button"
+                        size="sm"
+                        variant={isSelected ? 'primary' : 'ghost'}
                         onClick={() => handleSelectClass(cls.id)}
-                        className={`btn btn-sm ${isSelected ? 'btn-primary' : 'btn-ghost'}`}
                       >
                         {isSelected ? 'Visualizando' : 'Alunos'}
-                      </button>
-                      <button
+                      </Button>
+                      <Button
                         type="button"
+                        size="sm"
+                        variant="ghost"
                         onClick={() => handleDeleteClass(cls.id, cls.name)}
-                        className="btn btn-ghost btn-sm"
-                        style={{ color: '#ef4444' }}
                         title="Excluir turma"
+                        style={{ color: 'var(--error-500)' }}
                       >
                         🗑️
-                      </button>
+                      </Button>
                     </div>
                   </div>
                 );
@@ -352,58 +356,51 @@ export default function ClassesManagement() {
 
         {/* Detalhes da Turma Selecionada & Gestão de Alunos */}
         {selectedClass && (
-          <div className="card animate-fade-in" style={{ alignSelf: 'start' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+          <Card className="students-panel animate-fade-in">
+            <div className="students-panel__header">
               <div>
-                <h3 style={{ fontSize: '1.2rem', fontWeight: 700 }}>
+                <h3 style={{ fontSize: 'var(--text-lg)', margin: 0 }}>
                   Alunos: {selectedClass.name}
                 </h3>
-                <p style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>
+                <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginTop: '2px' }}>
                   Total: {selectedClass.students?.length || 0} estudante(s)
                 </p>
               </div>
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                size="sm"
                 onClick={() => setSelectedClass(null)}
-                className="btn btn-ghost btn-sm"
               >
                 Fechar
-              </button>
+              </Button>
             </div>
 
             {/* Painel de Adicionar Alunos */}
-            <div
-              style={{
-                backgroundColor: 'rgba(0, 0, 0, 0.2)',
-                padding: '1rem',
-                borderRadius: 'var(--radius-md, 8px)',
-                marginBottom: '1.5rem',
-              }}
-            >
-              <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
+            <div className="students-panel__add-box">
+              <div className="filter-tabs" style={{ marginBottom: 'var(--space-3)' }}>
                 <button
                   type="button"
                   onClick={() => setAddMode('single')}
-                  className={`btn btn-sm ${addMode === 'single' ? 'btn-primary' : 'btn-ghost'}`}
+                  className={`filter-tab ${addMode === 'single' ? 'active' : ''}`}
                 >
                   Adicionar Individual
                 </button>
                 <button
                   type="button"
                   onClick={() => setAddMode('batch')}
-                  className={`btn btn-sm ${addMode === 'batch' ? 'btn-primary' : 'btn-ghost'}`}
+                  className={`filter-tab ${addMode === 'batch' ? 'active' : ''}`}
                 >
                   Adicionar em Lote
                 </button>
               </div>
 
               {addMode === 'single' ? (
-                <form onSubmit={handleAddSingleStudent} style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                  <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+                <form onSubmit={handleAddSingleStudent} className="form-grid">
+                  <div className="form-row">
                     <input
                       type="text"
                       className="input"
-                      style={{ flex: '1.5', minWidth: '180px' }}
                       placeholder="Nome completo do aluno *"
                       value={studentName}
                       onChange={(e) => setStudentName(e.target.value)}
@@ -412,43 +409,47 @@ export default function ClassesManagement() {
                     <input
                       type="email"
                       className="input"
-                      style={{ flex: '1', minWidth: '180px' }}
                       placeholder="E-mail (opcional)"
                       value={studentEmail}
                       onChange={(e) => setStudentEmail(e.target.value)}
                     />
                   </div>
-                  <button
-                    type="submit"
-                    className="btn btn-primary btn-sm"
-                    disabled={addingStudent || !studentName.trim()}
-                    style={{ alignSelf: 'flex-start' }}
-                  >
-                    {addingStudent ? 'Adicionando...' : '+ Inserir Aluno'}
-                  </button>
+                  <div>
+                    <Button
+                      type="submit"
+                      variant="primary"
+                      size="sm"
+                      loading={addingStudent}
+                      disabled={addingStudent || !studentName.trim()}
+                    >
+                      {addingStudent ? 'Adicionando...' : '+ Inserir Aluno'}
+                    </Button>
+                  </div>
                 </form>
               ) : (
-                <form onSubmit={handleAddBatchStudents} style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                  <p style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>
-                    Cole a lista de alunos (um por linha). Você pode usar o formato: <code>Nome do Aluno, email@escola.org</code>
+                <form onSubmit={handleAddBatchStudents} className="form-grid">
+                  <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', margin: 0 }}>
+                    Cole a lista de alunos (um por linha). Formato: <code>Nome do Aluno, email@escola.org</code>
                   </p>
                   <textarea
-                    className="input"
+                    className="textarea"
                     rows={4}
                     placeholder="Ana Clara, ana@escola.org&#10;Bernardo Silva&#10;Carlos Eduardo, carlos@escola.org"
                     value={batchText}
                     onChange={(e) => setBatchText(e.target.value)}
-                    style={{ resize: 'vertical' }}
                     required
                   />
-                  <button
-                    type="submit"
-                    className="btn btn-primary btn-sm"
-                    disabled={addingStudent || !batchText.trim()}
-                    style={{ alignSelf: 'flex-start' }}
-                  >
-                    {addingStudent ? 'Adicionando...' : 'Adicionar Lista de Alunos'}
-                  </button>
+                  <div>
+                    <Button
+                      type="submit"
+                      variant="primary"
+                      size="sm"
+                      loading={addingStudent}
+                      disabled={addingStudent || !batchText.trim()}
+                    >
+                      {addingStudent ? 'Adicionando...' : 'Adicionar Lista de Alunos'}
+                    </Button>
+                  </div>
                 </form>
               )}
             </div>
@@ -456,47 +457,37 @@ export default function ClassesManagement() {
             {/* Lista de Alunos */}
             <div>
               {selectedClass.students.length === 0 ? (
-                <p style={{ textAlign: 'center', color: 'var(--color-text-muted)', padding: '2rem 0', fontSize: '0.9rem' }}>
+                <p style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 'var(--space-6) 0', fontSize: 'var(--text-sm)' }}>
                   Nenhum aluno matriculado nesta turma ainda.
                 </p>
               ) : (
-                <div style={{ maxHeight: '350px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                <div className="students-list">
                   {selectedClass.students.map((student) => (
-                    <div
-                      key={student.id}
-                      style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        padding: '0.6rem 0.85rem',
-                        backgroundColor: 'rgba(255, 255, 255, 0.03)',
-                        borderRadius: '6px',
-                        fontSize: '0.9rem',
-                      }}
-                    >
+                    <div key={student.id} className="student-row">
                       <div>
-                        <div style={{ fontWeight: 500 }}>{student.name}</div>
+                        <div className="student-row__name">{student.name}</div>
                         {student.email && (
-                          <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
+                          <div className="student-row__email">
                             ✉️ {student.email}
                           </div>
                         )}
                       </div>
-                      <button
+                      <Button
                         type="button"
+                        variant="ghost"
+                        size="sm"
                         onClick={() => handleDeleteStudent(student.id)}
-                        className="btn btn-ghost btn-sm"
-                        style={{ color: '#ef4444', padding: '0.25rem 0.5rem' }}
                         title="Remover aluno"
+                        style={{ color: 'var(--error-500)', padding: 'var(--space-1) var(--space-2)' }}
                       >
                         ✕
-                      </button>
+                      </Button>
                     </div>
                   ))}
                 </div>
               )}
             </div>
-          </div>
+          </Card>
         )}
       </div>
     </div>

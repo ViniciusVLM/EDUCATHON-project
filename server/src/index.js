@@ -10,6 +10,7 @@ import feedbackRouter from './routes/feedback.js';
 import csvRouter from './routes/csv.js';
 import authRouter from './routes/auth.js';
 import classesRouter from './routes/classes.js';
+import dashboardRouter from './routes/dashboard.js';
 import { requireAuth } from './middleware/auth.js';
 
 const app = express();
@@ -60,6 +61,7 @@ app.get('/api/health', (req, res) => {
 app.use('/api/auth', authRouter);
 
 // Rotas operacionais protegidas por autenticação
+app.use('/api/dashboard', requireAuth, dashboardRouter);
 app.use('/api/classes', requireAuth, classesRouter);
 app.use('/api/activities', requireAuth, activitiesRouter);
 app.use('/api/activities', requireAuth, studentsRouter);

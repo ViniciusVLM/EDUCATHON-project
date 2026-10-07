@@ -71,9 +71,45 @@ npm run dev
 │   │   └── prompts/ # Engenharia de prompt
 ```
 
+## 🎨 Interface e Experiência do Usuário
+
+O Educathon foi redesenhado para proporcionar uma experiência de dashboard moderna, agradável e altamente produtiva para os educadores, inspirada nas melhores práticas de design de produtos educacionais contemporâneos:
+
+- **Identidade Visual**: Fundo lavanda-acinzentado muito suave (`#eeedf7`), painéis arredondados em branco-gelo com raios suaves (24px a 32px), barra lateral em tom roxo/índigo (`#6c63ff`) com curva decorativa ergonômica e chips com tonalidades pastel.
+- **Dois Temas (Claro e Escuro)**: Suporte nativo com persistência em `localStorage`, detecção automática de `prefers-color-scheme` e script anti-flash. Cores ajustadas para conformidade com **WCAG 2.1 nível AA** (taxa de contraste $\ge 4.5:1$ para todos os textos legíveis).
+- **Acessibilidade Universal**: Foco visível (`:focus-visible`) contrastante em todos os elementos interativos, navegação completa por teclado e desativação estrita de animações e transições quando o usuário seleciona `prefers-reduced-motion: reduce`.
+- **Design Totalmente Responsivo**: Layout otimizado para dispositivos móveis compactos (360px) com barra de navegação inferior fixa, tablets (768px) e monitores amplos (1440px).
+
+### 📸 Telas da Aplicação
+
+#### 1. Painel do Professor (`/painel`)
+Visão panorâmica consolidada com métricas em tempo real, anéis de progresso, fila de revisão ativa, lista de pendências com ação rápida e calendário de prazos da semana.
+
+<!-- PRINT: painel -->
+> *Insira aqui a captura de tela do Painel Geral do Professor.*
+
+---
+
+#### 2. Dashboard de Revisão (`/review/:activityId`)
+Estação de trabalho pedagógica lado a lado: lista lateral de alunos com chips de status (`pendente`, `revisado`, `aprovado`), cartão de resposta original, editor de feedback da IA, critérios de rubrica interativos, auto-avanço inteligente, proteção contra perda de edições não salvas e atalhos rápidos de teclado (`Alt + A` / `Ctrl + Enter` para aprovar, `Alt + →` / `Alt + ←` para navegar).
+
+<!-- PRINT: revisao -->
+> *Insira aqui a captura de tela do Dashboard de Revisão com a resposta e o feedback pedagógico.*
+
+---
+
+#### 3. Modo Noturno / Tema Escuro
+Paleta escura de alto contraste com tons profundos de azul e ametista, projetada para longas sessões noturnas de correção com conforto visual.
+
+<!-- PRINT: tema-escuro -->
+> *Insira aqui a captura de tela do tema escuro em funcionamento.*
+
+---
+
 ## 🤖 Regras da IA
 - **NUNCA** atribui nota numérica
 - Sempre começa destacando o que o aluno acertou
 - Aponta lacunas específicas em relação à rubrica
 - Sugere caminhos de melhoria com linguagem encorajadora
 - O professor tem controle final sobre cada feedback
+

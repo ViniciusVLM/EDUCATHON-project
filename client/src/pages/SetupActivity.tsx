@@ -2,6 +2,9 @@ import { useState, useEffect, FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { createActivity, getClasses } from '../services/api';
 import type { Class } from '../types';
+import { Card } from '../components/ui/Card';
+import { Button } from '../components/ui/Button';
+import { IconPlus, IconAlertCircle } from '../components/ui/Icons';
 
 interface CriterionInput {
   id: string;
@@ -23,6 +26,7 @@ export default function SetupActivity() {
     educationLevel: 'medio',
     subject: '',
     classId: '',
+    dueDate: '',
   });
 
   useEffect(() => {
@@ -31,7 +35,9 @@ export default function SetupActivity() {
       .catch((err) => console.warn('Erro ao carregar turmas:', err));
   }, []);
 
-  function handleChange(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) {
+  function handleChange(
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
+  ) {
     setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
   }
 
@@ -78,9 +84,10 @@ export default function SetupActivity() {
       }
     }
 
-    const rubricCriteria = criteria.length > 0
-      ? criteria.map((c) => ({ criterio: c.criterio.trim(), peso: Number(c.peso) || 1 }))
-      : undefined;
+    const rubricCriteria =
+      criteria.length > 0
+        ? criteria.map((c) => ({ criterio: c.criterio.trim(), peso: Number(c.peso) || 1 }))
+        : undefined;
 
     setLoading(true);
     try {
@@ -91,11 +98,15 @@ export default function SetupActivity() {
         educationLevel: form.educationLevel,
         subject: form.subject.trim() || undefined,
         classId: form.classId ? Number(form.classId) : undefined,
+        dueDate: form.dueDate ? form.dueDate : undefined,
         rubricCriteria,
       });
       navigate(`/upload/${result.id}`);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Erro ao criar atividade.';
+      const msg =
+        err instanceof Error
+          ? err.message
+          : 'Não foi possível conectar ao servidor. Tente novamente em instantes.';
       setError(msg);
     } finally {
       setLoading(false);
@@ -104,13 +115,17 @@ export default function SetupActivity() {
 
   return (
     <div className="page-container page-container-narrow animate-fade-in">
-      <h2 className="page-title">📝 Configurar Atividade</h2>
-      <p className="page-subtitle">
-        Defina a atividade que seus alunos responderam e o que você espera como resposta ideal.
-      </p>
+      <div className="page-header-row">
+        <div className="page-header-row__text">
+          <h2 className="page-title">📝 Configurar Atividade</h2>
+          <p className="page-subtitle">
+            Defina a atividade que seus alunos responderam e o que você espera como resposta ideal.
+          </p>
+        </div>
+      </div>
 
-      <form onSubmit={handleSubmit} className="card" noValidate>
-        <div className="form-grid">
+      <Card>
+        <form onSubmit={handleSubmit} className="form-grid" noValidate>
           <div className="input-group">
             <label className="input-label" htmlFor="title">
               Título da Atividade *
@@ -127,7 +142,7 @@ export default function SetupActivity() {
             />
           </div>
 
-          <div className="form-row" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
+          <div className="form-row">
             <div className="input-group">
               <label className="input-label" htmlFor="educationLevel">
                 Nível de Ensino
@@ -159,7 +174,9 @@ export default function SetupActivity() {
                 onChange={handleChange}
               />
             </div>
+          </div>
 
+          <div className="form-row">
             <div className="input-group">
               <label className="input-label" htmlFor="classId">
                 Turma (opcional)
@@ -178,6 +195,20 @@ export default function SetupActivity() {
                   </option>
                 ))}
               </select>
+            </div>
+
+            <div className="input-group">
+              <label className="input-label" htmlFor="dueDate">
+                Prazo de Entrega (opcional)
+              </label>
+              <input
+                id="dueDate"
+                name="dueDate"
+                type="date"
+                className="input"
+                value={form.dueDate}
+                onChange={handleChange}
+              />
             </div>
           </div>
 
@@ -220,42 +251,33 @@ export default function SetupActivity() {
           </div>
 
           <div className="input-group">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+            <div className="page-header-row" style={{ marginBottom: 'var(--space-2)' }}>
               <div>
-                <label className="input-label" style={{ marginBottom: 0 }}>
+                <label className="input-label">
                   🎯 Critérios de Avaliação da Rubrica (opcional)
                 </label>
-                <p className="input-hint" style={{ margin: '0.25rem 0 0 0' }}>
+                <p className="input-hint">
                   A IA avaliará individualmente cada critério (atendido/não atendido + evidência). O peso serve apenas para priorizar o feedback.
                 </p>
               </div>
-              <button
+              <Button
                 type="button"
-                className="btn btn-secondary btn-sm"
+                variant="ghost"
+                size="sm"
                 onClick={handleAddCriterion}
                 id="btn-add-criterion"
+                icon={<IconPlus size={16} />}
               >
                 + Adicionar Critério
-              </button>
+              </Button>
             </div>
 
             {criteria.length > 0 && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginTop: '0.5rem' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
                 {criteria.map((item, idx) => (
-                  <div
-                    key={item.id}
-                    className="card"
-                    style={{
-                      padding: '0.75rem 1rem',
-                      background: 'var(--surface-hover)',
-                      display: 'grid',
-                      gridTemplateColumns: '1fr 140px auto',
-                      gap: '0.75rem',
-                      alignItems: 'center',
-                    }}
-                  >
+                  <div key={item.id} className="criterion-card">
                     <div>
-                      <label className="input-label" style={{ fontSize: 'var(--text-xs)', marginBottom: '0.25rem' }}>
+                      <label className="input-label" style={{ fontSize: 'var(--text-xs)', marginBottom: 'var(--space-1)' }}>
                         Critério #{idx + 1} *
                       </label>
                       <input
@@ -268,7 +290,7 @@ export default function SetupActivity() {
                       />
                     </div>
                     <div>
-                      <label className="input-label" style={{ fontSize: 'var(--text-xs)', marginBottom: '0.25rem' }}>
+                      <label className="input-label" style={{ fontSize: 'var(--text-xs)', marginBottom: 'var(--space-1)' }}>
                         Peso (prioridade &gt; 0) *
                       </label>
                       <input
@@ -281,16 +303,17 @@ export default function SetupActivity() {
                         required
                       />
                     </div>
-                    <div style={{ paddingTop: '1.25rem' }}>
-                      <button
+                    <div style={{ alignSelf: 'flex-end', paddingBottom: '2px' }}>
+                      <Button
                         type="button"
-                        className="btn btn-ghost btn-sm"
+                        variant="ghost"
+                        size="sm"
                         onClick={() => handleRemoveCriterion(item.id)}
                         title="Remover critério"
-                        style={{ color: 'var(--danger-400, #ef4444)' }}
+                        style={{ color: 'var(--error-500)' }}
                       >
                         🗑️
-                      </button>
+                      </Button>
                     </div>
                   </div>
                 ))}
@@ -299,37 +322,32 @@ export default function SetupActivity() {
           </div>
 
           {error && (
-            <div className="toast toast-error animate-slide-up" style={{ position: 'static' }}>
-              ❌ {error}
+            <div className="alert-box alert-box--error" role="alert">
+              <IconAlertCircle size={18} />
+              <span>❌ {error}</span>
             </div>
           )}
 
           <div className="form-actions">
-            <button
+            <Button
               type="button"
-              className="btn btn-ghost"
+              variant="ghost"
               onClick={() => navigate('/')}
             >
               Cancelar
-            </button>
-            <button
+            </Button>
+            <Button
               type="submit"
-              className="btn btn-primary btn-lg"
-              disabled={loading}
+              variant="primary"
+              size="lg"
+              loading={loading}
               id="btn-create-activity"
             >
-              {loading ? (
-                <>
-                  <span className="spinner" style={{ width: 18, height: 18, borderWidth: 2 }}></span>
-                  Criando...
-                </>
-              ) : (
-                <>Próximo → Enviar Respostas</>
-              )}
-            </button>
+              {loading ? 'Criando...' : 'Próximo → Enviar Respostas'}
+            </Button>
           </div>
-        </div>
-      </form>
+        </form>
+      </Card>
     </div>
   );
 }

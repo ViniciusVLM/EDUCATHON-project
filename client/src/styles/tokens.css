@@ -1,28 +1,161 @@
 /* ═══════════════════════════════════════════
-   EDUCATHON — Design Tokens
-   Copiloto Pedagógico
+   EDUCATHON — Design Tokens  (Fase 6)
+   Dois temas: :root = claro (padrão),
+   [data-theme="dark"] = escuro.
    ═══════════════════════════════════════════ */
 
+/* ── Tipografia (compartilhada) ── */
 :root {
-  /* ── Cores Primárias (Gradiente Violeta-Índigo) ── */
-  --primary-50: #eef2ff;
-  --primary-100: #e0e7ff;
-  --primary-200: #c7d2fe;
-  --primary-300: #a5b4fc;
-  --primary-400: #818cf8;
-  --primary-500: #6366f1;
-  --primary-600: #4f46e5;
-  --primary-700: #4338ca;
-  --primary-800: #3730a3;
-  --primary-900: #312e81;
+  --font-heading: 'Outfit', sans-serif;
+  --font-body: 'Inter', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
 
-  /* ── Cores de Acento (Violeta) ── */
-  --accent-400: #a78bfa;
-  --accent-500: #8b5cf6;
-  --accent-600: #7c3aed;
-  --accent-700: #6d28d9;
+  --text-xs:   0.75rem;
+  --text-sm:   0.875rem;
+  --text-base: 1rem;
+  --text-lg:   1.125rem;
+  --text-xl:   1.25rem;
+  --text-2xl:  1.5rem;
+  --text-3xl:  1.875rem;
+  --text-4xl:  2.25rem;
+  --text-5xl:  3rem;
 
-  /* ── Cores de Superfície (Dark Mode) ── */
+  /* ── Espaçamento ── */
+  --space-1:  0.25rem;
+  --space-2:  0.5rem;
+  --space-3:  0.75rem;
+  --space-4:  1rem;
+  --space-5:  1.25rem;
+  --space-6:  1.5rem;
+  --space-8:  2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+  --space-16: 4rem;
+  --space-20: 5rem;
+
+  /* ── Raios ── */
+  --radius-sm:   0.375rem;   /* 6px  */
+  --radius-md:   0.5rem;     /* 8px  */
+  --radius-lg:   0.75rem;    /* 12px */
+  --radius-xl:   1rem;       /* 16px */
+  --radius-2xl:  1.5rem;     /* 24px */
+  --radius-3xl:  2rem;       /* 32px */
+  --radius-full: 9999px;
+
+  /* ── Transições ── */
+  --transition-fast:   150ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-base:   250ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-slow:   400ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-spring: 500ms cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  /* ── Z-Index ── */
+  --z-dropdown: 50;
+  --z-sticky:   100;
+  --z-modal:    200;
+  --z-tooltip:  300;
+
+  /* ══════════════════════════════════════════
+     TEMA CLARO (padrão)
+     ══════════════════════════════════════════ */
+
+  /* Cores primárias — roxo/índigo (#6C63FF base) */
+  --primary-50:  #f0effe;
+  --primary-100: #e4e2fd;
+  --primary-200: #ccc8fb;
+  --primary-300: #a89ff7;
+  --primary-400: #8b7ff2;
+  --primary-500: #6c63ff;   /* cor principal */
+  --primary-600: #5a50e0;
+  --primary-700: #4a42c4;
+  --primary-800: #3c35a3;
+  --primary-900: #2e2880;
+
+  /* Cor acento — índigo mais escuro (azul-marinho) */
+  --navy-700: #1e2a4a;
+  --navy-800: #16213a;
+  --navy-900: #0d1527;
+
+  /* Superfícies — modo claro */
+  --surface-bg:      #eeedf7;   /* lavanda-acinzentado muito claro */
+  --surface-panel:   #f8f8fc;   /* branco-gelo (painel grande) */
+  --surface-card:    #ffffff;   /* cartão branco */
+  --surface-overlay: #f1f0fa;   /* sobreposições sutis */
+  --surface-input:   #f5f4fd;
+  --surface-border:  #e2e0f5;
+  --surface-hover:   #ece9ff;
+
+  /* Texto — modo claro (contraste AA >= 4.5:1) */
+  --text-primary:   #1a1535;   /* azul-marinho escuro (~15:1) */
+  --text-secondary: #5c5880;   /* ~6.3:1 */
+  --text-muted:     #6e6a94;   /* ~4.7:1 (passa AA em fundo claro) */
+  --text-inverse:   #ffffff;
+  --text-on-primary:#ffffff;
+
+  /* Sidebar */
+  --sidebar-bg:       #6c63ff;
+  --sidebar-fg:       rgba(255,255,255,0.75);
+  --sidebar-fg-active:#6c63ff;
+  --sidebar-active-bg:#ffffff;
+  --sidebar-hover-bg: rgba(255,255,255,0.15);
+
+  /* Chips pastel */
+  --chip-pink-bg:    #ffe4ef;
+  --chip-pink-fg:    #c0335e;
+  --chip-green-bg:   #dcfce7;
+  --chip-green-fg:   #166534;
+  --chip-purple-bg:  #ede9fe;
+  --chip-purple-fg:  #5b21b6;
+  --chip-blue-bg:    #dbeafe;
+  --chip-blue-fg:    #1d4ed8;
+  --chip-amber-bg:   #fef3c7;
+  --chip-amber-fg:   #92400e;
+
+  /* Semânticas */
+  --success-400: #4ade80;
+  --success-500: #22c55e;
+  --success-600: #16a34a;
+  --success-bg:  rgba(34, 197, 94, 0.12);
+  --success-fg:  #166534;
+
+  --warning-400: #fbbf24;
+  --warning-500: #f59e0b;
+  --warning-600: #d97706;
+  --warning-bg:  rgba(245, 158, 11, 0.12);
+  --warning-fg:  #92400e;
+
+  --error-400: #f87171;
+  --error-500: #ef4444;
+  --error-600: #dc2626;
+  --error-bg:  rgba(239, 68, 68, 0.12);
+  --error-fg:  #991b1b;
+
+  --info-400: #38bdf8;
+  --info-500: #0ea5e9;
+  --info-bg:  rgba(14, 165, 233, 0.12);
+  --info-fg:  #0c4a6e;
+
+  /* Gradientes */
+  --gradient-primary: linear-gradient(135deg, #6c63ff 0%, #9d8ffd 100%);
+  --gradient-navy:    linear-gradient(135deg, #1e2a4a 0%, #2d3f6e 100%);
+  --gradient-promo:   linear-gradient(135deg, #6c63ff 0%, #a78bfa 100%);
+  --gradient-surface: linear-gradient(160deg, #eeedf7 0%, #e8e6f5 100%);
+  --gradient-card:    linear-gradient(135deg, #ffffff 0%, #f8f8fc 100%);
+
+  /* Sombras */
+  --shadow-sm:   0 1px 3px rgba(108, 99, 255, 0.08);
+  --shadow-md:   0 4px 12px rgba(108, 99, 255, 0.10);
+  --shadow-lg:   0 8px 24px rgba(108, 99, 255, 0.12);
+  --shadow-xl:   0 16px 40px rgba(108, 99, 255, 0.14);
+  --shadow-card: 0 2px 12px rgba(100, 93, 200, 0.08), 0 1px 3px rgba(100, 93, 200, 0.06);
+  --shadow-sidebar: 4px 0 24px rgba(108, 99, 255, 0.18);
+  --shadow-glow: 0 0 24px rgba(108, 99, 255, 0.30);
+
+  /* Glassmorphism (usado no tema claro com branco) */
+  --glass-bg:     rgba(255, 255, 255, 0.7);
+  --glass-border: rgba(108, 99, 255, 0.12);
+  --glass-blur:   blur(16px);
+
+  /* Legados (mantidos para não quebrar páginas antigas) */
   --surface-950: #020617;
   --surface-900: #0f172a;
   --surface-800: #1e293b;
@@ -33,100 +166,136 @@
   --surface-300: #cbd5e1;
   --surface-200: #e2e8f0;
   --surface-100: #f1f5f9;
-  --surface-50: #f8fafc;
+  --surface-50:  #f8fafc;
 
-  /* ── Cores Semânticas ── */
+  --color-primary-light: #a5b4fc;
+  --accent-400: #a78bfa;
+  --accent-500: #8b5cf6;
+  --accent-600: #7c3aed;
+  --accent-700: #6d28d9;
+  --shadow-glow-accent: 0 0 30px rgba(139, 92, 246, 0.3);
+  --gradient-accent: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+  --gradient-glow: radial-gradient(ellipse at 50% 0%, rgba(108, 99, 255, 0.10) 0%, transparent 70%);
+}
+
+/* ══════════════════════════════════════════
+   TEMA ESCURO
+   ══════════════════════════════════════════ */
+[data-theme="dark"] {
+  /* Cores primárias (mantém a identidade roxa) */
+  --primary-50:  #1a163b;
+  --primary-100: #221d4e;
+  --primary-200: #2d2768;
+  --primary-300: #7b6fd4;
+  --primary-400: #9d8ffd;
+  --primary-500: #6c63ff;
+  --primary-600: #5a50e0;
+  --primary-700: #4a42c4;
+  --primary-800: #3c35a3;
+  --primary-900: #2e2880;
+
+  --navy-700: #c8d8f8;
+  --navy-800: #a4baf0;
+  --navy-900: #8099d8;
+
+  /* Superfícies escuras */
+  --surface-bg:      #0e0c1c;
+  --surface-panel:   #16142a;
+  --surface-card:    #1e1b35;
+  --surface-overlay: #252240;
+  --surface-input:   #1a1730;
+  --surface-border:  #2e2b50;
+  --surface-hover:   #252245;
+
+  /* Texto escuro (contraste AA >= 4.5:1) */
+  --text-primary:   #e8e5ff;   /* (~13:1) */
+  --text-secondary: #a09cc4;   /* (~6.1:1) */
+  --text-muted:     #8884b2;   /* (~4.6:1 no fundo escuro) */
+  --text-inverse:   #0e0c1c;
+  --text-on-primary:#ffffff;
+
+  /* Sidebar no escuro */
+  --sidebar-bg:       #6c63ff;
+  --sidebar-fg:       rgba(255,255,255,0.75);
+  --sidebar-fg-active:#6c63ff;
+  --sidebar-active-bg:#ffffff;
+  --sidebar-hover-bg: rgba(255,255,255,0.15);
+
+  /* Chips pastel escuros */
+  --chip-pink-bg:    rgba(255, 100, 150, 0.15);
+  --chip-pink-fg:    #f9a8c9;
+  --chip-green-bg:   rgba(34, 197, 94, 0.15);
+  --chip-green-fg:   #86efac;
+  --chip-purple-bg:  rgba(108, 99, 255, 0.20);
+  --chip-purple-fg:  #c4b5fd;
+  --chip-blue-bg:    rgba(59, 130, 246, 0.15);
+  --chip-blue-fg:    #93c5fd;
+  --chip-amber-bg:   rgba(245, 158, 11, 0.15);
+  --chip-amber-fg:   #fcd34d;
+
+  /* Semânticas */
   --success-400: #4ade80;
   --success-500: #22c55e;
   --success-600: #16a34a;
-  --success-bg: rgba(34, 197, 94, 0.1);
+  --success-bg:  rgba(34, 197, 94, 0.15);
+  --success-fg:  #86efac;
 
   --warning-400: #fbbf24;
   --warning-500: #f59e0b;
   --warning-600: #d97706;
-  --warning-bg: rgba(245, 158, 11, 0.1);
+  --warning-bg:  rgba(245, 158, 11, 0.15);
+  --warning-fg:  #fcd34d;
 
   --error-400: #f87171;
   --error-500: #ef4444;
   --error-600: #dc2626;
-  --error-bg: rgba(239, 68, 68, 0.1);
+  --error-bg:  rgba(239, 68, 68, 0.15);
+  --error-fg:  #fca5a5;
 
   --info-400: #38bdf8;
   --info-500: #0ea5e9;
-  --info-bg: rgba(14, 165, 233, 0.1);
+  --info-bg:  rgba(14, 165, 233, 0.15);
+  --info-fg:  #7dd3fc;
 
-  /* ── Texto ── */
-  --text-primary: #f1f5f9;
-  --text-secondary: #94a3b8;
-  --text-muted: #64748b;
-  --text-inverse: #0f172a;
+  /* Gradientes */
+  --gradient-primary: linear-gradient(135deg, #6c63ff 0%, #9d8ffd 100%);
+  --gradient-navy:    linear-gradient(135deg, #c8d8f8 0%, #a4baf0 100%);
+  --gradient-promo:   linear-gradient(135deg, #6c63ff 0%, #a78bfa 100%);
+  --gradient-surface: linear-gradient(160deg, #0e0c1c 0%, #12102a 100%);
+  --gradient-card:    linear-gradient(135deg, #1e1b35 0%, #16142a 100%);
 
-  /* ── Gradientes ── */
-  --gradient-primary: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #a78bfa 100%);
+  /* Sombras */
+  --shadow-sm:   0 1px 3px rgba(0, 0, 0, 0.4);
+  --shadow-md:   0 4px 12px rgba(0, 0, 0, 0.4);
+  --shadow-lg:   0 8px 24px rgba(0, 0, 0, 0.45);
+  --shadow-xl:   0 16px 40px rgba(0, 0, 0, 0.5);
+  --shadow-card: 0 2px 12px rgba(0, 0, 0, 0.35);
+  --shadow-sidebar: 4px 0 24px rgba(0, 0, 0, 0.5);
+  --shadow-glow: 0 0 24px rgba(108, 99, 255, 0.40);
+
+  --glass-bg:     rgba(30, 27, 53, 0.7);
+  --glass-border: rgba(108, 99, 255, 0.20);
+  --glass-blur:   blur(16px);
+
+  /* Legados escuros */
+  --surface-950: #020617;
+  --surface-900: #0f172a;
+  --surface-800: #1e1b35;
+  --surface-700: #2e2b50;
+  --surface-600: #3f3b70;
+  --surface-500: #5e5a90;
+  --surface-400: #8e8ab8;
+  --surface-300: #b0accc;
+  --surface-200: #d0cce8;
+  --surface-100: #e8e5ff;
+  --surface-50:  #f3f0ff;
+
+  --color-primary-light: #a5b4fc;
+  --accent-400: #a78bfa;
+  --accent-500: #8b5cf6;
+  --accent-600: #7c3aed;
+  --accent-700: #6d28d9;
+  --shadow-glow-accent: 0 0 30px rgba(139, 92, 246, 0.4);
   --gradient-accent: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
-  --gradient-surface: linear-gradient(180deg, #0f172a 0%, #020617 100%);
-  --gradient-glow: radial-gradient(ellipse at 50% 0%, rgba(99, 102, 241, 0.15) 0%, transparent 70%);
-  --gradient-card: linear-gradient(135deg, rgba(30, 41, 59, 0.8) 0%, rgba(15, 23, 42, 0.9) 100%);
-
-  /* ── Glassmorphism ── */
-  --glass-bg: rgba(30, 41, 59, 0.6);
-  --glass-border: rgba(148, 163, 184, 0.1);
-  --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-  --glass-blur: blur(16px);
-
-  /* ── Tipografia ── */
-  --font-heading: 'Outfit', sans-serif;
-  --font-body: 'Inter', sans-serif;
-  --font-mono: 'JetBrains Mono', monospace;
-
-  --text-xs: 0.75rem;
-  --text-sm: 0.875rem;
-  --text-base: 1rem;
-  --text-lg: 1.125rem;
-  --text-xl: 1.25rem;
-  --text-2xl: 1.5rem;
-  --text-3xl: 1.875rem;
-  --text-4xl: 2.25rem;
-  --text-5xl: 3rem;
-
-  /* ── Espaçamento ── */
-  --space-1: 0.25rem;
-  --space-2: 0.5rem;
-  --space-3: 0.75rem;
-  --space-4: 1rem;
-  --space-5: 1.25rem;
-  --space-6: 1.5rem;
-  --space-8: 2rem;
-  --space-10: 2.5rem;
-  --space-12: 3rem;
-  --space-16: 4rem;
-  --space-20: 5rem;
-
-  /* ── Bordas ── */
-  --radius-sm: 0.375rem;
-  --radius-md: 0.5rem;
-  --radius-lg: 0.75rem;
-  --radius-xl: 1rem;
-  --radius-2xl: 1.5rem;
-  --radius-full: 9999px;
-
-  /* ── Sombras ── */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
-  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
-  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.3);
-  --shadow-glow: 0 0 30px rgba(99, 102, 241, 0.3);
-  --shadow-glow-accent: 0 0 30px rgba(139, 92, 246, 0.3);
-
-  /* ── Transições ── */
-  --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
-  --transition-base: 250ms cubic-bezier(0.4, 0, 0.2, 1);
-  --transition-slow: 400ms cubic-bezier(0.4, 0, 0.2, 1);
-  --transition-spring: 500ms cubic-bezier(0.34, 1.56, 0.64, 1);
-
-  /* ── Z-Index ── */
-  --z-dropdown: 50;
-  --z-sticky: 100;
-  --z-modal: 200;
-  --z-tooltip: 300;
+  --gradient-glow: radial-gradient(ellipse at 50% 0%, rgba(108, 99, 255, 0.15) 0%, transparent 70%);
 }

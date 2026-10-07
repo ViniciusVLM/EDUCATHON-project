@@ -12,6 +12,7 @@ import type {
   ClassWithStudents,
   Student,
   CriterionScore,
+  DashboardSummary,
 } from '../types';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
@@ -57,13 +58,20 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
     ...((options?.headers as Record<string, string>) || {}),
   };
 
-  const response = await fetch(`${API_BASE}${url}`, {
-    ...options,
-    headers,
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE}${url}`, {
+      ...options,
+      headers,
+    });
+  } catch {
+    throw new Error('Não foi possível conectar ao servidor. Tente novamente em instantes.');
+  }
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: 'Erro desconhecido' }));
+    const error = await response.json().catch(() => ({
+      error: 'Não foi possível conectar ao servidor. Tente novamente em instantes.',
+    }));
     throw new Error(error.error || `HTTP ${response.status}`);
   }
 
@@ -328,3 +336,12 @@ export async function deleteStudent(
     method: 'DELETE',
   });
 }
+
+// ──────────────────────────────────────────
+// Dashboard (Fase 6B)
+// ──────────────────────────────────────────
+
+export async function getDashboardSummary(): Promise<DashboardSummary> {
+  return request<DashboardSummary>('/dashboard/summary');
+}
+

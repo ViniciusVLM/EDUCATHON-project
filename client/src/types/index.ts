@@ -139,3 +139,64 @@ export interface AuthResponse {
   teacher: AuthTeacher;
   token: string;
 }
+
+// ── Fase 6B: Dashboard ──────────────────────────────────────────────────
+
+export interface DashboardMetrics {
+  total_activities: number;
+  total_students: number;
+  total_feedbacks: number;
+  pending_review: number;
+  reviewed: number;
+  approved: number;
+  generation_errors: number;
+}
+
+export interface DashboardPendingItem {
+  activity_id: number;
+  activity_title: string;
+  type: 'pending_feedback' | 'generation_error' | 'generation_complete';
+  count: number;
+}
+
+export interface DashboardRecentActivity {
+  id: number;
+  title: string;
+  subject?: string | null;
+  class_name?: string | null;
+  due_date?: string | null;
+  created_at: string;
+  total_students: number;
+  pending_review: number;
+  approved: number;
+}
+
+export interface DashboardDeadline {
+  activity_id: number;
+  title: string;
+  subject?: string | null;
+  class_name?: string | null;
+  due_date: string;
+}
+
+export interface DashboardReviewQueueItem {
+  activity_id: number;
+  title: string;
+  total: number;
+  approved: number;
+  pending: number;
+  progress_percent: number;
+}
+
+export interface DashboardSummary {
+  teacher: {
+    id: number;
+    name: string;
+  };
+  metrics: DashboardMetrics;
+  pending_review_items: DashboardPendingItem[];
+  recent_activities: DashboardRecentActivity[];
+  deadlines: DashboardDeadline[];
+  review_queue: DashboardReviewQueueItem[];
+}
+

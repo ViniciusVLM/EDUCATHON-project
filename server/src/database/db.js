@@ -533,3 +533,160 @@ export function deleteFeedbackByResponseId(studentResponseId) {
   const db = getDb();
   return db.prepare('DELETE FROM feedbacks WHERE student_response_id = ?').run(studentResponseId);
 }
+
+// ──────────────────────────────────────────
+// Helpers: Dashboard Summary (Fase 6B)
+// ──────────────────────────────────────────
+
+export function getDashboardSummary(teacherId) {
+  const db = getDb();
+
+  // 1. Total de atividades ativas
+  const actCount = db.prepare(`
+    SELECT COUNT(*) as count
+    FROM activities
+    WHERE teacher_id = ? AND (is_archived = 0 OR is_archived IS NULL)
+  `).get(teacherId);
+
+  // 2. Métricas agregadas de alunos e feedbacks
+  const feedbackMetrics = db.prepare(`
+    SELECT
+      COUNT(DISTINCT sr.id) as total_students,
+      COUNT(f.id) as total_feedbacks,
+      COALESCE(SUM(CASE WHEN f.status = 'pendente' THEN 1 ELSE 0 END), 0) as pending_review,
+      COALESCE(SUM(CASE WHEN f.status = 'revisado' THEN 1 ELSE 0 END), 0) as reviewed,
+      COALESCE(SUM(CASE WHEN f.status = 'aprovado' THEN 1 ELSE 0 END), 0) as approved
+    FROM activities a
+    JOIN student_responses sr ON sr.activity_id = a.id
+    LEFT JOIN feedbacks f ON f.student_response_id = sr.id
+    WHERE a.teacher_id = ? AND (a.is_archived = 0 OR a.is_archived IS NULL)
+  `).get(teacherId);
+
+  // 3. Métricas de erros em jobs de IA
+  const jobMetrics = db.prepare(`
+    SELECT
+      COALESCE(SUM(pj.errors), 0) as total_errors,
+      COALESCE(SUM(CASE WHEN pj.status = 'error' THEN 1 ELSE 0 END), 0) as error_jobs
+    FROM activities a
+    JOIN processing_jobs pj ON pj.activity_id = a.id
+    WHERE a.teacher_id = ? AND (a.is_archived = 0 OR a.is_archived IS NULL)
+  `).get(teacherId);
+
+  // 4. Pendências de revisão
+  const pendingFeedbacks = db.prepare(`
+    SELECT
+      a.id as activity_id,
+      a.title as activity_title,
+      'pending_feedback' as type,
+      COUNT(f.id) as count
+    FROM activities a
+    JOIN student_responses sr ON sr.activity_id = a.id
+    JOIN feedbacks f ON f.student_response_id = sr.id
+    WHERE a.teacher_id = ? AND (a.is_archived = 0 OR a.is_archived IS NULL) AND f.status = 'pendente'
+    GROUP BY a.id, a.title
+    LIMIT 10
+  `).all(teacherId);
+
+  const errorJobs = db.prepare(`
+    SELECT
+      a.id as activity_id,
+      a.title as activity_title,
+      'generation_error' as type,
+      pj.errors as count
+    FROM activities a
+    JOIN processing_jobs pj ON pj.activity_id = a.id
+    WHERE a.teacher_id = ? AND (a.is_archived = 0 OR a.is_archived IS NULL) AND (pj.status = 'error' OR pj.errors > 0)
+    LIMIT 10
+  `).all(teacherId);
+
+  const completeJobs = db.prepare(`
+    SELECT
+      a.id as activity_id,
+      a.title as activity_title,
+      'generation_complete' as type,
+      pj.processed as count
+    FROM activities a
+    JOIN processing_jobs pj ON pj.activity_id = a.id
+    WHERE a.teacher_id = ? AND (a.is_archived = 0 OR a.is_archived IS NULL) AND pj.status = 'complete'
+    LIMIT 10
+  `).all(teacherId);
+
+  // 5. Atividades recentes com turma e disciplina
+  const recentActivities = db.prepare(`
+    SELECT
+      a.id,
+      a.title,
+      a.subject,
+      c.name as class_name,
+      a.due_date,
+      a.created_at,
+      COUNT(DISTINCT sr.id) as total_students,
+      COALESCE(SUM(CASE WHEN f.status = 'pendente' THEN 1 ELSE 0 END), 0) as pending_review,
+      COALESCE(SUM(CASE WHEN f.status = 'aprovado' THEN 1 ELSE 0 END), 0) as approved
+    FROM activities a
+    LEFT JOIN classes c ON c.id = a.class_id
+    LEFT JOIN student_responses sr ON sr.activity_id = a.id
+    LEFT JOIN feedbacks f ON f.student_response_id = sr.id
+    WHERE a.teacher_id = ? AND (a.is_archived = 0 OR a.is_archived IS NULL)
+    GROUP BY a.id, a.title, a.subject, c.name, a.due_date, a.created_at
+    ORDER BY a.created_at DESC
+    LIMIT 6
+  `).all(teacherId);
+
+  // 6. Prazos (atividades com data de entrega)
+  const deadlines = db.prepare(`
+    SELECT
+      a.id as activity_id,
+      a.title,
+      a.subject,
+      c.name as class_name,
+      a.due_date
+    FROM activities a
+    LEFT JOIN classes c ON c.id = a.class_id
+    WHERE a.teacher_id = ? AND a.due_date IS NOT NULL AND (a.is_archived = 0 OR a.is_archived IS NULL)
+    ORDER BY a.due_date ASC
+    LIMIT 10
+  `).all(teacherId);
+
+  // 7. Fila de revisão (atividades com respostas, ordenadas por mais pendências)
+  const reviewQueue = db.prepare(`
+    SELECT
+      a.id as activity_id,
+      a.title,
+      COUNT(DISTINCT sr.id) as total,
+      COALESCE(SUM(CASE WHEN f.status = 'aprovado' THEN 1 ELSE 0 END), 0) as approved,
+      COALESCE(SUM(CASE WHEN f.status = 'pendente' THEN 1 ELSE 0 END), 0) as pending
+    FROM activities a
+    JOIN student_responses sr ON sr.activity_id = a.id
+    LEFT JOIN feedbacks f ON f.student_response_id = sr.id
+    WHERE a.teacher_id = ? AND (a.is_archived = 0 OR a.is_archived IS NULL)
+    GROUP BY a.id, a.title
+    HAVING total > 0
+    ORDER BY pending DESC, a.created_at DESC
+    LIMIT 5
+  `).all(teacherId).map((item) => ({
+    ...item,
+    progress_percent: item.total > 0 ? Math.round((item.approved / item.total) * 100) : 0,
+  }));
+
+  return {
+    metrics: {
+      total_activities: actCount.count,
+      total_students: feedbackMetrics.total_students,
+      total_feedbacks: feedbackMetrics.total_feedbacks,
+      pending_review: feedbackMetrics.pending_review,
+      reviewed: feedbackMetrics.reviewed,
+      approved: feedbackMetrics.approved,
+      generation_errors: (jobMetrics.total_errors || 0) + (jobMetrics.error_jobs || 0),
+    },
+    pending_review_items: [
+      ...errorJobs,
+      ...pendingFeedbacks,
+      ...completeJobs,
+    ],
+    recent_activities: recentActivities,
+    deadlines,
+    review_queue: reviewQueue,
+  };
+}
+
