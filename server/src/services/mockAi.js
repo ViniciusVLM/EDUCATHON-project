@@ -55,13 +55,45 @@ function getCleanSnippet(text) {
   return (lastSpace > 20 ? slice.slice(0, lastSpace) : slice) + '...';
 }
 
+const STOP_STEMS = new Set([
+  'explic', 'descre', 'quando', 'quais', 'sobre', 'resposta', 'aluno', 'alunos', 'questa',
+  'atividade', 'texto', 'relaca', 'partir', 'utiliz', 'durant', 'tambem', 'porque', 'outros',
+]);
+
 /**
- * Detecta a categoria pedagógica com base no conteúdo da resposta e na pergunta.
- * Nunca utiliza o nome do estudante para detecção.
+ * Extrai radicais simples (6 primeiros caracteres, sem acento) das palavras com mais de 5 letras.
+ * Serve para comparar termos sem depender de plural/singular ou flexão ("ecossistemas" ≈ "ecossistema").
  */
-function detectCategory(studentResponse, question) {
+function extractStems(text) {
+  return new Set(
+    (text || '')
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .split(/\s+/)
+      .filter((w) => w.length > 5)
+      .map((w) => w.slice(0, 6))
+      .filter((stem) => !STOP_STEMS.has(stem))
+  );
+}
+
+function sharesStem(stemsA, stemsB) {
+  for (const stem of stemsA) {
+    if (stemsB.has(stem)) return true;
+  }
+  return false;
+}
+
+/**
+ * Detecta a categoria pedagógica com base no conteúdo da resposta, na pergunta e nos critérios.
+ * Nunca utiliza o nome do estudante para detecção.
+ *
+ * Ordem importa: equívoco conceitual e linguagem informal são verificados ANTES de "fora do tema",
+ * para que uma resposta no tema (mas com erro ou registro coloquial) não seja tratada como desvio.
+ */
+export function detectCategory(studentResponse, question, criteriaTitles = []) {
   const resp = (studentResponse || '').toLowerCase();
-  const qLower = (question || '').toLowerCase();
 
   // 1. Detecção de Prompt Injection exclusivamente por CONTEÚDO
   const injectionPatterns = [
@@ -81,20 +113,9 @@ function detectCategory(studentResponse, question) {
     return 'muito_curta';
   }
 
-  // 3. Detecção de Fora de Tópico (ausência de termos da pergunta)
-  const qWords = qLower
-    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
-    .split(/\s+/)
-    .filter(
-      (w) =>
-        w.length > 3 &&
-        !['qual', 'como', 'para', 'onde', 'quando', 'sobre', 'explique', 'descreva', 'quais', 'sua'].includes(w)
-    );
-  if (qWords.length > 0) {
-    const hasOverlap = qWords.some((w) => resp.includes(w));
-    if (!hasOverlap) {
-      return 'fora_de_topico';
-    }
+  // 3. Detecção de Equívoco Conceitual explícito
+  if (resp.includes('calor guardado') || resp.includes('respiram gás carbônico')) {
+    return 'equivoco_conceitual';
   }
 
   // 4. Detecção de Resposta Informal
@@ -113,9 +134,10 @@ function detectCategory(studentResponse, question) {
     return 'informal_com_acertos';
   }
 
-  // 5. Detecção de Equívoco Conceitual explícito
-  if (resp.includes('calor guardado') || resp.includes('respiram gás carbônico')) {
-    return 'equivoco_conceitual';
+  // 5. Detecção de Fora de Tópico: nenhum radical em comum com a pergunta nem com os critérios
+  const topicStems = extractStems([question, ...criteriaTitles].join(' '));
+  if (topicStems.size > 0 && !sharesStem(extractStems(resp), topicStems)) {
+    return 'fora_de_topico';
   }
 
   // 6. Resposta Excelente / Ampla
@@ -196,7 +218,20 @@ function evaluateMockCriteria(rubricCriteria, studentResponse, category) {
       };
     }
 
-    // Excelente / Prompt injection no conteúdo real / Informal com acertos
+    if (category === 'prompt_injection') {
+      // Avalia cada critério só pelo conteúdo legítimo (sem as instruções injetadas)
+      const contentStems = extractStems(realContent);
+      const atendido = sharesStem(contentStems, extractStems(criterionTitle));
+      return {
+        criterio: criterionTitle,
+        atendido,
+        evidencia: atendido
+          ? getCleanSnippet(realContent)
+          : 'Aspecto não abordado no conteúdo legítimo da resposta',
+      };
+    }
+
+    // Excelente / Informal com acertos
     const atendido = true;
     return {
       criterio: criterionTitle,
@@ -232,8 +267,6 @@ export async function generateMockFeedback({
   const realContent = extractRealStudentContent(rawResponse);
   const snippet = getCleanSnippet(realContent);
 
-  const category = detectCategory(rawResponse, question);
-
   // Extrai critérios da rubrica para menção dinâmica no feedback
   let criteriaList = [];
   if (Array.isArray(rubricCriteria)) {
@@ -249,6 +282,8 @@ export async function generateMockFeedback({
   const criteriaTitles = criteriaList
     .map((c) => (typeof c === 'string' ? c : c.criterio || ''))
     .filter(Boolean);
+
+  const category = detectCategory(rawResponse, question, criteriaTitles);
 
   const primaryCrit = criteriaTitles[0] || 'os conceitos centrais solicitados';
   const secondaryCrit =
