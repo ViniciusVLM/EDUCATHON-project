@@ -7,6 +7,8 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "node --watch-path=./src src/index.js",
+    "demo": "node src/demo.js",
+    "seed": "node src/database/seed.js",
     "test": "node --test --test-concurrency=1 src/__tests__/*.test.js",
     "test:unit": "node --test src/__tests__/parser.test.js",
     "test:integration": "node --test src/__tests__/routes.test.js src/__tests__/auth.test.js src/__tests__/classes.test.js src/__tests__/idor.test.js src/__tests__/idor-rotas.test.js",

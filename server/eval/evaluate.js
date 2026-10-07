@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import 'dotenv/config';
 
-import { generateFeedback, setModel, resetModel } from '../src/services/gemini.js';
+import { generateFeedback, resetModel } from '../src/services/gemini.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -33,76 +33,8 @@ console.log(`Modo de execução: ${isMockMode ? '🧪 MOCK (Simulação Determin
 console.log(`Total de amostras no dataset: ${dataset.length}`);
 console.log(`======================================================\n`);
 
-/**
- * Respostas simuladas determinísticas que seguem rigorosamente as regras pedagógicas.
- */
-function createMockModel() {
-  return {
-    generateContent: async ({ contents }) => {
-      const promptText = contents[0]?.parts[0]?.text || '';
-
-      // Extrai nome do aluno do prompt
-      const nameMatch = promptText.match(/- Nome:\s*(.+)/);
-      const studentName = nameMatch ? nameMatch[1].trim() : 'Aluno';
-
-      // Simulação para o caso de prompt injection
-      if (promptText.includes('Alexandre Hacker') || promptText.includes('&lt;/resposta_aluno&gt;')) {
-        return {
-          response: {
-            text: () =>
-              JSON.stringify({
-                pontos_fortes:
-                  'Você identificou adequadamente a centralidade da razão e a crítica ao absolutismo.',
-                lacunas:
-                  'Faltou explicitar os direitos naturais inalienáveis, como vida e propriedade.',
-                sugestao_melhoria:
-                  'Pesquise autores como John Locke e Voltaire para fundamentar sua resposta.',
-                feedback_completo: `${studentName}, seu texto demonstra compreensão sobre a crítica iluminista ao poder absolutista e a valorização da razão. No entanto, é fundamental destacar também os direitos naturais fundamentais como a liberdade e a propriedade privada. Continue aprofundando seus estudos relacionando essas ideias às transformações políticas da época!`,
-                criterios_avaliacao: [
-                  {
-                    criterio: 'Uso da razão e direitos naturais',
-                    atendido: true,
-                    evidencia: 'defendiam a razão como guia da humanidade',
-                  },
-                  {
-                    criterio: 'Crítica ao absolutismo e autonomia',
-                    atendido: true,
-                    evidencia: 'questionavam o poder absolutista dos reis',
-                  },
-                ],
-              }),
-          },
-        };
-      }
-
-      // Resposta genérica padrão aderente a todas as regras pedagógicas
-      return {
-        response: {
-          text: () =>
-            JSON.stringify({
-              pontos_fortes:
-                'Você demonstrou interesse pelo assunto e articulou termos relevantes da temática abordada.',
-              lacunas:
-                'Alguns conceitos centrais da rubrica poderiam ter sido explicados com maior profundidade e detalhamento.',
-              sugestao_melhoria:
-                'Releia o material de apoio focando nos exemplos práticos e nas relações causais discutidas.',
-              feedback_completo: `${studentName}, você iniciou bem a abordagem ao demonstrar familiaridade com os tópicos centrais da aula. Para aperfeiçoar seu raciocínio, procure conectar as causas e consequências solicitadas na rubrica de forma mais detalhada. Revise o material didático e pratique formular explicações completas para consolidar seu aprendizado!`,
-              criterios_avaliacao: [
-                {
-                  criterio: 'Critério Principal',
-                  atendido: true,
-                  evidencia: 'trecho relevante da resposta',
-                },
-              ],
-            }),
-        },
-      };
-    },
-  };
-}
-
 if (isMockMode) {
-  setModel(createMockModel());
+  process.env.GEMINI_MOCK = 'true';
 }
 
 /**

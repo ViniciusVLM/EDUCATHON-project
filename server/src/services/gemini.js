@@ -1,5 +1,6 @@
 import { GoogleGenAI } from '@google/genai';
 import { SYSTEM_INSTRUCTION, buildUserPrompt, getFeedbackSchema } from '../prompts/feedback.js';
+import { generateMockFeedback } from './mockAi.js';
 
 let genAI = null;
 let customModel = null;
@@ -325,6 +326,13 @@ export function getModel(modelName = process.env.GEMINI_MODEL || 'gemini-3.8-fla
  * @param {Array|string} [params.rubricCriteria] - Critérios de avaliação da rubrica
  * @returns {Promise<{raw: string, parsed: Object, modelUsed: string}>}
  */
+/**
+ * Indica se o modo mock está ativado (estritamente via GEMINI_MOCK=true).
+ */
+export function isMockEnabled() {
+  return process.env.GEMINI_MOCK === 'true';
+}
+
 export async function generateFeedback({
   studentName,
   question,
@@ -334,6 +342,19 @@ export async function generateFeedback({
   subject,
   rubricCriteria,
 }) {
+  // Modo mock / demonstração sem chave (acionado estritamente por GEMINI_MOCK=true)
+  if (!customModel && isMockEnabled()) {
+    return generateMockFeedback({
+      studentName,
+      question,
+      rubric,
+      studentResponse,
+      educationLevel,
+      subject,
+      rubricCriteria,
+    });
+  }
+
   const mainModelName = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
   const fallbackModelName = process.env.GEMINI_FALLBACK_MODEL;
 

@@ -4,6 +4,39 @@
 
 ## 🚀 Como Rodar
 
+### 🌟 Modo Rápido de Demonstração (Para Avaliadores / Jurados — Sem Chave)
+Para testar e avaliar a aplicação imediatamente sem necessidade de chave de API do Gemini:
+
+1. **Criar os dados fictícios de demonstração** (idempotente):
+   ```bash
+   cd server
+   npm run seed
+   ```
+   *Cria o professor demo, 1 turma, 1 atividade dissertativa com 3 critérios de rubrica e 9 respostas fictícias com perfis variados (incluindo tentativa de prompt injection e resposta muito curta).*
+
+2. **Iniciar o Backend em Modo Demonstração**:
+   ```bash
+   cd server
+   npm run demo
+   ```
+   *Funciona no Windows (PowerShell/CMD), macOS e Linux sem dependências extras, ativando o modo mock determinístico e realista com atraso artificial para simulação de barra de progresso.*
+
+3. **Iniciar o Frontend**:
+   ```bash
+   cd client
+   npm run dev
+   ```
+
+4. **Acessar e fazer login**:
+   - **URL**: http://localhost:5173
+   - **E-mail**: `demo@educathon.dev`
+   - **Senha**: `Demo@123456`
+   *(O cabeçalho exibirá o selo visual "Modo demonstração" e a geração de feedbacks funcionará normalmente).*
+
+---
+
+### Modo Completo (Com Chave Real da API)
+
 ### Pré-requisitos
 - **Node.js** v22 (definido no arquivo `.nvmrc` na raiz — utilize `nvm use 22` ou Node >=22 <23; o Node 24+ causa erro nativo de asserção no better-sqlite3 11)
 - **API Key do Google Gemini** ([obter aqui](https://aistudio.google.com/))

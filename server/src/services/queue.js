@@ -1,4 +1,4 @@
-import { generateFeedback } from './gemini.js';
+import { generateFeedback, formatErrorSummary } from './gemini.js';
 import { saveFeedback, getDb } from '../database/db.js';
 
 // ──────────────────────────────────────────
@@ -85,7 +85,7 @@ export function getProgress(activityId) {
 
 /**
  * Processa as respostas dos alunos em lotes, gerando feedbacks via IA.
- * Usa lotes de 3 com delay de 1.5s entre eles para evitar rate limiting.
+ * Usa lotes configuráveis via GEMINI_CONCURRENCY (padrão 1) com delay entre eles para evitar rate limiting.
  * O progresso fica registrado no banco e sobrevive a restarts.
  * Não salva feedback falso em caso de erro.
  *
@@ -94,7 +94,9 @@ export function getProgress(activityId) {
  */
 export async function processResponses(activity, responses) {
   const activityId = activity.id;
-  const BATCH_SIZE = 3;
+  const rawConcurrency = process.env.GEMINI_CONCURRENCY;
+  const parsedConcurrency = rawConcurrency ? parseInt(rawConcurrency, 10) : NaN;
+  const BATCH_SIZE = !isNaN(parsedConcurrency) && parsedConcurrency > 0 ? parsedConcurrency : 1;
   const DELAY_MS = process.env.NODE_ENV === 'test' ? 10 : 1500;
 
   let parsedCriteria = null;
@@ -136,13 +138,13 @@ export async function processResponses(activity, responses) {
               response.id,
               result.raw,
               result.parsed.feedback_completo,
-              process.env.GEMINI_MODEL || 'gemini-2.5-flash',
+              result.modelUsed || process.env.GEMINI_MODEL || 'gemini-3.8-flash',
               criteriaScores
             );
 
             return { success: true, studentName: response.student_name, responseId: response.id };
           } catch (error) {
-            console.error(`❌ Erro no processamento de ${response.student_name}:`, error.message);
+            console.error(`❌ Erro no processamento de ${response.student_name}:`, formatErrorSummary(error));
             // NÃO salva feedback falso. A resposta permanece sem feedback_id para reprocessamento.
             return {
               success: false,

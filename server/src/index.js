@@ -58,9 +58,11 @@ if (recovered && recovered.changes > 0) {
 // ──────────────────────────────────────────
 // Health check público
 app.get('/api/health', (req, res) => {
+  const isMock = process.env.GEMINI_MOCK === 'true';
   res.json({
     status: 'ok',
     name: 'Educathon API — Copiloto Pedagógico',
+    aiMode: isMock ? 'mock' : 'gemini',
     timestamp: new Date().toISOString(),
   });
 });

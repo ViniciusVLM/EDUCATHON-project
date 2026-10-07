@@ -28,6 +28,7 @@ import {
   IconCap,
 } from '../ui/Icons';
 import { Avatar } from '../ui/Avatar';
+import { getHealth } from '../../services/api';
 
 interface NavItem {
   to: string;
@@ -60,7 +61,24 @@ export function AppLayout({ children }: AppLayoutProps) {
   const { theme, toggleTheme } = useTheme();
   const navigate = useNavigate();
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [isMockMode, setIsMockMode] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+    getHealth()
+      .then((health) => {
+        if (isMounted && health?.aiMode === 'mock') {
+          setIsMockMode(true);
+        }
+      })
+      .catch(() => {
+        // Ignora erro
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   // Fecha o menu do usuário ao clicar fora
   useEffect(() => {
@@ -150,6 +168,17 @@ export function AppLayout({ children }: AppLayoutProps) {
 
           {/* Ações à direita */}
           <div className="app-topbar__actions">
+            {isMockMode && (
+              <span
+                className="app-topbar__demo-badge"
+                id="badge-demo-mode"
+                role="status"
+                aria-label="Modo demonstração ativo"
+              >
+                Modo demonstração
+              </span>
+            )}
+
             {/* Alternador de tema (pílula) */}
             <div className="app-topbar__theme-toggle" role="group" aria-label="Alternador de tema">
               <button
