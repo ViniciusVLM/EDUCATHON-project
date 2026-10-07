@@ -5,7 +5,7 @@
 ## 🚀 Como Rodar
 
 ### Pré-requisitos
-- **Node.js** v22+ (o servidor usa ESM nativo e `node:test`)
+- **Node.js** v22 (definido no arquivo `.nvmrc` na raiz — utilize `nvm use 22` ou Node >=22 <23; o Node 24+ causa erro nativo de asserção no better-sqlite3 11)
 - **API Key do Google Gemini** ([obter aqui](https://aistudio.google.com/))
 
 ### 1. Configurar variáveis de ambiente
@@ -23,7 +23,7 @@ cp ../.env.example .env
 ```bash
 cd server
 npm install
-npm run dev
+npm run dev   # Executa com 'node --watch-path=./src src/index.js' (recarrega apenas em alterações dentro de src/)
 ```
 
 ### 3. Instalar dependências e rodar o Frontend
