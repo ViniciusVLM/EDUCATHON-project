@@ -133,13 +133,13 @@ A aplicação conta com uma suíte de testes automatizados e avaliação de qual
 ```bash
 cd server
 
-# 1. Bateria completa de testes automatizados (133 testes):
+# 1. Bateria completa de testes automatizados:
 npm test
 
-# 2. Testes unitários isolados do parser de CSV (15 testes):
+# 2. Testes unitários isolados do parser de CSV:
 npm run test:unit
 
-# 3. Testes de integração (rotas, turmas, autenticação e proteção IDOR - 54 testes):
+# 3. Testes de integração (rotas, turmas, autenticação e proteção IDOR):
 npm run test:integration
 
 # 4. Avaliação pedagógica da IA contra o dataset de referência (8/8 critérios):
@@ -154,7 +154,7 @@ npm run lint
 ```bash
 cd client
 
-# 1. Bateria completa de testes de componentes e acessibilidade (55 testes):
+# 1. Bateria completa de testes de componentes e acessibilidade:
 npm test
 
 # 2. Checagem estática de tipagem TypeScript:
