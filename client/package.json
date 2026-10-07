@@ -11,6 +11,9 @@
     "test:watch": "vitest",
     "lint": "eslint src/"
   },
+  "engines": {
+    "node": ">=22 <23"
+  },
   "dependencies": {
     "react": "^19.0.0",
     "react-dom": "^19.0.0",

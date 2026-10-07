@@ -18,6 +18,12 @@ vi.mock('../services/api', () => ({
   getMe: vi.fn().mockResolvedValue({
     teacher: { id: 1, name: 'Profa. Maria', email: 'maria@escola.org' },
   }),
+  getHealth: vi.fn().mockResolvedValue({
+    status: 'ok',
+    name: 'Educathon',
+    aiMode: 'gemini',
+    timestamp: '',
+  }),
   loginTeacher: vi.fn(),
   registerTeacher: vi.fn(),
 }));
@@ -103,6 +109,18 @@ describe('AppLayout', () => {
     expect(within(bottomNav).getByRole('link', { name: /Atividades/i })).toBeInTheDocument();
     expect(within(bottomNav).getByRole('link', { name: /Turmas/i })).toBeInTheDocument();
     expect(within(bottomNav).getByRole('link', { name: /Nova Atividade/i })).toBeInTheDocument();
+  });
+
+  it('exibe o selo "Modo demonstração" quando aiMode é mock', async () => {
+    const { getHealth } = await import('../services/api');
+    vi.mocked(getHealth).mockResolvedValueOnce({
+      status: 'ok',
+      name: 'Educathon',
+      aiMode: 'mock',
+      timestamp: '',
+    });
+    renderLayout();
+    expect(await screen.findByText(/Modo demonstração/i)).toBeInTheDocument();
   });
 });
 

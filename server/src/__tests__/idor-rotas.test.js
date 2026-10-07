@@ -63,7 +63,6 @@ before(async () => {
   activityIdA = actRes.body.id;
 
   // Adiciona resposta do aluno
-  const { addResponses: ar } = await import('../database/db.js');
   addResponses(activityIdA, [{ student_name: 'Aluno X', original_response: 'A planta usa luz solar.' }], 'manual');
 
   // Cria feedback manualmente (sem chamar a API do Gemini)

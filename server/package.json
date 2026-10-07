@@ -6,19 +6,24 @@
   "type": "module",
   "scripts": {
     "start": "node src/index.js",
-    "dev": "node --watch src/index.js",
+    "dev": "node --watch-path=./src src/index.js",
+    "demo": "node src/demo.js",
+    "seed": "node src/database/seed.js",
     "test": "node --test --test-concurrency=1 src/__tests__/*.test.js",
     "test:unit": "node --test src/__tests__/parser.test.js",
     "test:integration": "node --test src/__tests__/routes.test.js src/__tests__/auth.test.js src/__tests__/classes.test.js src/__tests__/idor.test.js src/__tests__/idor-rotas.test.js",
     "eval": "node eval/evaluate.js --mock",
     "lint": "eslint src/"
   },
+  "engines": {
+    "node": ">=22 <23"
+  },
   "dependencies": {
     "@google/genai": "^1.0.0",
     "bcryptjs": "^3.0.3",
     "better-sqlite3": "^11.10.0",
     "cors": "^2.8.5",
-    "csv-parse": "^5.5.6",
+    "csv-parse": "^7.0.3",
     "dotenv": "^16.4.5",
     "express": "^4.21.0",
     "express-rate-limit": "^8.7.0",

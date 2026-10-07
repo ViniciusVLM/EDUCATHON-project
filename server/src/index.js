@@ -12,9 +12,17 @@ import authRouter from './routes/auth.js';
 import classesRouter from './routes/classes.js';
 import dashboardRouter from './routes/dashboard.js';
 import { requireAuth } from './middleware/auth.js';
+import { checkGeminiApiKeyOnStartup } from './services/gemini.js';
+import { configureTrustProxy } from './services/config.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+
+// ──────────────────────────────────────────
+// Configurações do servidor (Proxy & IA)
+// ──────────────────────────────────────────
+configureTrustProxy(app);
+checkGeminiApiKeyOnStartup();
 
 // ──────────────────────────────────────────
 // Middlewares
@@ -50,9 +58,11 @@ if (recovered && recovered.changes > 0) {
 // ──────────────────────────────────────────
 // Health check público
 app.get('/api/health', (req, res) => {
+  const isMock = process.env.GEMINI_MOCK === 'true';
   res.json({
     status: 'ok',
     name: 'Educathon API — Copiloto Pedagógico',
+    aiMode: isMock ? 'mock' : 'gemini',
     timestamp: new Date().toISOString(),
   });
 });

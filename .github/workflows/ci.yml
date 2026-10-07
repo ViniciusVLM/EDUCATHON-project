@@ -5,13 +5,14 @@ on:
     branches: [main, develop]
   pull_request:
     branches: [main, develop]
+  workflow_dispatch:
 
 jobs:
   # ──────────────────────────────────────────
-  # Backend: lint + testes
+  # Backend: lint + testes + eval
   # ──────────────────────────────────────────
   server:
-    name: Server (lint + tests)
+    name: Server (lint + tests + eval)
     runs-on: ubuntu-latest
 
     steps:
@@ -33,13 +34,13 @@ jobs:
         working-directory: server
         run: npm run lint
 
-      - name: Unit tests (parser)
+      - name: Tests
         working-directory: server
-        run: npm run test:unit
+        run: npm test
 
-      - name: Integration tests (routes)
+      - name: Feedback Quality Eval (Mock)
         working-directory: server
-        run: npm run test:integration
+        run: npm run eval
 
   # ──────────────────────────────────────────
   # Frontend: typecheck + lint + testes + build

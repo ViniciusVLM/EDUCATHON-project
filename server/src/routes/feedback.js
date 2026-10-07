@@ -221,7 +221,7 @@ router.post('/feedback/:feedbackId/regenerate', aiGenerateLimiter, async (req, r
       feedback.student_response_id,
       result.raw,
       result.parsed.feedback_completo,
-      process.env.GEMINI_MODEL || 'gemini-2.5-flash',
+      result.modelUsed || process.env.GEMINI_MODEL || 'gemini-3.8-flash',
       criteriaScores
     );
 

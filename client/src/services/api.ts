@@ -47,6 +47,15 @@ export function getAuthToken(): string | null {
   return authToken;
 }
 
+export async function getHealth(): Promise<{
+  status: string;
+  name: string;
+  aiMode: 'mock' | 'gemini';
+  timestamp: string;
+}> {
+  return request('/health');
+}
+
 /**
  * Helper para fazer requests com tratamento de erro padrão e injeção do token JWT.
  */
