@@ -1,0 +1,34 @@
+services:
+  server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: educathon-server
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+      - DB_PATH=/app/data/educathon.db
+      - GEMINI_MOCK=true
+      - JWT_SECRET=demo-secret-educathon-para-avaliadores-32chars
+      - CORS_ORIGIN=http://localhost,http://localhost:80,http://localhost:5173,http://127.0.0.1,http://127.0.0.1:5173
+    ports:
+      - "3001:3001"
+    volumes:
+      - educathon_data:/app/data
+
+  client:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    container_name: educathon-client
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "5173:80"
+    depends_on:
+      - server
+
+volumes:
+  educathon_data:
+    name: educathon_data
