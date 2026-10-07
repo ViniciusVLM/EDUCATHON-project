@@ -10,6 +10,7 @@
  * Idempotente: pode ser executado múltiplas vezes sem duplicar registros.
  */
 import 'dotenv/config';
+import crypto from 'node:crypto';
 import {
   getDb,
   createTeacher,
@@ -19,7 +20,15 @@ import {
   addResponses,
   getResponsesByActivity,
 } from './db.js';
-import { hashPassword } from '../services/auth.js';
+
+if (!process.env.JWT_SECRET) {
+  process.env.JWT_SECRET = crypto.randomBytes(32).toString('hex');
+  console.warn(
+    '⚠️ AVISO: JWT_SECRET não definido no .env. Gerado segredo temporário aleatório em memória para o seed de demonstração.'
+  );
+}
+
+const { hashPassword } = await import('../services/auth.js');
 
 export const DEMO_TEACHER = {
   name: 'Professor Demonstração',
