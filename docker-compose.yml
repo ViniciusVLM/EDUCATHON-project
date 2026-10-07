@@ -10,7 +10,9 @@ services:
       - PORT=3001
       - DB_PATH=/app/data/educathon.db
       - GEMINI_MOCK=true
-      - JWT_SECRET=demo-secret-educathon-para-avaliadores-32chars
+      # Segredo padrão apenas para avaliação local; defina JWT_SECRET no ambiente para produção
+      - JWT_SECRET=${JWT_SECRET:-demo-secret-educathon-para-avaliadores-32chars}
+      - TRUST_PROXY=1
       - CORS_ORIGIN=http://localhost,http://localhost:80,http://localhost:5173,http://127.0.0.1,http://127.0.0.1:5173
     ports:
       - "3001:3001"
