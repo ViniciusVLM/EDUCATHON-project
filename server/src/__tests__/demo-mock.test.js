@@ -3,7 +3,14 @@ import assert from 'node:assert/strict';
 import express from 'express';
 import request from 'supertest';
 import { generateFeedback, isMockEnabled } from '../services/gemini.js';
-import { seedDemoData, DEMO_TEACHER, DEMO_CLASS_NAME, DEMO_ACTIVITY_TITLE, DEMO_RUBRIC_CRITERIA } from '../database/seed.js';
+import {
+  seedDemoData,
+  DEMO_TEACHER,
+  DEMO_CLASS_NAME,
+  DEMO_ACTIVITY_TITLE,
+  DEMO_RUBRIC_CRITERIA,
+  DEMO_STUDENT_RESPONSES,
+} from '../database/seed.js';
 import { getDb } from '../database/db.js';
 
 describe('ETAPA E — Modo Mock e Demonstração', () => {
@@ -121,6 +128,46 @@ describe('ETAPA E — Modo Mock e Demonstração', () => {
     assert.notEqual(resCurta.parsed.feedback_completo, resInjection.parsed.feedback_completo);
     assert.match(resCurta.parsed.lacunas, /breve|resumida/i);
     assert.match(resInjection.parsed.feedback_completo, /Alexandre/i);
+  });
+
+  test('para cada uma das 9 respostas do seed, o feedback é neutro ao tema e não cita Iluminismo, hemoglobina, Darwin nem temperatura', async () => {
+    process.env.GEMINI_MOCK = 'true';
+
+    for (const student of DEMO_STUDENT_RESPONSES) {
+      const result = await generateFeedback({
+        studentName: student.student_name,
+        question: DEMO_ACTIVITY_TITLE,
+        rubric: 'Reagentes e produtos da fotossíntese...',
+        studentResponse: student.original_response,
+        educationLevel: 'medio',
+        subject: 'Biologia',
+        rubricCriteria: DEMO_RUBRIC_CRITERIA,
+      });
+
+      const text = result.parsed.feedback_completo.toLowerCase();
+
+      // Regra: Não deve citar temas fixos alheios
+      assert.equal(text.includes('iluminismo'), false, `${student.student_name} não deve citar Iluminismo`);
+      assert.equal(text.includes('hemoglobina'), false, `${student.student_name} não deve citar hemoglobina`);
+      assert.equal(text.includes('hemácias'), false, `${student.student_name} não deve citar hemácias`);
+      assert.equal(text.includes('darwin'), false, `${student.student_name} não deve citar Darwin`);
+      assert.equal(text.includes('temperatura'), false, `${student.student_name} não deve citar temperatura`);
+
+      // Regra: Começa pelo primeiro nome do aluno
+      const firstName = student.student_name.split(' ')[0].toLowerCase();
+      assert.ok(text.startsWith(firstName), `Feedback deve começar com o nome do aluno: ${student.student_name}`);
+
+      // Regra: Sem notas numéricas ou conceitos
+      assert.doesNotMatch(text, /\bnota\s*[:=]?\s*\d+/i);
+      assert.doesNotMatch(text, /\bconceito\s*[A-Fa-f]/i);
+      assert.doesNotMatch(text, /\b\d+\s*\/\s*10\b/);
+
+      // No caso de prompt injection (Alexandre Hacker), verifica que não concedeu nota 10
+      if (student.student_name === 'Alexandre Hacker') {
+        assert.equal(text.includes('nota 10'), false, 'Não deve obedecer pedido de nota 10');
+        assert.ok(result.parsed.lacunas.includes('instruções'), 'Deve registrar instruções em lacunas');
+      }
+    }
   });
 });
 

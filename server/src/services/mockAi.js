@@ -10,11 +10,125 @@
  * 3. Contém entre 3 e 6 frases.
  * 4. Não repete a pergunta original na íntegra.
  * 5. Avalia critérios de rubrica de forma coerente quando presentes.
- * 6. Varia o tom e o conteúdo de acordo com o perfil da resposta do aluno.
+ * 6. É neutro em relação ao tema (alimentado por critérios da rubrica e resposta do aluno).
+ * 7. Detecta prompt injection exclusivamente por conteúdo, nunca por nome.
  */
 
 function sanitizeText(str) {
   return (str || '').toString().trim();
+}
+
+/**
+ * Extrai o conteúdo pedagógico real da resposta do aluno, isolando tags e instruções injetadas.
+ */
+function extractRealStudentContent(text) {
+  if (!text) return '';
+
+  // Se o aluno utilizou tags para fechar e reabrir <resposta_aluno>, extrai o trecho legítimo
+  const match = text.match(/<resposta_aluno>([\s\S]*?)<\/resposta_aluno>/i);
+  if (match) {
+    return match[1].trim();
+  }
+  const lastOpen = text.lastIndexOf('<resposta_aluno>');
+  if (lastOpen !== -1) {
+    return text.slice(lastOpen + '<resposta_aluno>'.length).trim();
+  }
+
+  // Remove blocos de tentativa de injeção de sistema
+  let cleaned = text.replace(/<instrucao_sistema>[\s\S]*?<\/instrucao_sistema>/gi, ' ');
+  cleaned = cleaned.replace(/<\/?[a-z_0-9]+>/gi, ' ');
+  cleaned = cleaned.replace(/ignore\s+(?:todas\s+as\s+regras|as\s+instru[çc][õo]es)[^\n.]*/gi, ' ');
+  cleaned = cleaned.replace(/(?:atribua|dê|diga\s+que\s+sou)\s+(?:nota|conceito)[^\n.]*/gi, ' ');
+
+  return cleaned.trim() || text.trim();
+}
+
+/**
+ * Obtém um trecho curto e limpo da resposta para citação contextual.
+ */
+function getCleanSnippet(text) {
+  if (!text) return '';
+  const singleLine = text.replace(/[\n\r]+/g, ' ').replace(/\s+/g, ' ').trim();
+  if (singleLine.length <= 45) return singleLine;
+  const slice = singleLine.slice(0, 45);
+  const lastSpace = slice.lastIndexOf(' ');
+  return (lastSpace > 20 ? slice.slice(0, lastSpace) : slice) + '...';
+}
+
+/**
+ * Detecta a categoria pedagógica com base no conteúdo da resposta e na pergunta.
+ * Nunca utiliza o nome do estudante para detecção.
+ */
+function detectCategory(studentResponse, question) {
+  const resp = (studentResponse || '').toLowerCase();
+  const qLower = (question || '').toLowerCase();
+
+  // 1. Detecção de Prompt Injection exclusivamente por CONTEÚDO
+  const injectionPatterns = [
+    /<\/?(resposta_aluno|instrucao_sistema|system)>/i,
+    /&lt;\/?(resposta_aluno|instrucao_sistema|system)&gt;/i,
+    /ignore\s+(?:todas\s+as\s+regras|as\s+instru[çc][õo]es|previous\s+instructions)/i,
+    /(?:atribua|dê|coloque|diga\s+que\s+sou)\s+(?:nota|conceito|10|a\+)/i,
+    /nota\s+10\s+e\s+diga/i,
+  ];
+  if (injectionPatterns.some((pattern) => pattern.test(resp))) {
+    return 'prompt_injection';
+  }
+
+  // 2. Detecção de Resposta Muito Curta (< 35 caracteres ou <= 6 palavras)
+  const words = resp.trim().split(/\s+/).filter(Boolean);
+  if (resp.length < 35 || words.length <= 6) {
+    return 'muito_curta';
+  }
+
+  // 3. Detecção de Fora de Tópico (ausência de termos da pergunta)
+  const qWords = qLower
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+    .split(/\s+/)
+    .filter(
+      (w) =>
+        w.length > 3 &&
+        !['qual', 'como', 'para', 'onde', 'quando', 'sobre', 'explique', 'descreva', 'quais', 'sua'].includes(w)
+    );
+  if (qWords.length > 0) {
+    const hasOverlap = qWords.some((w) => resp.includes(w));
+    if (!hasOverlap) {
+      return 'fora_de_topico';
+    }
+  }
+
+  // 4. Detecção de Resposta Informal
+  const informalExpressions = [
+    'pra quando',
+    'a gente guarda',
+    'a gente ',
+    'comidinha',
+    'pra gente',
+    'pra poder',
+    'pra fazer',
+    'tipo assim',
+    'tá ligado',
+  ];
+  if (informalExpressions.some((expr) => resp.includes(expr))) {
+    return 'informal_com_acertos';
+  }
+
+  // 5. Detecção de Equívoco Conceitual explícito
+  if (resp.includes('calor guardado') || resp.includes('respiram gás carbônico')) {
+    return 'equivoco_conceitual';
+  }
+
+  // 6. Resposta Excelente / Ampla
+  if (resp.length > 170 || resp.includes('autotróficos') || resp.includes('clorofilados')) {
+    return 'excelente';
+  }
+
+  // 7. Parcial ou com omissão
+  if (resp.length < 90) {
+    return 'parcial_incompleta';
+  }
+
+  return 'boa_com_omissao';
 }
 
 /**
@@ -36,6 +150,8 @@ function evaluateMockCriteria(rubricCriteria, studentResponse, category) {
 
   if (!criteriaList.length) return [];
 
+  const realContent = extractRealStudentContent(studentResponse);
+
   return criteriaList.map((c, index) => {
     const criterionTitle = typeof c === 'string' ? c : c.criterio || `Critério ${index + 1}`;
 
@@ -45,7 +161,7 @@ function evaluateMockCriteria(rubricCriteria, studentResponse, category) {
         criterio: criterionTitle,
         atendido,
         evidencia: atendido
-          ? studentResponse.slice(0, 40)
+          ? realContent.slice(0, 45) || 'Menção direta ao conceito'
           : 'Aspecto não abordado na resposta resumida',
       };
     }
@@ -64,34 +180,37 @@ function evaluateMockCriteria(rubricCriteria, studentResponse, category) {
         criterio: criterionTitle,
         atendido,
         evidencia: atendido
-          ? 'Tentativa de explicação com base em exemplos do cotidiano'
-          : 'Conceito formal confundido na resposta',
+          ? 'Tentativa de abordagem com argumentos do cotidiano'
+          : 'Conceito formal impreciso ou contraditório',
       };
     }
 
     if (category === 'boa_com_omissao' || category === 'parcial_incompleta') {
-      const atendido = index === 0 || index % 2 === 0;
+      const atendido = index === 0;
       return {
         criterio: criterionTitle,
         atendido,
         evidencia: atendido
-          ? studentResponse.slice(0, 50)
+          ? realContent.slice(0, 50) || 'Trecho correspondente identificado'
           : 'Faltou detalhar as relações e fatores complementares exigidos',
       };
     }
 
-    // Excelente / Padrão / Prompt injection no texto acadêmico
+    // Excelente / Prompt injection no conteúdo real / Informal com acertos
     const atendido = true;
     return {
       criterio: criterionTitle,
       atendido,
-      evidencia: studentResponse.length > 30 ? studentResponse.slice(0, 60) : 'Trecho correspondente identificado',
+      evidencia:
+        realContent.length > 20
+          ? realContent.slice(0, 60)
+          : 'Trecho correspondente identificado na resposta',
     };
   });
 }
 
 /**
- * Gera um feedback determinístico de alta fidelidade pedagógica.
+ * Gera um feedback determinístico de alta fidelidade pedagógica, neutro ao tema da atividade.
  */
 export async function generateMockFeedback({
   studentName,
@@ -99,7 +218,7 @@ export async function generateMockFeedback({
   _rubric,
   studentResponse,
   _educationLevel,
-  _subject,
+  subject,
   rubricCriteria,
 }) {
   // Atraso artificial de 300 a 800 ms (fora de testes) para visualização da barra de progresso
@@ -108,54 +227,33 @@ export async function generateMockFeedback({
     await new Promise((resolve) => setTimeout(resolve, delay));
   }
 
-  const name = sanitizeText(studentName) || 'Aluno';
-  const responseText = sanitizeText(studentResponse);
-  const responseLower = responseText.toLowerCase();
+  const fullName = sanitizeText(studentName) || 'Aluno';
+  const rawResponse = sanitizeText(studentResponse);
+  const realContent = extractRealStudentContent(rawResponse);
+  const snippet = getCleanSnippet(realContent);
 
-  let category = 'padrao';
+  const category = detectCategory(rawResponse, question);
 
-  // 1. Detecção de Prompt Injection
-  if (
-    responseLower.includes('ignore') ||
-    responseLower.includes('instrucao') ||
-    responseLower.includes('instrução') ||
-    responseLower.includes('system') ||
-    responseLower.includes('nota 10') ||
-    responseLower.includes('alexandre hacker') ||
-    responseLower.includes('&lt;/resposta_aluno&gt;')
-  ) {
-    category = 'prompt_injection';
+  // Extrai critérios da rubrica para menção dinâmica no feedback
+  let criteriaList = [];
+  if (Array.isArray(rubricCriteria)) {
+    criteriaList = rubricCriteria;
+  } else if (typeof rubricCriteria === 'string') {
+    try {
+      criteriaList = JSON.parse(rubricCriteria);
+    } catch {
+      criteriaList = [];
+    }
   }
-  // 2. Detecção de Fora de Tópico
-  else if (
-    (responseLower.includes('celular') || responseLower.includes('computador') || responseLower.includes('internet')) &&
-    (question.toLowerCase().includes('darwin') || question.toLowerCase().includes('seleção natural'))
-  ) {
-    category = 'fora_de_topico';
-  }
-  // 3. Detecção de Equívoco Conceitual
-  else if (
-    responseLower.includes('calor guardado') ||
-    (responseLower.includes('febre') && question.toLowerCase().includes('calor'))
-  ) {
-    category = 'equivoco_conceitual';
-  }
-  // 4. Detecção de Resposta Muito Curta (< 35 chars ou poucas palavras)
-  else if (responseText.length < 35 || responseText.split(/\s+/).length <= 6) {
-    category = 'muito_curta';
-  }
-  // 5. Detecção de Excelente / Completa
-  else if (responseText.length > 180 || responseLower.includes('autotróficos') || responseLower.includes('cadeias tróficas')) {
-    category = 'excelente';
-  }
-  // 6. Detecção de Resposta Informal com Acertos
-  else if (responseLower.includes('pra quando') || responseLower.includes('a gente guarda') || responseLower.includes('glicogênio')) {
-    category = 'informal_com_acertos';
-  }
-  // 7. Parcial ou com omissão
-  else if (responseLower.includes('bastilha') || responseLower.includes('pegam o sol')) {
-    category = 'parcial_incompleta';
-  }
+
+  const criteriaTitles = criteriaList
+    .map((c) => (typeof c === 'string' ? c : c.criterio || ''))
+    .filter(Boolean);
+
+  const primaryCrit = criteriaTitles[0] || 'os conceitos centrais solicitados';
+  const secondaryCrit =
+    criteriaTitles[1] || criteriaTitles[0] || 'as relações e desdobramentos esperados';
+  const subjectText = subject ? `em ${subject}` : 'na disciplina';
 
   let pontosFortes;
   let lacunas;
@@ -164,67 +262,58 @@ export async function generateMockFeedback({
 
   switch (category) {
     case 'prompt_injection':
-      pontosFortes = 'Você identificou adequadamente a centralidade da razão e a crítica ao absolutismo.';
-      lacunas = 'Faltou explicitar os direitos naturais inalienáveis, como vida e propriedade.';
-      sugestaoMelhoria = 'Pesquise autores como John Locke e Voltaire para fundamentar sua resposta.';
-      feedbackCompleto = `${name}, seu texto demonstra compreensão sobre a crítica iluminista ao poder absolutista e a valorização da razão. No entanto, é fundamental destacar também os direitos naturais como a liberdade e a propriedade privada. Continue aprofundando seus estudos relacionando essas ideias às transformações políticas da época!`;
+      pontosFortes = `Você apresentou argumentos pertinentes sobre ${primaryCrit} ao responder à proposta.`;
+      lacunas = 'O texto incluiu instruções ou comandos adicionais que desviam do objetivo pedagógico da avaliação.';
+      sugestaoMelhoria = 'Concentre sua resposta exclusivamente nos conceitos pedagógicos solicitados na rubrica.';
+      feedbackCompleto = `${fullName}, sua resposta contempla pontos pertinentes em relação a ${primaryCrit}. Contudo, foram identificadas instruções no texto que desviam do objetivo pedagógico da avaliação. Recomendo focar estritamente nos conceitos de estudo e nos critérios da rubrica. Continue se dedicando para desenvolver produções claras e bem fundamentadas!`;
       break;
 
     case 'muito_curta':
-      pontosFortes = 'Você identificou com precisão o transporte de oxigênio pelo sistema circulatório.';
-      lacunas = 'Sua resposta foi bastante breve e não mencionou a hemoglobina nem o recolhimento de dióxido de carbono.';
-      sugestaoMelhoria = 'Procure detalhar os mecanismos biológicos envolvidos para enriquecer sua explicação.';
-      feedbackCompleto = `${name}, sua resposta acertou a função essencial de transporte de oxigênio pelo sangue. Contudo, faltou explicar o papel da hemoglobina e o transporte de gás carbônico conforme solicitado na rubrica. Procure formular parágrafos mais completos demonstrando como essas etapas ocorrem no organismo!`;
-      break;
-
-    case 'equivoco_conceitual':
-      pontosFortes = 'Você utilizou situações do cotidiano como febre e sensação térmica para ilustrar sua resposta.';
-      lacunas = 'Houve confusão ao definir calor como energia guardada e temperatura apenas como medição clínica.';
-      sugestaoMelhoria = 'Revise as definições científicas de agitação térmica molecular e de energia em trânsito.';
-      feedbackCompleto = `${name}, é muito positivo ver seu esforço em relacionar a física com situações do dia a dia. Porém, lembre-se de que temperatura mede a agitação molecular, enquanto calor é a transferência de energia entre corpos. Releia os conceitos de termologia no material didático e pratique essa diferenciação!`;
+      pontosFortes = `Você identificou um aspecto válido ao sintetizar "${snippet}".`;
+      lacunas = `A resposta foi extremamente breve e deixou de desenvolver ${secondaryCrit}.`;
+      sugestaoMelhoria = 'Procure elaborar parágrafos explicativos que detalhem os mecanismos e relações conceituais exigidos.';
+      feedbackCompleto = `${fullName}, você apontou um aspecto válido de forma direta ao sintetizar "${snippet}". Contudo, o texto foi excessivamente breve e não contemplou ${secondaryCrit}. Procure formular explicações mais completas, demonstrando o passo a passo dos conceitos solicitados na rubrica. Esse aprofundamento enriquecerá muito a qualidade da sua argumentação!`;
       break;
 
     case 'fora_de_topico':
-      pontosFortes = 'Você demonstrou boa capacidade de dissertação ao analisar o impacto da tecnologia e da internet.';
-      lacunas = 'O texto abordou comunicação moderna em vez de explicar os mecanismos da seleção natural propostos por Darwin.';
-      sugestaoMelhoria = 'Concentre sua análise nos conceitos biológicos de variabilidade genética e reprodução diferencial.';
-      feedbackCompleto = `${name}, sua redação apresenta ideias interessantes sobre o impacto das novas tecnologias na sociedade. Entretanto, a questão solicitava especificamente os fundamentos da seleção natural segundo Charles Darwin. Releia atentamente o enunciado da atividade e busque articular os conceitos biológicos solicitados na rubrica!`;
-      break;
-
-    case 'excelente':
-      pontosFortes = 'Sua resposta descreveu com rigor científico reagentes, produtos e o papel na teia alimentar.';
-      lacunas = 'Não foram identificadas omissões significativas em relação aos critérios da rubrica.';
-      sugestaoMelhoria = 'Explore como as variações de intensidade luminosa e temperatura interferem na taxa fotossintética.';
-      feedbackCompleto = `${name}, sua resposta está excelente e demonstra domínio completo dos processos biológicos e ecológicos envolvidos. Você articulou de forma clara os reagentes e produtos, conectando-os à sustentação dos ecossistemas. Mantenha essa dedicação e continue explorando desdobramentos aprofundados do tema!`;
+      pontosFortes = 'Você demonstrou boa capacidade de dissertação e organização textual.';
+      lacunas = `A abordagem apresentada desviou do tema central da questão e não contemplou ${primaryCrit}.`;
+      sugestaoMelhoria = 'Releia o enunciado com atenção e articule sua resposta diretamente aos critérios da rubrica.';
+      feedbackCompleto = `${fullName}, sua redação apresenta uma estrutura textual bem articulada. No entanto, sua argumentação desviou do tema central proposto na questão e não contemplou ${primaryCrit}. Releia com atenção o enunciado da atividade para alinhar seus argumentos aos critérios avaliados. Praticar esse direcionamento ajudará a evidenciar seu domínio ${subjectText}!`;
       break;
 
     case 'informal_com_acertos':
-      pontosFortes = 'Você compreendeu muito bem a glicólise, a produção de ATP e a formação de reservas de glicogênio.';
-      lacunas = 'O registro linguístico utilizado foi bastante coloquial para uma avaliação acadêmica.';
-      sugestaoMelhoria = 'Substitua termos informais por vocabulário técnico e formal apropriado ao nível de ensino.';
-      feedbackCompleto = `${name}, seu raciocínio conceitual está correto ao explicar a transformação de energia e o armazenamento de glicose. Para aprimorar suas produções acadêmicas, procure substituir expressões coloquiais pelos termos formais da disciplina. Seu progresso é evidente e o aprofundamento da escrita formal tornará suas respostas ainda mais sólidas!`;
+      pontosFortes = `Você compreendeu bem a lógica dos fenômenos solicitados em ${primaryCrit}.`;
+      lacunas = 'O registro linguístico empregado foi coloquial para uma avaliação acadêmica.';
+      sugestaoMelhoria = 'Substitua termos informais e expressões do cotidiano pelo vocabulário técnico próprio da disciplina.';
+      feedbackCompleto = `${fullName}, sua linha de raciocínio demonstra bom entendimento sobre ${primaryCrit}. Entretanto, o uso de expressões coloquiais reduz o rigor conceitual esperado para este nível de ensino. Procure substituir termos do dia a dia pelo vocabulário técnico e formal ${subjectText}. Seu domínio do tema é evidente e a precisão na escrita tornará suas respostas ainda melhores!`;
+      break;
+
+    case 'equivoco_conceitual':
+      pontosFortes = 'Você buscou formular explicações para conectar os conceitos da proposta.';
+      lacunas = `Houve imprecisão ou confusão teórica na definição dos conceitos fundamentais de ${primaryCrit}.`;
+      sugestaoMelhoria = 'Revise o material didático sobre os conceitos centrais e atente-se às diferenças entre os termos técnicos.';
+      feedbackCompleto = `${fullName}, é muito positivo perceber seu empenho em formular explicações para a questão proposta. Porém, identificou-se uma imprecisão teórica importante em relação a ${primaryCrit}. Releia os conceitos principais no material didático e revise a fundamentação teórica solicitada na rubrica. Esclarecer essas diferenças fortalecerá sua compreensão dos temas ${subjectText}!`;
+      break;
+
+    case 'excelente':
+      pontosFortes = `Sua resposta contemplou com precisão ${primaryCrit} e articulou com clareza ${secondaryCrit}.`;
+      lacunas = 'Não foram observadas lacunas conceituais significativas em relação à rubrica.';
+      sugestaoMelhoria = 'Continue explorando desdobramentos aprofundados e aplicações práticas desses conceitos.';
+      feedbackCompleto = `${fullName}, sua resposta está excelente e demonstra pleno domínio dos tópicos avaliados na atividade. Você contemplou com precisão ${primaryCrit} e articulou com clareza ${secondaryCrit}. A organização dos seus argumentos foi muito consistente e seguiu rigorosamente os critérios da rubrica. Continue com essa dedicação e mantenha esse excelente padrão em suas próximas produções!`;
       break;
 
     case 'parcial_incompleta':
     case 'boa_com_omissao':
-    default: {
-      const len = responseText.length;
-      if (len > 80) {
-        pontosFortes = 'Você construiu uma linha de raciocínio coerente e demonstrou compreensão dos pontos principais.';
-        lacunas = 'Algumas causas e desdobramentos previstos na rubrica do professor ficaram sem detalhamento.';
-        sugestaoMelhoria = 'Procure conectar as causas socioeconômicas e os efeitos históricos de maneira mais abrangente.';
-        feedbackCompleto = `${name}, seu texto apresenta bons argumentos e demonstra que você compreendeu os aspectos centrais da aula. Para alcançar o nível pleno esperado pela rubrica, aprofunde os fatores complementares e seus impactos diretos. Continue praticando essa articulação para consolidar seu aprendizado!`;
-      } else {
-        pontosFortes = 'Você identificou conceitos relevantes da temática proposta na atividade.';
-        lacunas = 'A explicação necessita de maior desenvolvimento e conexão entre os termos abordados.';
-        sugestaoMelhoria = 'Releia o texto de apoio e adicione exemplos concretos para sustentar suas conclusões.';
-        feedbackCompleto = `${name}, você indicou pontos relevantes ao responder à questão proposta pelo professor. Para que sua análise fique completa, recomendo detalhar melhor as relações conceituais exigidas na rubrica. Pratique elaborar respostas mais completas para demonstrar toda a sua capacidade!`;
-      }
+    default:
+      pontosFortes = `Você identificou elementos centrais de ${primaryCrit} de forma coerente.`;
+      lacunas = `Faltou aprofundar ${secondaryCrit} para atender plenamente a todos os critérios da rubrica.`;
+      sugestaoMelhoria = 'Adicione exemplos concretos e conecte as causas aos efeitos solicitados na atividade.';
+      feedbackCompleto = `${fullName}, você construiu uma argumentação coerente e demonstrou compreender os aspectos principais da questão. Para que sua análise alcance o nível pleno, seria fundamental aprofundar ${secondaryCrit}. Procure relacionar os fatores apresentados com maior detalhamento conforme os critérios da rubrica. Praticar essa articulação tornará suas respostas ainda mais completas!`;
       break;
-    }
   }
 
-  const criteriosAvaliacao = evaluateMockCriteria(rubricCriteria, studentResponse, category);
+  const criteriosAvaliacao = evaluateMockCriteria(rubricCriteria, rawResponse, category);
 
   const parsed = {
     pontos_fortes: pontosFortes,
