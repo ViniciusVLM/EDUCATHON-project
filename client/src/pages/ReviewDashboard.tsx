@@ -20,6 +20,9 @@ import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Chip } from '../components/ui/Chip';
 import { ProgressBar } from '../components/ui/ProgressBar';
+import { Stamp } from '../components/ui/Stamp';
+import { Window, toFileSlug } from '../components/ui/Window';
+import { Mascot } from '../components/ui/Mascot';
 import {
   IconCheckCircle,
   IconAlertCircle,
@@ -399,13 +402,13 @@ export default function ReviewDashboard() {
   function getStatusChip(status: string | null) {
     switch (status) {
       case 'aprovado':
-        return <Chip variant="green">✅ Aprovado</Chip>;
+        return <Stamp tone="approved">Aprovado</Stamp>;
       case 'revisado':
-        return <Chip variant="blue">✏️ Editado</Chip>;
+        return <Stamp tone="reviewed">Editado</Stamp>;
       case 'pendente':
-        return <Chip variant="amber">🟡 Pendente</Chip>;
+        return <Stamp tone="pending">Pendente</Stamp>;
       default:
-        return <Chip variant="pink">⏳ Sem feedback</Chip>;
+        return <Stamp tone="error">Sem feedback</Stamp>;
     }
   }
 
@@ -433,7 +436,7 @@ export default function ReviewDashboard() {
     return (
       <div className="page-container">
         <Card className="empty-state">
-          <div className="empty-state-icon">😕</div>
+          <div className="empty-state-icon"><Mascot size={90} /></div>
           <h3 className="empty-state-title">Atividade não encontrada</h3>
           <Button variant="primary" onClick={() => navigate('/')}>
             Voltar ao início
@@ -453,7 +456,7 @@ export default function ReviewDashboard() {
       {/* Header */}
       <div className="page-header-row">
         <div className="page-header-row__text">
-          <h2 className="page-title">📋 {activity.title}</h2>
+          <h2 className="page-title">{activity.title}</h2>
           <p className="page-subtitle" style={{ marginBottom: 0 }}>
             {activity.question}
           </p>
@@ -474,7 +477,7 @@ export default function ReviewDashboard() {
             variant="ghost"
             onClick={() => navigate(`/export/${activityId}`)}
           >
-            📥 Exportar Resultados
+            Exportar resultados
           </Button>
         </div>
       </div>
@@ -542,7 +545,7 @@ export default function ReviewDashboard() {
               {progress && (progress.errors > 0 || progress.status === 'error') ? (
                 <div>
                   <div style={{ color: 'var(--error-500)', fontWeight: 600, marginBottom: 'var(--space-2)' }}>
-                    ⚠️ {progress.errors > 0
+                    {progress.errors > 0
                       ? `${progress.errors} resposta(s) falharam na geração.`
                       : 'O processamento anterior foi interrompido ou falhou.'}
                   </div>
@@ -591,18 +594,18 @@ export default function ReviewDashboard() {
             className={`filter-tab ${filter === 'pendente' ? 'active' : ''}`}
             onClick={() => handleFilterChange('pendente')}
           >
-            🟡 Pendentes ({activity.stats.pending || 0})
+            Pendentes ({activity.stats.pending || 0})
           </button>
           <button
             className={`filter-tab ${filter === 'aprovado' ? 'active' : ''}`}
             onClick={() => handleFilterChange('aprovado')}
           >
-            ✅ Aprovados ({activity.stats.approved || 0})
+            Aprovados ({activity.stats.approved || 0})
           </button>
         </div>
 
         <div className="review-shortcuts-hint">
-          <span>⌨️ Atalhos:</span>
+          <span>Atalhos:</span>
           <kbd>Alt+A</kbd> aprovar • <kbd>Alt+→</kbd> próximo • <kbd>Alt+←</kbd> anterior
         </div>
       </div>
@@ -616,6 +619,7 @@ export default function ReviewDashboard() {
               <div
                 key={response.id}
                 className={`review-student-card ${i === selectedIndex ? 'selected' : ''}`}
+                aria-current={i === selectedIndex ? 'true' : undefined}
                 onClick={() => handleSelectStudent(i)}
                 role="button"
                 tabIndex={0}
@@ -641,7 +645,7 @@ export default function ReviewDashboard() {
                   <div className="review-analysis-grid">
                     <div>
                       <div className="review-analysis-col__title review-analysis-col__title--green">
-                        ✅ Pontos Fortes
+                        Pontos fortes
                       </div>
                       <p className="review-analysis-col__text">
                         {getParsedFeedback()?.pontos_fortes}
@@ -649,7 +653,7 @@ export default function ReviewDashboard() {
                     </div>
                     <div>
                       <div className="review-analysis-col__title review-analysis-col__title--amber">
-                        ⚠️ Lacunas
+                        Lacunas
                       </div>
                       <p className="review-analysis-col__text">
                         {getParsedFeedback()?.lacunas}
@@ -657,7 +661,7 @@ export default function ReviewDashboard() {
                     </div>
                     <div>
                       <div className="review-analysis-col__title review-analysis-col__title--blue">
-                        💡 Sugestão
+                        Sugestão
                       </div>
                       <p className="review-analysis-col__text">
                         {getParsedFeedback()?.sugestao_melhoria}
@@ -670,12 +674,10 @@ export default function ReviewDashboard() {
               {/* Painéis Lado a Lado */}
               <div className="review-panels">
                 {/* Lado Esquerdo: Resposta do Aluno & Critérios da Rubrica */}
-                <Card className="review-panel">
-                  <div className="review-panel-header">
-                    <span className="review-panel-title">📄 Resposta do Aluno</span>
-                    <span style={{ fontSize: 'var(--text-sm)', fontWeight: 600 }}>
-                      {selected.student_name}
-                    </span>
+                <Window className="review-win" fileName={`${toFileSlug(selected.student_name)}.txt`}>
+                  <div className="review-win__label">
+                    <span className="review-panel-title">Resposta do aluno</span>
+                    <span className="review-win__who">{selected.student_name}</span>
                   </div>
                   <div className="review-content" style={{ whiteSpace: 'pre-wrap' }}>
                     {selected.original_response}
@@ -686,7 +688,7 @@ export default function ReviewDashboard() {
                     <div className="review-criteria-container">
                       <div className="review-criteria-header">
                         <span className="review-criteria-title">
-                          🎯 Avaliação por Critério
+                          Critérios da rubrica
                         </span>
                         <span className="review-criteria-count">
                           {currentCriteriaScores.filter((c) => c.atendido).length} de{' '}
@@ -710,24 +712,18 @@ export default function ReviewDashboard() {
                               <button
                                 type="button"
                                 onClick={() => handleToggleCriterion(idx)}
-                                className={`badge ${
-                                  c.atendido ? 'badge-approved' : 'badge-danger'
+                                className={`criterion-toggle ${
+                                  c.atendido ? 'criterion-toggle--ok' : 'criterion-toggle--no'
                                 }`}
-                                style={{
-                                  cursor: 'pointer',
-                                  border: 'none',
-                                  padding: '0.25rem 0.6rem',
-                                  fontSize: 'var(--text-xs)',
-                                  fontWeight: 600,
-                                }}
+                                aria-pressed={c.atendido}
                                 title="Clique para alternar se o critério foi atendido"
                               >
-                                {c.atendido ? '✅ Atendido' : '❌ Não atendido'}
+                                {c.atendido ? '✓ Atendido' : '✗ Não atendido'}
                               </button>
                             </div>
                             {c.evidencia && (
                               <div className="review-criterion-card__evidence">
-                                🔍 Evidência: "{c.evidencia}"
+                                Evidência: "{c.evidencia}"
                               </div>
                             )}
                           </div>
@@ -735,20 +731,22 @@ export default function ReviewDashboard() {
                       </div>
                     </div>
                   )}
-                </Card>
+                </Window>
 
                 {/* Lado Direito: Editor de Feedback */}
-                <Card className="review-panel">
-                  <div className="review-panel-header">
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-                      <span className="review-panel-title">✍️ Feedback para o Aluno</span>
-                      {isDirty() && (
-                        <Chip variant="amber" size="sm">
-                          ⚠️ Não salvo
-                        </Chip>
-                      )}
-                    </div>
-                    {getStatusChip(selected.status)}
+                <Window
+                  className="review-win"
+                  tone="orange"
+                  fileName="feedback-rascunho.txt"
+                  barExtra={getStatusChip(selected.status)}
+                >
+                  <div className="review-win__label">
+                    <span className="review-panel-title">Feedback para o aluno</span>
+                    {isDirty() && (
+                      <Chip variant="amber" size="sm">
+                        Não salvo
+                      </Chip>
+                    )}
                   </div>
                   {selected.ai_feedback_text ? (
                     <textarea
@@ -772,7 +770,7 @@ export default function ReviewDashboard() {
                       </p>
                     </div>
                   )}
-                </Card>
+                </Window>
               </div>
 
               {/* Barra de Ações */}
@@ -795,7 +793,7 @@ export default function ReviewDashboard() {
                     loading={actionLoading === 'save'}
                     disabled={!!actionLoading}
                   >
-                    💾 Salvar Edição
+                    Salvar edição
                   </Button>
                   <Button
                     type="button"
@@ -814,7 +812,7 @@ export default function ReviewDashboard() {
         </div>
       ) : (
         <Card className="empty-state">
-          <div className="empty-state-icon">📭</div>
+          <div className="empty-state-icon"><Mascot size={90} /></div>
           <h3 className="empty-state-title">Nenhuma resposta neste filtro</h3>
           <p className="empty-state-text">Altere o filtro ou envie mais respostas.</p>
         </Card>
@@ -824,7 +822,7 @@ export default function ReviewDashboard() {
       {error && (
         <div className="alert-box alert-box--error" role="alert" style={{ marginTop: 'var(--space-6)' }}>
           <IconAlertCircle size={18} />
-          <span style={{ flex: 1 }}>❌ {error}</span>
+          <span style={{ flex: 1 }}>{error}</span>
           <Button
             type="button"
             variant="ghost"

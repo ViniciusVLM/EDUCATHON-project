@@ -2,7 +2,8 @@ import { useState, FormEvent } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { Button } from '../components/ui/Button';
-import { IconCap, IconAlertCircle } from '../components/ui/Icons';
+import { IconAlertCircle } from '../components/ui/Icons';
+import { Mascot } from '../components/ui/Mascot';
 
 export default function Register() {
   const { register } = useAuth();
@@ -57,12 +58,13 @@ export default function Register() {
         <div className="auth-split__hero">
           <Link to="/" className="auth-split__hero-brand" aria-label="Educathon - Página Inicial">
             <div className="auth-split__hero-logo">
-              <IconCap size={28} />
+              <Mascot variant="head" size={30} />
             </div>
             <span className="auth-split__hero-title">Educathon</span>
           </Link>
 
           <div className="auth-split__hero-body">
+            <Mascot size={150} className="auth-mascot" />
             <h1 className="auth-split__hero-tagline">Junte-se ao Educathon</h1>
             <p className="auth-split__hero-desc">
               Economize horas na correção e ofereça feedbacks formativos ricos para cada estudante. O controle pedagógico é sempre seu.
@@ -70,14 +72,14 @@ export default function Register() {
           </div>
 
           <div className="auth-split__hero-footer">
-            <span>✨ A IA nunca dá nota; o professor decide</span>
+            <span>A IA nunca dá nota; o professor decide</span>
           </div>
         </div>
 
         {/* Formulário em cartão branco arredondado */}
         <div className="auth-split__form-side">
           <div className="auth-split__form-header">
-            <h2 className="auth-split__form-title">👨‍🏫 Cadastro de Professor</h2>
+            <h2 className="auth-split__form-title">Cadastro de professor</h2>
             <p className="auth-split__form-subtitle">
               Crie sua conta para começar a gerar diagnósticos e feedbacks pedagógicos com apoio de IA.
             </p>

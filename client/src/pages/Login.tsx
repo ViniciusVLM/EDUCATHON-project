@@ -2,7 +2,8 @@ import { useState, FormEvent } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { Button } from '../components/ui/Button';
-import { IconCap, IconAlertCircle } from '../components/ui/Icons';
+import { IconAlertCircle } from '../components/ui/Icons';
+import { Mascot } from '../components/ui/Mascot';
 
 export default function Login() {
   const { login } = useAuth();
@@ -44,12 +45,13 @@ export default function Login() {
         <div className="auth-split__hero">
           <Link to="/" className="auth-split__hero-brand" aria-label="Educathon - Página Inicial">
             <div className="auth-split__hero-logo">
-              <IconCap size={28} />
+              <Mascot variant="head" size={30} />
             </div>
             <span className="auth-split__hero-title">Educathon</span>
           </Link>
 
           <div className="auth-split__hero-body">
+            <Mascot size={150} className="auth-mascot" />
             <h1 className="auth-split__hero-tagline">Copiloto Pedagógico com IA</h1>
             <p className="auth-split__hero-desc">
               A IA nunca dá nota; o professor decide. Feedbacks formativos com precisão, agilidade e empatia para potencializar a aprendizagem.
@@ -57,14 +59,14 @@ export default function Login() {
           </div>
 
           <div className="auth-split__hero-footer">
-            <span>✨ Desenvolvido para professores e educadores</span>
+            <span>Desenvolvido para professores e educadores</span>
           </div>
         </div>
 
         {/* Formulário em cartão branco arredondado */}
         <div className="auth-split__form-side">
           <div className="auth-split__form-header">
-            <h2 className="auth-split__form-title">🔐 Acesso do Professor</h2>
+            <h2 className="auth-split__form-title">Acesso do professor</h2>
             <p className="auth-split__form-subtitle">
               Entre com seu e-mail e senha para gerenciar suas turmas, atividades e correções.
             </p>

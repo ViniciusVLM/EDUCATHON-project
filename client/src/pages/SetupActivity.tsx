@@ -5,6 +5,7 @@ import type { Class } from '../types';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { IconPlus, IconAlertCircle } from '../components/ui/Icons';
+import { IconTrash } from '../components/ui/Icons';
 
 interface CriterionInput {
   id: string;
@@ -117,7 +118,7 @@ export default function SetupActivity() {
     <div className="page-container page-container-narrow animate-fade-in">
       <div className="page-header-row">
         <div className="page-header-row__text">
-          <h2 className="page-title">📝 Configurar Atividade</h2>
+          <h2 className="page-title">Configurar atividade</h2>
           <p className="page-subtitle">
             Defina a atividade que seus alunos responderam e o que você espera como resposta ideal.
           </p>
@@ -254,7 +255,7 @@ export default function SetupActivity() {
             <div className="page-header-row" style={{ marginBottom: 'var(--space-2)' }}>
               <div>
                 <label className="input-label">
-                  🎯 Critérios de Avaliação da Rubrica (opcional)
+                  Critérios de avaliação da rubrica (opcional)
                 </label>
                 <p className="input-hint">
                   A IA avaliará individualmente cada critério (atendido/não atendido + evidência). O peso serve apenas para priorizar o feedback.
@@ -310,9 +311,10 @@ export default function SetupActivity() {
                         size="sm"
                         onClick={() => handleRemoveCriterion(item.id)}
                         title="Remover critério"
+                        aria-label="Remover critério"
                         style={{ color: 'var(--error-500)' }}
                       >
-                        🗑️
+                        <IconTrash size={16} />
                       </Button>
                     </div>
                   </div>
@@ -324,7 +326,7 @@ export default function SetupActivity() {
           {error && (
             <div className="alert-box alert-box--error" role="alert">
               <IconAlertCircle size={18} />
-              <span>❌ {error}</span>
+              <span>{error}</span>
             </div>
           )}
 

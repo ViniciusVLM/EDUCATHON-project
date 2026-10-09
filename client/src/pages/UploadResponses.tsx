@@ -6,6 +6,7 @@ import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Chip } from '../components/ui/Chip';
 import { IconAlertCircle } from '../components/ui/Icons';
+import { Mascot } from '../components/ui/Mascot';
 
 export default function UploadResponses() {
   const { activityId } = useParams<{ activityId: string }>();
@@ -131,7 +132,7 @@ export default function UploadResponses() {
     <div className="page-container page-container-narrow animate-fade-in">
       <div className="page-header-row">
         <div className="page-header-row__text">
-          <h2 className="page-title">📤 Enviar Respostas</h2>
+          <h2 className="page-title">Enviar respostas</h2>
           <p className="page-subtitle">
             Envie as respostas dos alunos via arquivo CSV ou digite manualmente.
           </p>
@@ -140,14 +141,14 @@ export default function UploadResponses() {
 
       {activity && (
         <div className="activity-banner">
-          <span className="activity-banner__icon">📋</span>
+          <span className="activity-banner__icon"><Mascot variant="head" size={34} /></span>
           <div style={{ flex: 1 }}>
             <div className="activity-banner__title">{activity.title}</div>
             <div className="activity-banner__meta">
               {activity.class_name ? (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
                   <span>
-                    🏫 Turma: <strong>{activity.class_name}</strong>
+                    Turma: <strong>{activity.class_name}</strong>
                     {activity.class_code && ` (${activity.class_code})`}
                   </span>
                   <Chip variant="green" size="sm">
@@ -169,14 +170,14 @@ export default function UploadResponses() {
           onClick={() => setMode('csv')}
           type="button"
         >
-          📁 Upload CSV
+          Enviar CSV
         </button>
         <button
           className={`filter-tab ${mode === 'manual' ? 'active' : ''}`}
           onClick={() => setMode('manual')}
           type="button"
         >
-          ✏️ Digitar Manualmente
+          Digitar manualmente
         </button>
       </div>
 
@@ -190,10 +191,10 @@ export default function UploadResponses() {
             onDrop={handleDrop}
             onClick={() => fileInputRef.current?.click()}
           >
-            <div className="dropzone-icon">📄</div>
+            <div className="dropzone-icon"><Mascot size={70} /></div>
             <div className="dropzone-text">
               {csvPreview.length > 0
-                ? `✅ ${csvPreview.length} respostas carregadas`
+                ? `${csvPreview.length} respostas carregadas`
                 : 'Arraste um arquivo CSV aqui ou clique para selecionar'}
             </div>
             <div className="dropzone-hint">
@@ -259,7 +260,7 @@ export default function UploadResponses() {
                       onClick={() => removeManualRow(i)}
                       style={{ color: 'var(--error-500)' }}
                     >
-                      🗑️ Remover
+                      Remover
                     </Button>
                   )}
                 </div>
@@ -290,7 +291,7 @@ export default function UploadResponses() {
                 variant="ghost"
                 onClick={addManualRow}
               >
-                ➕ Adicionar Aluno
+                + Adicionar aluno
               </Button>
             </div>
           </div>
@@ -300,7 +301,7 @@ export default function UploadResponses() {
       {error && (
         <div className="alert-box alert-box--error" role="alert" style={{ marginTop: 'var(--space-4)' }}>
           <IconAlertCircle size={18} />
-          <span>❌ {error}</span>
+          <span>{error}</span>
         </div>
       )}
 
@@ -320,7 +321,7 @@ export default function UploadResponses() {
           disabled={loading}
           id="btn-submit-responses"
         >
-          {loading ? 'Enviando...' : 'Enviar e Gerar Feedbacks 🚀'}
+          {loading ? 'Enviando...' : 'Enviar e gerar feedbacks'}
         </Button>
       </div>
     </div>

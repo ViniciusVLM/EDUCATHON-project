@@ -19,15 +19,12 @@ import {
   Button,
   Chip,
   ProgressBar,
-  ProgressRing,
+  Mascot,
+  Stamp,
+  Window,
+  toFileSlug,
   IconPlus,
-  IconFolder,
-  IconSparkles,
-  IconCheckCircle,
   IconAlertCircle,
-  IconClock,
-  IconBell,
-  IconCap,
   IconRefresh,
 } from '../components/ui';
 
@@ -148,41 +145,36 @@ export default function Dashboard() {
 
   if (isBrandNewTeacher) {
     return (
-      <div className="dashboard" data-testid="dashboard-empty-state">
-        <div className="dashboard-header">
+      <div className="painel" data-testid="dashboard-empty-state">
+        <section className="painel-hero">
           <div>
-            <h1 className="dashboard-greeting__title">
-              Olá, {firstName}! O que vamos corrigir hoje?
+            <h1 className="painel-hero__title">
+              Olá, <em>{firstName}!</em>
             </h1>
-            <p className="dashboard-greeting__subtitle">
-              Seu copiloto pedagógico pronto para acelerar suas avaliações com IA.
+            <p className="painel-hero__lead">
+              Seu copiloto pedagógico está pronto. Crie a primeira atividade, envie as respostas
+              da turma e receba um rascunho de feedback para cada aluno.
             </p>
+            <div className="painel-hero__actions">
+              <Link to="/setup" className="btn-link btn-link--primary">
+                <IconPlus size={20} /> Criar primeira atividade
+              </Link>
+            </div>
+            <span className="painel-hero__note">A IA nunca dá nota; o professor decide</span>
           </div>
-          <span className="dashboard-header__badge">
-            ✨ A IA nunca dá nota; o professor decide
-          </span>
-        </div>
-
-        <Card className="dashboard-empty">
-          <div className="dashboard-empty__icon" aria-hidden="true">
-            <IconCap size={36} />
+          <div className="painel-hero__art">
+            <Mascot size={230} />
           </div>
-          <h2 className="dashboard-empty__title">Bem-vindo(a) ao seu novo painel!</h2>
-          <p className="dashboard-empty__text">
-            Você ainda não possui nenhuma atividade criada. Cadastre sua primeira avaliação para
-            receber respostas dos estudantes e gerar feedbacks pedagógicos personalizados com IA.
-          </p>
+        </section>
 
-          <Link to="/setup" style={{ textDecoration: 'none' }}>
-            <Button variant="purple" size="lg" icon={<IconPlus size={20} />}>
-              Criar primeira atividade
-            </Button>
-          </Link>
-
-          <p className="dashboard-empty__notice">
-            💡 Dica: cada resposta de aluno recebe um rascunho de devolutiva detalhado para você revisar, ajustar e aprovar.
-          </p>
-        </Card>
+        <Window fileName="bem-vindo.txt" className="dashboard-empty-window">
+          <h2 className="section-title">Bem-vindo(a) ao seu novo painel!</h2>
+          <ol className="list-plain" style={{ listStyle: 'decimal', paddingLeft: 22, gap: 6, fontWeight: 600 }}>
+            <li>Cadastre a atividade com a pergunta, a rubrica e os critérios.</li>
+            <li>Envie as respostas dos alunos (CSV ou digitando).</li>
+            <li>Gere os rascunhos com IA, revise, edite e aprove.</li>
+          </ol>
+        </Window>
       </div>
     );
   }
@@ -195,279 +187,203 @@ export default function Dashboard() {
   const approvedPercent = totalBase > 0 ? Math.round((metrics.approved / totalBase) * 100) : 0;
   const errorPercent = totalBase > 0 ? Math.round((metrics.generation_errors / totalBase) * 100) : 0;
 
+  const pendingTotal = Math.max(metrics.total_students - metrics.approved, 0);
+  const firstToReview =
+    review_queue[0]?.activity_id ??
+    pending_review_items.find((i) => i.type !== 'generation_error')?.activity_id;
+  const queueById = new Map(review_queue.map((q) => [q.activity_id, q]));
+
   return (
-    <div className="dashboard" data-testid="dashboard-content">
+    <div className="painel" data-testid="dashboard-content">
       {/* ── 1. Saudação ── */}
-      <header className="dashboard-header">
+      <header className="painel-hero">
         <div>
-          <h1 className="dashboard-greeting__title">
-            Olá, {firstName}! O que vamos corrigir hoje?
+          <h1 className="painel-hero__title">
+            Olá, <em>{firstName}!</em>
+            <span className="sr-only"> O que vamos corrigir hoje?</span>
           </h1>
-          <p className="dashboard-greeting__subtitle">
-            Seu copiloto pedagógico pronto para acelerar suas avaliações com IA.
+          <p className="painel-hero__lead">
+            {pendingTotal > 0 ? (
+              <>Você tem <strong>{pendingTotal} feedback(s)</strong> esperando revisão. </>
+            ) : (
+              <>Tudo em dia por aqui! </>
+            )}
+            A IA já faz o rascunho, a decisão final é sempre sua.
           </p>
+          <div className="painel-hero__actions">
+            {firstToReview !== undefined && (
+              <Link to={`/review/${firstToReview}`} className="btn-link btn-link--primary">
+                Revisar pendentes →
+              </Link>
+            )}
+            <Link to="/setup" className="btn-link btn-link--accent">
+              <IconPlus size={18} /> Nova atividade
+            </Link>
+          </div>
+          <span className="painel-hero__note">A IA nunca dá nota; o professor decide</span>
         </div>
-        <span className="dashboard-header__badge">
-          ✨ A IA nunca dá nota; o professor decide
-        </span>
+        <div className="painel-hero__art">
+          <Mascot size={240} />
+        </div>
       </header>
 
-      {/* ── 2. Linha de Atalhos ── */}
-      <section className="dashboard-shortcuts" aria-label="Atalhos rápidos">
-        {/* Cartão tracejado com "+" */}
-        <Link
-          to="/setup"
-          className="dashboard-shortcut-card dashboard-shortcut-card--dashed"
-          aria-label="Nova atividade"
-          id="shortcut-new-activity"
-        >
-          <div className="dashboard-shortcut-card__icon-wrap dashboard-shortcut-card__icon-wrap--dashed" aria-hidden="true">
-            <IconPlus size={22} />
-          </div>
-          <span className="dashboard-shortcut-card__title">Nova atividade</span>
-          <span className="dashboard-shortcut-card__desc">Configurar e criar</span>
-        </Link>
-
-        {/* 3 cartões com ilustrações originais */}
-        <Link
-          to="/activities"
-          className="dashboard-shortcut-card"
-          aria-label="Organize suas atividades"
-          id="shortcut-activities"
-        >
-          <Card as="div" variant="hover" style={{ width: '100%', height: '100%', padding: 'var(--space-4)' }}>
-            <div className="dashboard-shortcut-card__icon-wrap dashboard-shortcut-card__icon-wrap--purple" aria-hidden="true">
-              <IconFolder size={20} />
-            </div>
-            <p className="dashboard-shortcut-card__title">Organize suas atividades</p>
-            <p className="dashboard-shortcut-card__desc">Acesse turmas e histórico</p>
-          </Card>
-        </Link>
-
-        <Link
-          to="/setup"
-          className="dashboard-shortcut-card"
-          aria-label="Gere feedback com IA"
-          id="shortcut-ai-feedback"
-        >
-          <Card as="div" variant="hover" style={{ width: '100%', height: '100%', padding: 'var(--space-4)' }}>
-            <div className="dashboard-shortcut-card__icon-wrap dashboard-shortcut-card__icon-wrap--blue" aria-hidden="true">
-              <IconSparkles size={20} />
-            </div>
-            <p className="dashboard-shortcut-card__title">Gere feedback com IA</p>
-            <p className="dashboard-shortcut-card__desc">Copiloto sob medida</p>
-          </Card>
-        </Link>
-
-        <Link
-          to="/activities"
-          className="dashboard-shortcut-card"
-          aria-label="Revise e aprove"
-          id="shortcut-review-approve"
-        >
-          <Card as="div" variant="hover" style={{ width: '100%', height: '100%', padding: 'var(--space-4)' }}>
-            <div className="dashboard-shortcut-card__icon-wrap dashboard-shortcut-card__icon-wrap--green" aria-hidden="true">
-              <IconCheckCircle size={20} />
-            </div>
-            <p className="dashboard-shortcut-card__title">Revise e aprove</p>
-            <p className="dashboard-shortcut-card__desc">Você dá a palavra final</p>
-          </Card>
-        </Link>
+      {/* ── 2. Atalhos ── */}
+      <section aria-label="Atalhos rápidos">
+        <h2 className="section-title" style={{ fontSize: '1.4rem' }}>Atalhos</h2>
+        <div className="quicklinks">
+          <Link to="/setup" className="quicklinks__item quicklinks__item--accent" aria-label="Nova atividade" id="shortcut-new-activity">
+            Nova atividade <span className="quicklinks__arrow" aria-hidden="true">↗</span>
+          </Link>
+          <Link to="/activities" className="quicklinks__item" aria-label="Organize suas atividades" id="shortcut-activities">
+            Minhas atividades <span className="quicklinks__arrow" aria-hidden="true">↗</span>
+          </Link>
+          <Link to="/setup" className="quicklinks__item" aria-label="Gere feedback com IA" id="shortcut-ai-feedback">
+            Gerar feedback <span className="quicklinks__arrow" aria-hidden="true">↗</span>
+          </Link>
+          <Link to="/activities" className="quicklinks__item" aria-label="Revise e aprove" id="shortcut-review-approve">
+            Revisar e aprovar <span className="quicklinks__arrow" aria-hidden="true">↗</span>
+          </Link>
+        </div>
       </section>
 
-      {/* ── Grade Principal do Painel ── */}
-      <div className="dashboard-main-grid">
-        {/* Coluna Esquerda: Pendências, Atividades Recentes e Fila */}
-        <div className="dashboard-col">
-          {/* ── 3. Pendências de Revisão ── */}
-          <Card id="section-pendings">
-            <div className="dashboard-section-header">
-              <h2 className="dashboard-section-header__title">
-                <IconBell size={18} />
-                Pendências de revisão
-              </h2>
-              {pending_review_items.length > 0 && (
-                <span className="dashboard-section-header__count" data-testid="pending-count-badge">
-                  {pending_review_items.length}
-                </span>
-              )}
-            </div>
+      {/* ── 3. Atividades recentes (faixa pontilhada) ── */}
+      <section className="band" id="section-recent-activities" aria-labelledby="titulo-recentes">
+        <div className="section-head">
+          <h2 className="section-title" id="titulo-recentes">Atividades recentes</h2>
+          <Link to="/activities">Ver todas</Link>
+        </div>
 
+        {recent_activities.length === 0 ? (
+          <p className="empty-line">Nenhuma atividade recente encontrada.</p>
+        ) : (
+          <div className="act-grid">
+            {recent_activities.map((act) => {
+              const q = queueById.get(act.id);
+              const total = q?.total ?? act.total_students;
+              const approved = q?.approved ?? act.approved;
+              return (
+                <Window key={act.id} as="article" fileName={`${toFileSlug(act.title)}.csv`}>
+                  <h3 className="act-card__title">
+                    <Link to={`/review/${act.id}`}>{act.title}</Link>
+                  </h3>
+                  <div className="act-card__meta">
+                    {act.subject && <Chip color="purple" size="sm">{act.subject}</Chip>}
+                    {act.class_name && <Chip color="blue" size="sm">{act.class_name}</Chip>}
+                  </div>
+                  <div className="act-card__row">
+                    <span>Aprovação</span>
+                    <span>{approved} de {total}</span>
+                  </div>
+                  <ProgressBar value={approved} max={Math.max(total, 1)} variant="purple" showLabel={false} label={`Aprovados: ${approved} de ${total}`} />
+                  <p className="act-card__info">
+                    {act.total_students} aluno(s) · criada em {formatDueDate(act.created_at)}
+                  </p>
+                  <div className="act-card__foot">
+                    {act.pending_review > 0 ? (
+                      <Stamp tone="pending">{act.pending_review} pendente(s)</Stamp>
+                    ) : (
+                      <Stamp tone="approved">Revisado</Stamp>
+                    )}
+                    <Link to={`/review/${act.id}`} className="btn-link btn-link--primary btn-link--sm">
+                      Revisar
+                    </Link>
+                  </div>
+                </Window>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
+      {/* ── 4. Números ── */}
+      <section className="stat-tiles" aria-label="Resumo" id="section-progress-rings">
+        <div className="stat-tile stat-tile--blue">
+          <span className="stat-tile__num">{metrics.total_students}</span>
+          <span className="stat-tile__label">alunos<span className="stat-tile__sub">em {metrics.total_activities} atividade(s)</span></span>
+        </div>
+        <div className="stat-tile stat-tile--green">
+          <span className="stat-tile__num" aria-label={`Taxa de aprovação: ${approvedPercent}%`}>{metrics.approved}</span>
+          <span className="stat-tile__label">Aprovados<span className="stat-tile__sub">{approvedPercent}% prontos para exportar</span></span>
+        </div>
+        <div className="stat-tile stat-tile--red">
+          <span className="stat-tile__num" aria-label={`Taxa de erros: ${errorPercent}%`}>{metrics.generation_errors}</span>
+          <span className="stat-tile__label">Gerações com erro<span className="stat-tile__sub">{metrics.generation_errors > 0 ? 'tente gerar de novo' : 'nenhuma falha'}</span></span>
+        </div>
+      </section>
+
+      {/* ── 5. Pendências, fila e prazos ── */}
+      <div className="painel-grid">
+        <div className="painel-col">
+          <Window fileName="pendencias.txt" id="section-pendings"
+            barExtra={pending_review_items.length > 0 ? (
+              <span className="stamp stamp--pending" data-testid="pending-count-badge">{pending_review_items.length}</span>
+            ) : null}
+          >
+            <h2 className="section-title" style={{ fontSize: '1.5rem' }}>Pendências de revisão</h2>
             {pending_review_items.length === 0 ? (
-              <p style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)', textAlign: 'center', padding: '1rem' }}>
-                🎉 Nenhuma pendência no momento. Todas as correções estão em dia!
-              </p>
+              <p className="empty-line">Nenhuma pendência no momento. Todas as correções estão em dia!</p>
             ) : (
-              <div className="dashboard-pendings-list">
+              <ul className="list-plain">
                 {pending_review_items.map((item, idx) => (
-                  <div key={`${item.activity_id}-${item.type}-${idx}`} className="dashboard-pending-item">
-                    <div className="dashboard-pending-item__info">
-                      {item.type === 'generation_error' && (
-                        <Chip color="pink" size="sm">Erro IA</Chip>
-                      )}
-                      {item.type === 'pending_feedback' && (
-                        <Chip color="amber" size="sm">Aguardando</Chip>
-                      )}
-                      {item.type === 'generation_complete' && (
-                        <Chip color="green" size="sm">Concluído</Chip>
-                      )}
-
-                      <div className="dashboard-pending-item__text">
-                        <span className="dashboard-pending-item__title">{item.activity_title}</span>
-                        <span className="dashboard-pending-item__badge-label">
+                  <li key={`${item.activity_id}-${item.type}-${idx}`} className="list-row">
+                    <div className="list-row__main">
+                      {item.type === 'generation_error' && <Stamp tone="error">Erro IA</Stamp>}
+                      {item.type === 'pending_feedback' && <Stamp tone="info">Aguardando</Stamp>}
+                      {item.type === 'generation_complete' && <Stamp tone="approved">Pronto</Stamp>}
+                      <div className="list-row__text">
+                        <span className="list-row__title">{item.activity_title}</span>
+                        <span className="list-row__sub">
                           {item.type === 'pending_feedback' && `${item.count} resposta(s) para revisar`}
                           {item.type === 'generation_error' && `${item.count} falha(s) na geração`}
                           {item.type === 'generation_complete' && `${item.count} feedback(s) prontos para revisão`}
                         </span>
                       </div>
                     </div>
-
                     <Link
                       to={item.type === 'generation_error' ? `/upload/${item.activity_id}` : `/review/${item.activity_id}`}
-                      style={{ textDecoration: 'none' }}
+                      className="btn-link btn-link--plain btn-link--sm"
                     >
-                      <Button variant="ghost" size="sm">
-                        {item.type === 'generation_error' ? 'Tentar de novo' : 'Revisar'}
-                      </Button>
+                      {item.type === 'generation_error' ? 'Tentar de novo' : 'Revisar'}
                     </Link>
-                  </div>
+                  </li>
                 ))}
-              </div>
+              </ul>
             )}
-          </Card>
+          </Window>
 
-          {/* ── 4. Atividades Recentes ── */}
-          <Card id="section-recent-activities">
-            <div className="dashboard-section-header">
-              <h2 className="dashboard-section-header__title">
-                <IconFolder size={18} />
-                Atividades recentes
-              </h2>
-              <Link to="/setup" style={{ textDecoration: 'none' }}>
-                <Button variant="ghost" size="sm" icon={<IconPlus size={14} />}>
-                  + Nova atividade
-                </Button>
-              </Link>
-            </div>
-
-            {recent_activities.length === 0 ? (
-              <p style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)', textAlign: 'center', padding: '1rem' }}>
-                Nenhuma atividade recente encontrada.
-              </p>
-            ) : (
-              <div className="dashboard-recent-list">
-                {recent_activities.map((act) => (
-                  <div key={act.id} className="dashboard-recent-item">
-                    <div className="dashboard-recent-item__top">
-                      <Link to={`/review/${act.id}`} className="dashboard-recent-item__title">
-                        {act.title}
-                      </Link>
-
-                      <div className="dashboard-recent-item__chips">
-                        {act.subject && <Chip color="purple" size="sm">{act.subject}</Chip>}
-                        {act.class_name && <Chip color="blue" size="sm">{act.class_name}</Chip>}
-                        {act.pending_review > 0 ? (
-                          <Chip color="amber" size="sm">{act.pending_review} pendente(s)</Chip>
-                        ) : (
-                          <Chip color="green" size="sm">Revisado</Chip>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="dashboard-recent-item__bottom">
-                      <span>{act.total_students} aluno(s) cadastrado(s)</span>
-                      <span>Criado em {formatDueDate(act.created_at)}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </Card>
-
-          {/* ── 6. Fila de Revisão ── */}
-          <Card id="section-review-queue">
-            <div className="dashboard-section-header">
-              <h2 className="dashboard-section-header__title">
-                <IconCheckCircle size={18} />
-                Fila de revisão
-              </h2>
-            </div>
-
+          <Window fileName="fila-de-revisao.txt" id="section-review-queue">
+            <h2 className="section-title" style={{ fontSize: '1.5rem' }}>Fila de revisão</h2>
             {review_queue.length === 0 ? (
-              <p style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)', textAlign: 'center', padding: '1rem' }}>
-                Nenhuma atividade com respostas pendentes na fila.
-              </p>
+              <p className="empty-line">Nenhuma atividade com respostas pendentes na fila.</p>
             ) : (
-              <div className="dashboard-queue-list">
+              <div>
                 {review_queue.map((q) => (
-                  <div key={q.activity_id} className="dashboard-queue-item">
-                    <div className="dashboard-queue-item__row">
-                      <span className="dashboard-queue-item__title">{q.title}</span>
-                      <Link to={`/review/${q.activity_id}`} style={{ textDecoration: 'none' }}>
-                        <Button variant="purple" size="sm">
-                          Revisar
-                        </Button>
+                  <div key={q.activity_id} className="queue-item">
+                    <div className="queue-item__row">
+                      <span className="queue-item__title">{q.title}</span>
+                      <Link to={`/review/${q.activity_id}`} className="btn-link btn-link--primary btn-link--sm">
+                        Revisar
                       </Link>
                     </div>
-
                     <ProgressBar
                       value={q.approved}
-                      max={q.total}
+                      max={Math.max(q.total, 1)}
                       variant="purple"
                       label={`Progresso de aprovação: ${q.approved} de ${q.total}`}
                     />
-
-                    <span className="dashboard-queue-item__meta">
+                    <span className="queue-item__meta">
                       {q.approved} de {q.total} aprovados ({q.progress_percent}%)
                     </span>
                   </div>
                 ))}
               </div>
             )}
-          </Card>
+          </Window>
         </div>
 
-        {/* Coluna Direita: Anéis e Prazos */}
-        <div className="dashboard-col">
-          {/* ── 7. Dois Anéis de Progresso ── */}
-          <Card className="dashboard-rings-card" id="section-progress-rings">
-            <div className="dashboard-ring-box">
-              <ProgressRing
-                value={approvedPercent}
-                size={86}
-                strokeWidth={9}
-                variant="success"
-                label={`Taxa de aprovação: ${approvedPercent}%`}
-              />
-              <span className="dashboard-ring-box__label">Aprovados</span>
-              <span className="dashboard-ring-box__sub">{metrics.approved} feedbacks</span>
-            </div>
-
-            <div className="dashboard-ring-box">
-              <ProgressRing
-                value={errorPercent}
-                size={86}
-                strokeWidth={9}
-                variant={metrics.generation_errors > 0 ? 'danger' : 'purple'}
-                label={`Taxa de erros: ${errorPercent}%`}
-              />
-              <span className="dashboard-ring-box__label">Gerações com erro</span>
-              <span className="dashboard-ring-box__sub">
-                {metrics.generation_errors > 0 ? `${metrics.generation_errors} falha(s)` : '0 falhas'}
-              </span>
-            </div>
-          </Card>
-
-          {/* ── 5. Prazos (com semana atual) ── */}
-          <Card id="section-deadlines">
-            <div className="dashboard-section-header">
-              <h2 className="dashboard-section-header__title">
-                <IconClock size={18} />
-                Prazos
-              </h2>
-            </div>
-
-            {/* Barra da semana atual */}
+        <div className="painel-col">
+          <Window fileName="prazos.txt" id="section-deadlines">
+            <h2 className="section-title" style={{ fontSize: '1.5rem' }}>Prazos</h2>
             <div className="dashboard-week-strip" role="group" aria-label="Dias da semana atual">
               {weekDays.map((d, i) => (
                 <div
@@ -481,25 +397,19 @@ export default function Dashboard() {
                 </div>
               ))}
             </div>
-
-            {/* Lista de atividades com prazo */}
             {deadlines.length === 0 ? (
-              <p style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)', textAlign: 'center', padding: '1rem' }}>
-                Nenhuma atividade com prazo cadastrado.
-              </p>
+              <p className="empty-line">Nenhuma atividade com prazo cadastrado.</p>
             ) : (
-              <div className="dashboard-deadlines-list">
+              <ul className="list-plain">
                 {deadlines.map((dl) => (
-                  <div key={dl.activity_id} className="dashboard-deadline-item">
-                    <span className="dashboard-deadline-item__title">{dl.title}</span>
-                    <span className="dashboard-deadline-item__date">
-                      {formatDueDate(dl.due_date)}
-                    </span>
-                  </div>
+                  <li key={dl.activity_id} className="list-row">
+                    <span className="list-row__title">{dl.title}</span>
+                    <Stamp tone="reviewed">{formatDueDate(dl.due_date)}</Stamp>
+                  </li>
                 ))}
-              </div>
+              </ul>
             )}
-          </Card>
+          </Window>
         </div>
       </div>
     </div>

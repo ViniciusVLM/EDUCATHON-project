@@ -1,5 +1,5 @@
 /**
- * ProgressBar — barra de progresso fina em roxo.
+ * ProgressBar — barra de progresso no estilo "lápis escrevendo".
  * value: 0–100
  */
 import React from 'react';
@@ -12,6 +12,8 @@ interface ProgressBarProps {
   variant?: 'purple' | 'green' | 'red' | 'amber';
   height?: number;
   showValue?: boolean;
+  /** false = não mostra o texto acima da barra (o rótulo continua para leitores de tela). */
+  showLabel?: boolean;
   className?: string;
 }
 
@@ -23,6 +25,7 @@ export function ProgressBar({
   variant = 'purple',
   height = 6,
   showValue = true,
+  showLabel = true,
   className = '',
 }: ProgressBarProps) {
   const chosenColor = color || variant;
@@ -30,7 +33,7 @@ export function ProgressBar({
   const clamped = Math.round(Math.min(100, Math.max(0, numericValue)));
   return (
     <div className={`ui-progress-bar ${className}`} style={{ '--pb-height': `${height}px` } as React.CSSProperties}>
-      {label && (
+      {label && showLabel && (
         <div className="ui-progress-bar__header">
           <span className="ui-progress-bar__label">{label}</span>
           {showValue && <span className="ui-progress-bar__value">{clamped}%</span>}

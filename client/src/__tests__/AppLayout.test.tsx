@@ -1,6 +1,6 @@
 /**
  * Testes do AppLayout.
- * Verifica: renderização da sidebar, itens de navegação,
+ * Verifica: renderização da barra superior, itens de navegação,
  * alternador de tema na topbar e menu do usuário.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -47,14 +47,14 @@ describe('AppLayout', () => {
     document.documentElement.removeAttribute('data-theme');
   });
 
-  it('renderiza a barra lateral com label de acessibilidade', () => {
+  it('renderiza a barra de navegação principal com label de acessibilidade', () => {
     renderLayout();
-    expect(screen.getByRole('complementary', { name: /Navegação principal/i })).toBeInTheDocument();
+    expect(screen.getByRole('navigation', { name: /Navegação principal/i })).toBeInTheDocument();
   });
 
-  it('exibe os itens de navegação na sidebar', () => {
+  it('exibe os itens de navegação na barra superior', () => {
     renderLayout();
-    const sidebar = screen.getByRole('complementary', { name: /Navegação principal/i });
+    const sidebar = screen.getByRole('navigation', { name: /Navegação principal/i });
     expect(within(sidebar).getByRole('link', { name: /Painel/i })).toBeInTheDocument();
     expect(within(sidebar).getByRole('link', { name: /Atividades/i })).toBeInTheDocument();
     expect(within(sidebar).getByRole('link', { name: /Turmas/i })).toBeInTheDocument();
@@ -83,9 +83,14 @@ describe('AppLayout', () => {
     expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
   });
 
-  it('renderiza o botão de notificações', () => {
+  it('renderiza o logo com link para o painel', () => {
     renderLayout();
-    expect(screen.getByRole('button', { name: /Notificações/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Educathon — ir para o painel/i })).toHaveAttribute('href', '/painel');
+  });
+
+  it('oferece link para pular direto ao conteúdo (acessibilidade)', () => {
+    renderLayout();
+    expect(screen.getByRole('link', { name: /Pular para o conteúdo/i })).toHaveAttribute('href', '#main-content');
   });
 
   it('renderiza o conteúdo filho dentro do layout', () => {

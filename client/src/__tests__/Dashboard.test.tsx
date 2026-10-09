@@ -153,7 +153,7 @@ describe('Dashboard Component (/painel)', () => {
 
     // 1. Saudação personalizada com primeiro nome
     await waitFor(() => {
-      expect(screen.getByText(/Olá, Profa.! O que vamos corrigir hoje\?/i)).toBeInTheDocument();
+      expect(screen.getByRole('heading', { level: 1, name: /Olá,\s*Profa\.!\s*O que vamos corrigir hoje\?/i })).toBeInTheDocument();
     });
 
     // 2. Linha de atalhos

@@ -3,7 +3,7 @@
    Copiloto Pedagógico
    ═══════════════════════════════════════════ */
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap');
+/* Fontes (Baloo 2 e Nunito) são empacotadas via @fontsource em main.tsx — funcionam offline (PWA). */
 @import './tokens.css';
 @import './animations.css';
 @import './layout.css';

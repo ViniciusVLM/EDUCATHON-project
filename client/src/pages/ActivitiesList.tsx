@@ -6,6 +6,7 @@ import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Chip } from '../components/ui/Chip';
 import { IconPlus, IconAlertCircle } from '../components/ui/Icons';
+import { Mascot } from '../components/ui/Mascot';
 
 export default function ActivitiesList() {
   const navigate = useNavigate();
@@ -38,7 +39,7 @@ export default function ActivitiesList() {
     <div className="page-container animate-fade-in">
       <div className="page-header-row">
         <div className="page-header-row__text">
-          <h2 className="page-title">📋 Atividades</h2>
+          <h2 className="page-title">Atividades</h2>
           <p className="page-subtitle">Todas as atividades já criadas.</p>
         </div>
         <Button
@@ -47,20 +48,20 @@ export default function ActivitiesList() {
           id="btn-new-activity"
           icon={<IconPlus size={18} />}
         >
-          ✨ Nova Atividade
+          Nova Atividade
         </Button>
       </div>
 
       {error && (
         <div className="alert-box alert-box--error" role="alert">
           <IconAlertCircle size={18} />
-          <span>❌ {error}</span>
+          <span>{error}</span>
         </div>
       )}
 
       {activities.length === 0 ? (
         <div className="card empty-state">
-          <div className="empty-state-icon">📭</div>
+          <div className="empty-state-icon"><Mascot size={90} /></div>
           <h3 className="empty-state-title">Nenhuma atividade ainda</h3>
           <p className="empty-state-text">
             Crie sua primeira atividade e comece a usar o copiloto pedagógico.
@@ -112,7 +113,7 @@ export default function ActivitiesList() {
                           id={`btn-upload-${a.id}`}
                           title="Enviar respostas"
                         >
-                          📤 Upload
+                          Enviar respostas
                         </Button>
                         <Button
                           variant="ghost"

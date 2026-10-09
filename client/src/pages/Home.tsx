@@ -1,12 +1,14 @@
 import { useNavigate } from 'react-router-dom';
+import { Mascot } from '../components/ui/Mascot';
 
 export default function Home() {
   const navigate = useNavigate();
 
   return (
     <div className="hero">
+      <Mascot size={150} className="home-mascot" />
       <div className="hero-badge animate-slide-down">
-        🎓 Educathon 2026
+        Educathon 2026
       </div>
 
       <h1 className="animate-slide-up">
@@ -24,14 +26,14 @@ export default function Home() {
           onClick={() => navigate('/setup')}
           id="btn-new-correction"
         >
-          ✨ Nova Correção
+          Nova correção
         </button>
         <button
           className="btn btn-secondary btn-lg"
           onClick={() => navigate('/activities')}
           id="btn-view-activities"
         >
-          📋 Ver Atividades
+          Ver atividades
         </button>
       </div>
 
