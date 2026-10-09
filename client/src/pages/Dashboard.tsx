@@ -189,9 +189,11 @@ export default function Dashboard() {
 
   const pendingTotal = Math.max(metrics.total_students - metrics.approved, 0);
   const firstToReview =
-    review_queue[0]?.activity_id ??
-    pending_review_items.find((i) => i.type !== 'generation_error')?.activity_id;
+    review_queue.find((q) => q.pending > 0)?.activity_id ??
+    pending_review_items.find((i) => i.type !== 'generation_error')?.activity_id ??
+    review_queue[0]?.activity_id;
   const queueById = new Map(review_queue.map((q) => [q.activity_id, q]));
+  const latestActivityId = recent_activities[0]?.id;
 
   return (
     <div className="painel" data-testid="dashboard-content">
@@ -211,7 +213,7 @@ export default function Dashboard() {
             A IA já faz o rascunho, a decisão final é sempre sua.
           </p>
           <div className="painel-hero__actions">
-            {firstToReview !== undefined && (
+            {pendingTotal > 0 && firstToReview !== undefined && (
               <Link to={`/review/${firstToReview}`} className="btn-link btn-link--primary">
                 Revisar pendentes →
               </Link>
@@ -227,21 +229,36 @@ export default function Dashboard() {
         </div>
       </header>
 
-      {/* ── 2. Atalhos ── */}
+      {/* ── 2. Atalhos (cada um leva a uma etapa diferente do fluxo) ── */}
       <section aria-label="Atalhos rápidos">
         <h2 className="section-title" style={{ fontSize: '1.4rem' }}>Atalhos</h2>
         <div className="quicklinks">
           <Link to="/setup" className="quicklinks__item quicklinks__item--accent" aria-label="Nova atividade" id="shortcut-new-activity">
             Nova atividade <span className="quicklinks__arrow" aria-hidden="true">↗</span>
           </Link>
-          <Link to="/activities" className="quicklinks__item" aria-label="Organize suas atividades" id="shortcut-activities">
-            Minhas atividades <span className="quicklinks__arrow" aria-hidden="true">↗</span>
+          <Link
+            to={latestActivityId !== undefined ? `/upload/${latestActivityId}` : '/activities'}
+            className="quicklinks__item"
+            aria-label="Enviar respostas"
+            id="shortcut-upload"
+          >
+            Enviar respostas <span className="quicklinks__arrow" aria-hidden="true">↗</span>
           </Link>
-          <Link to="/setup" className="quicklinks__item" aria-label="Gere feedback com IA" id="shortcut-ai-feedback">
-            Gerar feedback <span className="quicklinks__arrow" aria-hidden="true">↗</span>
-          </Link>
-          <Link to="/activities" className="quicklinks__item" aria-label="Revise e aprove" id="shortcut-review-approve">
+          <Link
+            to={firstToReview !== undefined ? `/review/${firstToReview}` : '/activities'}
+            className="quicklinks__item"
+            aria-label="Revisar e aprovar"
+            id="shortcut-review-approve"
+          >
             Revisar e aprovar <span className="quicklinks__arrow" aria-hidden="true">↗</span>
+          </Link>
+          <Link
+            to={latestActivityId !== undefined ? `/export/${latestActivityId}` : '/activities'}
+            className="quicklinks__item"
+            aria-label="Exportar resultados"
+            id="shortcut-export"
+          >
+            Exportar CSV <span className="quicklinks__arrow" aria-hidden="true">↗</span>
           </Link>
         </div>
       </section>

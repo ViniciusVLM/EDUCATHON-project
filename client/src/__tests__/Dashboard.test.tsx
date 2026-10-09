@@ -159,9 +159,9 @@ describe('Dashboard Component (/painel)', () => {
     // 2. Linha de atalhos
     const shortcuts = screen.getByRole('region', { name: /Atalhos rápidos/i });
     expect(within(shortcuts).getByRole('link', { name: /Nova atividade/i })).toBeInTheDocument();
-    expect(within(shortcuts).getByRole('link', { name: /Organize suas atividades/i })).toBeInTheDocument();
-    expect(within(shortcuts).getByRole('link', { name: /Gere feedback com IA/i })).toBeInTheDocument();
-    expect(within(shortcuts).getByRole('link', { name: /Revise e aprove/i })).toBeInTheDocument();
+    expect(within(shortcuts).getByRole('link', { name: /Enviar respostas/i })).toBeInTheDocument();
+    expect(within(shortcuts).getByRole('link', { name: /Revisar e aprovar/i })).toBeInTheDocument();
+    expect(within(shortcuts).getByRole('link', { name: /Exportar resultados/i })).toBeInTheDocument();
 
     // 3. Pendências de revisão
     expect(screen.getByText('Pendências de revisão')).toBeInTheDocument();
@@ -221,9 +221,12 @@ describe('Dashboard Component (/painel)', () => {
 
     const shortcuts = screen.getByRole('region', { name: /Atalhos rápidos/i });
     expect(within(shortcuts).getByRole('link', { name: /Nova atividade/i })).toHaveAttribute('href', '/setup');
-    expect(within(shortcuts).getByRole('link', { name: /Organize suas atividades/i })).toHaveAttribute('href', '/activities');
-    expect(within(shortcuts).getByRole('link', { name: /Gere feedback com IA/i })).toHaveAttribute('href', '/setup');
-    expect(within(shortcuts).getByRole('link', { name: /Revise e aprove/i })).toHaveAttribute('href', '/activities');
+    // Cada atalho leva a uma etapa diferente do fluxo (sem destinos repetidos)
+    expect(within(shortcuts).getByRole('link', { name: /Enviar respostas/i })).toHaveAttribute('href', '/upload/101');
+    expect(within(shortcuts).getByRole('link', { name: /Revisar e aprovar/i })).toHaveAttribute('href', '/review/101');
+    expect(within(shortcuts).getByRole('link', { name: /Exportar resultados/i })).toHaveAttribute('href', '/export/101');
+    const hrefs = within(shortcuts).getAllByRole('link').map((a) => a.getAttribute('href'));
+    expect(new Set(hrefs).size).toBe(hrefs.length);
 
     // Valida links de revisão e retry na lista de pendências
     const reviewBtns = screen.getAllByRole('link', { name: /Revisar/i });
