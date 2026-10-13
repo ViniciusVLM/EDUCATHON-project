@@ -1,0 +1,38 @@
+name: Daily Project Check
+
+on:
+  schedule:
+    # Executa todos os dias às 09:00 BRT (12:00 UTC)
+    - cron: '0 12 * * *'
+  # Permite disparar o fluxo manualmente pela interface do GitHub para testar
+  workflow_dispatch:
+
+permissions:
+  issues: write
+
+jobs:
+  audit-and-issue:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Baixar repositório
+        uses: actions/checkout@v4
+
+      - name: Executar rotina de verificação
+        run: |
+          echo "Executando testes ou auditoria de pacotes..."
+          # Adicione aqui comandos reais, por exemplo:
+          # npm test || true
+          # npm audit || true
+
+      - name: Abrir Issue de melhoria
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const today = new Date().toISOString().split('T')[0];
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `[Melhoria Contínua] Checklist de manutenção (${today})`,
+              body: `### Pontos de atenção para hoje\n\n- [ ] Verificar dependências desatualizadas\n- [ ] Checar cobertura de testes\n- [ ] Revisar documentação do README\n- [ ] Refatorar trechos pendentes de código\n\n_Automação disparada via GitHub Actions (cron)._`,
+              labels: ['enhancement', 'maintenance']
+            });
