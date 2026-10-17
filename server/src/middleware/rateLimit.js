@@ -37,3 +37,18 @@ export const aiGenerateLimiter = rateLimit({
   },
   skip: () => isTest && !process.env.TEST_RATE_LIMIT,
 });
+
+/**
+ * Limiter para a leitura de provas por IA (/api/activities/import).
+ * Cada leitura envia um arquivo inteiro ao Gemini, então o limite é menor.
+ */
+export const examImportLimiter = rateLimit({
+  windowMs: Number(process.env.IMPORT_RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,
+  max: Number(process.env.IMPORT_RATE_LIMIT_MAX) || 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    error: 'Limite de leitura de provas atingido temporariamente. Tente novamente em alguns minutos.',
+  },
+  skip: () => isTest && !process.env.TEST_RATE_LIMIT,
+});

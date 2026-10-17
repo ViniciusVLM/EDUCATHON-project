@@ -1,15 +1,17 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { getActivities } from '../services/api';
 import type { Activity } from '../types';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Chip } from '../components/ui/Chip';
-import { IconPlus, IconAlertCircle } from '../components/ui/Icons';
+import { IconPlus, IconAlertCircle, IconCheckCircle } from '../components/ui/Icons';
 import { Mascot } from '../components/ui/Mascot';
 
 export default function ActivitiesList() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const notice = (location.state as { notice?: string } | null)?.notice;
   const [activities, setActivities] = useState<Activity[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -51,6 +53,13 @@ export default function ActivitiesList() {
           Nova Atividade
         </Button>
       </div>
+
+      {notice && (
+        <div className="alert-box alert-box--success" role="status">
+          <IconCheckCircle size={18} />
+          <span>{notice}</span>
+        </div>
+      )}
 
       {error && (
         <div className="alert-box alert-box--error" role="alert">

@@ -11,6 +11,7 @@ import csvRouter from './routes/csv.js';
 import authRouter from './routes/auth.js';
 import classesRouter from './routes/classes.js';
 import dashboardRouter from './routes/dashboard.js';
+import examImportRouter from './routes/examImport.js';
 import { requireAuth } from './middleware/auth.js';
 import { checkGeminiApiKeyOnStartup } from './services/gemini.js';
 import { configureTrustProxy } from './services/config.js';
@@ -40,6 +41,10 @@ app.use(cors({
   methods: ['GET', 'POST', 'PATCH', 'DELETE'],
   credentials: true,
 }));
+
+// Leitura de provas: recebe arquivos de até 8 MB, por isso é montada antes do limite global de 2 MB
+// e usa um leitor de JSON próprio (ver routes/examImport.js).
+app.use('/api/activities/import', requireAuth, examImportRouter);
 
 app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true, limit: '2mb' }));
