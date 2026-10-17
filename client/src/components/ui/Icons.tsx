@@ -177,3 +177,12 @@ export function IconRefresh({ size = 20, className = '', style }: IconProps) {
   );
 }
 
+
+// ── Lixeira / Excluir ──
+export function IconTrash({ size = 20, className = '', style }: IconProps) {
+  return (
+    <svg aria-hidden="true" width={size} height={size} viewBox="0 0 20 20" fill="none" className={className} style={style}>
+      <path d="M4 6h12M8 6V4h4v2M6 6l1 11h6l1-11" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  );
+}

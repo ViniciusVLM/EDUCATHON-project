@@ -13,6 +13,8 @@ import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Chip } from '../components/ui/Chip';
 import { IconPlus, IconAlertCircle, IconCheckCircle } from '../components/ui/Icons';
+import { Mascot } from '../components/ui/Mascot';
+import { IconTrash } from '../components/ui/Icons';
 
 export default function ClassesManagement() {
   const [classes, setClasses] = useState<Class[]>([]);
@@ -195,7 +197,7 @@ export default function ClassesManagement() {
     <div className="page-container animate-fade-in">
       <div className="page-header-row">
         <div className="page-header-row__text">
-          <h2 className="page-title">🏫 Gestão de Turmas e Alunos</h2>
+          <h2 className="page-title">Turmas e alunos</h2>
           <p className="page-subtitle">
             Organize suas turmas para vincular em atividades e casar respostas automaticamente.
           </p>
@@ -213,14 +215,14 @@ export default function ClassesManagement() {
       {error && (
         <div className="alert-box alert-box--error" role="alert">
           <IconAlertCircle size={18} />
-          <span>⚠️ {error}</span>
+          <span>{error}</span>
         </div>
       )}
 
       {successMessage && (
         <div className="alert-box alert-box--success" role="status">
           <IconCheckCircle size={18} />
-          <span>✅ {successMessage}</span>
+          <span>{successMessage}</span>
         </div>
       )}
 
@@ -277,7 +279,7 @@ export default function ClassesManagement() {
         <div>
           <div className="page-header-row" style={{ marginBottom: 'var(--space-3)' }}>
             <h3 style={{ fontSize: 'var(--text-lg)', margin: 0, display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-              <span>📚 Suas Turmas</span>
+              <span>Suas turmas</span>
               <span className="classes-header-count">({classes.length})</span>
             </h3>
           </div>
@@ -288,7 +290,7 @@ export default function ClassesManagement() {
             </div>
           ) : classes.length === 0 ? (
             <Card className="empty-state">
-              <div className="empty-state-icon">🏫</div>
+              <div className="empty-state-icon"><Mascot size={90} /></div>
               <h3 className="empty-state-title">Nenhuma turma cadastrada</h3>
               <p className="empty-state-text">
                 Crie sua primeira turma para gerenciar alunos e facilitar correções.
@@ -323,7 +325,7 @@ export default function ClassesManagement() {
                         )}
                       </div>
                       <div className="class-card__meta">
-                        👥 {cls.student_count || 0} aluno{cls.student_count === 1 ? '' : 's'}
+                        {cls.student_count || 0} aluno{cls.student_count === 1 ? '' : 's'}
                       </div>
                     </div>
 
@@ -342,9 +344,10 @@ export default function ClassesManagement() {
                         variant="ghost"
                         onClick={() => handleDeleteClass(cls.id, cls.name)}
                         title="Excluir turma"
+                        aria-label={`Excluir turma ${cls.name}`}
                         style={{ color: 'var(--error-500)' }}
                       >
-                        🗑️
+                        <IconTrash size={16} />
                       </Button>
                     </div>
                   </div>
@@ -468,7 +471,7 @@ export default function ClassesManagement() {
                         <div className="student-row__name">{student.name}</div>
                         {student.email && (
                           <div className="student-row__email">
-                            ✉️ {student.email}
+                            {student.email}
                           </div>
                         )}
                       </div>

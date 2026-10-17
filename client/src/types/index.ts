@@ -200,3 +200,29 @@ export interface DashboardSummary {
   review_queue: DashboardReviewQueueItem[];
 }
 
+
+// ── Leitura de provas (importar arquivo para o formulário de atividade) ──
+export interface ExamImportQuestion {
+  number: string;
+  title: string;
+  question: string;
+  rubric: string;
+  rubricFromDocument: boolean;
+  criteria: { criterio: string; peso: number }[];
+}
+
+export interface ExamImportResult {
+  fileName: string;
+  sourceType: 'pdf' | 'docx' | 'image' | 'text';
+  exam: {
+    title: string | null;
+    subject: string | null;
+    educationLevel: 'fundamental' | 'medio' | 'superior' | null;
+    dueDate: string | null;
+    classText: string | null;
+  };
+  suggestedClassId: number | null;
+  questions: ExamImportQuestion[];
+  ignoredObjectiveQuestions: number;
+  warnings: string[];
+}

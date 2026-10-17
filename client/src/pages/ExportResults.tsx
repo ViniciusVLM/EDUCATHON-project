@@ -4,9 +4,10 @@ import { getActivity, exportCSV } from '../services/api';
 import type { ActivityWithResponses } from '../types';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
-import { Chip } from '../components/ui/Chip';
 import { ProgressBar } from '../components/ui/ProgressBar';
 import { IconAlertCircle } from '../components/ui/Icons';
+import { Mascot } from '../components/ui/Mascot';
+import { Stamp } from '../components/ui/Stamp';
 
 export default function ExportResults() {
   const { activityId } = useParams<{ activityId: string }>();
@@ -62,7 +63,7 @@ export default function ExportResults() {
     return (
       <div className="page-container">
         <Card className="empty-state">
-          <div className="empty-state-icon">😕</div>
+          <div className="empty-state-icon"><Mascot size={90} /></div>
           <h3 className="empty-state-title">Atividade não encontrada</h3>
         </Card>
       </div>
@@ -78,7 +79,7 @@ export default function ExportResults() {
     <div className="page-container page-container-narrow animate-fade-in">
       <div className="page-header-row">
         <div className="page-header-row__text">
-          <h2 className="page-title">📥 Exportar Resultados</h2>
+          <h2 className="page-title">Exportar resultados</h2>
           <p className="page-subtitle">{activity.title}</p>
         </div>
       </div>
@@ -149,10 +150,10 @@ export default function ExportResults() {
                       {(r.teacher_feedback || r.ai_feedback_text || '').length > 120 ? '...' : ''}
                     </td>
                     <td>
-                      {r.status === 'aprovado' && <Chip variant="green">✅ Aprovado</Chip>}
-                      {r.status === 'revisado' && <Chip variant="blue">✏️ Editado</Chip>}
-                      {r.status === 'pendente' && <Chip variant="amber">🟡 Pendente</Chip>}
-                      {!r.status && <Chip variant="pink">⏳ Sem feedback</Chip>}
+                      {r.status === 'aprovado' && <Stamp tone="approved">Aprovado</Stamp>}
+                      {r.status === 'revisado' && <Stamp tone="reviewed">Editado</Stamp>}
+                      {r.status === 'pendente' && <Stamp tone="pending">Pendente</Stamp>}
+                      {!r.status && <Stamp tone="error">Sem feedback</Stamp>}
                     </td>
                   </tr>
                 ))}
@@ -178,14 +179,14 @@ export default function ExportResults() {
           disabled={exporting}
           id="btn-export-csv"
         >
-          {exporting ? 'Exportando...' : '📥 Baixar CSV com Feedbacks'}
+          {exporting ? 'Exportando...' : 'Baixar CSV com feedbacks'}
         </Button>
       </div>
 
       {error && (
         <div className="alert-box alert-box--error" role="alert" style={{ marginTop: 'var(--space-4)' }}>
           <IconAlertCircle size={18} />
-          <span>❌ {error}</span>
+          <span>{error}</span>
         </div>
       )}
     </div>

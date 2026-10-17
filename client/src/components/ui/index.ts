@@ -9,3 +9,6 @@ export { ProgressBar }  from './ProgressBar';
 export { ProgressRing } from './ProgressRing';
 export { Avatar }       from './Avatar';
 export * from './Icons';
+export { Mascot }       from './Mascot';
+export { Window, toFileSlug } from './Window';
+export { Stamp }        from './Stamp';

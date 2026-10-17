@@ -148,15 +148,15 @@ describe('ReviewDashboard — Critérios de Avaliação', () => {
     });
 
     // Critério 1 deve estar atendido e Critério 2 não atendido
-    expect(screen.getByRole('button', { name: /✅ Atendido/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /❌ Não atendido/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^✓ Atendido/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /✗ Não atendido/i })).toBeInTheDocument();
 
     // Professor clica no segundo critério para corrigir para atendido
-    const toggleBtn = screen.getByRole('button', { name: /❌ Não atendido/i });
+    const toggleBtn = screen.getByRole('button', { name: /✗ Não atendido/i });
     await user.click(toggleBtn);
 
     // Agora ambos devem constar como atendidos na interface
-    const attendedButtons = screen.getAllByRole('button', { name: /✅ Atendido/i });
+    const attendedButtons = screen.getAllByRole('button', { name: /^✓ Atendido/i });
     expect(attendedButtons.length).toBe(2);
 
     // Clica em Salvar Edição

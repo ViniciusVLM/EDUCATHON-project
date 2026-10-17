@@ -121,6 +121,9 @@ graph TD
    - Todas as operações sobre turmas, atividades, alunos e feedbacks validam a propriedade do registro (`teacher_id = req.teacher.id`). Requisições manipuladas para acessar recursos de outros professores recebem `404 Not Found` padronizado, impedindo enumeração de IDs e vazamento de informações.
 5. **Privacidade e Integridade dos Dados dos Alunos**:
    - Apenas dados pertinentes à atividade são armazenados. O módulo de exportação CSV aplica escape rigoroso contra *Formula / CSV Injection* (DDE), prefixando com apóstrofo qualquer célula iniciada por `=`, `+`, `-`, `@`, `\t` ou `\r`.
+6. **Atividades a partir do arquivo da prova**:
+   - Em *Configurar atividade*, o professor envia a prova em PDF, Word (.docx), foto ou .txt (até 8 MB). A IA extrai as questões dissertativas, o gabarito (ou sugere uma rubrica, sinalizada como sugestão), critérios, disciplina, nível, prazo e a turma escrita no cabeçalho. Cada questão vira um rascunho de atividade, e nada é criado sem a revisão do professor.
+   - O tipo do arquivo é conferido pelos bytes (não pela extensão), o `.docx` é lido no próprio servidor com limite de descompactação, o conteúdo do documento é tratado como dado (proteção contra *prompt injection*) e o arquivo não é gravado em disco. A turma só é sugerida entre as turmas do próprio professor. No modo demonstração (`GEMINI_MOCK=true`), a leitura funciona com `.docx` e `.txt`; PDF e fotos precisam da chave do Gemini.
 
 ---
 
@@ -229,5 +232,7 @@ Para conectar à API real do Google Gemini em ambiente de produção:
    JWT_SECRET=seu_segredo_aleatorio_com_mais_de_32_caracteres
    GEMINI_MOCK=false
    GEMINI_MODEL=gemini-3.8-flash
+   # Opcional: modelo usado só na leitura de provas (padrão: o mesmo de GEMINI_MODEL)
+   # GEMINI_IMPORT_MODEL=gemini-3.8-flash
    ```
 3. Inicie o servidor normalmente com `npm start` ou `npm run dev`.

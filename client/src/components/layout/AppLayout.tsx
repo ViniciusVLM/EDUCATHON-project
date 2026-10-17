@@ -1,16 +1,13 @@
 /**
  * AppLayout — layout principal das rotas protegidas.
  *
- * Estrutura:
- *   <body>
- *     <div.app-shell>
- *       <aside.app-sidebar>  ← barra lateral roxa (desktop)
- *       <div.app-main>
- *         <header.app-topbar> ← abas, alternador de tema, sino, menu
- *         <main.app-content>
- *           {children}
+ * Estrutura (redesign "caderno"):
+ *   <div.edu-shell>
+ *     <header.edu-nav>   ← barra azul: logo (mascote), links, tema, menu do usuário
+ *     <main.edu-content> ← {children}
+ *     <nav.edu-tabbar>   ← abas inferiores no celular / PWA
  *
- * Em telas ≤ 768px a sidebar vira uma barra de navegação inferior.
+ * Em telas ≤ 820px os links da barra superior somem e as abas inferiores aparecem.
  */
 import React, { useState, useRef, useEffect } from 'react';
 import { NavLink, Link, useNavigate } from 'react-router-dom';
@@ -21,35 +18,27 @@ import {
   IconDocument,
   IconUsers,
   IconPlus,
-  IconBell,
   IconSun,
   IconMoon,
   IconLogout,
-  IconCap,
 } from '../ui/Icons';
+import { Mascot } from '../ui/Mascot';
 import { Avatar } from '../ui/Avatar';
 import { getHealth } from '../../services/api';
 
 interface NavItem {
   to: string;
   label: string;
+  short: string;
   icon: React.ReactNode;
   id: string;
 }
 
 const navItems: NavItem[] = [
-  { to: '/painel',     label: 'Painel',         icon: <IconGrid />,     id: 'nav-painel'     },
-  { to: '/activities', label: 'Atividades',      icon: <IconDocument />, id: 'nav-atividades' },
-  { to: '/classes',    label: 'Turmas',          icon: <IconUsers />,    id: 'nav-turmas'     },
-  { to: '/setup',      label: 'Nova Atividade',  icon: <IconPlus />,     id: 'nav-nova'       },
-];
-
-// Abas exibidas na topbar (mapeadas às rotas)
-const tabItems = [
-  { to: '/painel',     label: 'Painel'     },
-  { to: '/activities', label: 'Atividades' },
-  { to: '/classes',    label: 'Turmas'     },
-  { to: '/setup',      label: 'Nova'       },
+  { to: '/painel',     label: 'Painel',         short: 'Painel',     icon: <IconGrid />,     id: 'nav-painel'     },
+  { to: '/activities', label: 'Atividades',     short: 'Atividades', icon: <IconDocument />, id: 'nav-atividades' },
+  { to: '/classes',    label: 'Turmas',         short: 'Turmas',     icon: <IconUsers />,    id: 'nav-turmas'     },
+  { to: '/setup',      label: 'Nova Atividade', short: 'Nova',       icon: <IconPlus />,     id: 'nav-nova'       },
 ];
 
 interface AppLayoutProps {
@@ -98,18 +87,19 @@ export function AppLayout({ children }: AppLayoutProps) {
   }
 
   return (
-    <div className="app-shell">
-      {/* ── Sidebar ── */}
-      <aside className="app-sidebar" aria-label="Navegação principal">
-        {/* Logo */}
-        <Link to="/painel" className="app-sidebar__logo" aria-label="Educathon" title="Educathon">
-          <div className="app-sidebar__logo-icon">
-            <IconCap size={22} />
-          </div>
+    <div className="edu-shell">
+      <a href="#main-content" className="edu-skip">Pular para o conteúdo</a>
+
+      {/* ── Barra superior (azul) ── */}
+      <header className="edu-nav">
+        <Link to="/painel" className="edu-nav__logo" aria-label="Educathon — ir para o painel">
+          <span className="edu-nav__logo-mark" aria-hidden="true">
+            <Mascot variant="head" size={30} />
+          </span>
+          <span className="edu-nav__logo-text">Educathon</span>
         </Link>
 
-        {/* Itens de navegação */}
-        <nav className="app-sidebar__nav">
+        <nav className="edu-nav__links" aria-label="Navegação principal">
           <ul role="list">
             {navItems.map((item) => (
               <li key={item.id}>
@@ -117,170 +107,107 @@ export function AppLayout({ children }: AppLayoutProps) {
                   to={item.to}
                   id={item.id}
                   className={({ isActive }) =>
-                    `app-sidebar__nav-item${isActive ? ' app-sidebar__nav-item--active' : ''}`
+                    `edu-nav__link${item.to === '/setup' ? ' edu-nav__link--cta' : ''}${isActive ? ' edu-nav__link--active' : ''}`
                   }
-                  aria-label={item.label}
-                  title={item.label}
                 >
-                  {item.icon}
-                  <span className="app-sidebar__nav-label">{item.label}</span>
+                  {item.to === '/setup' ? <IconPlus size={16} /> : null}
+                  {item.label}
                 </NavLink>
               </li>
             ))}
           </ul>
         </nav>
 
-        {/* Botão de tema na sidebar (fica na base) */}
-        <div className="app-sidebar__footer">
-          <button
-            type="button"
-            className="app-sidebar__nav-item"
-            onClick={toggleTheme}
-            aria-label={theme === 'light' ? 'Ativar tema escuro' : 'Ativar tema claro'}
-            title={theme === 'light' ? 'Tema escuro' : 'Tema claro'}
-          >
-            {theme === 'light' ? <IconMoon /> : <IconSun />}
-            <span className="app-sidebar__nav-label">
-              {theme === 'light' ? 'Escuro' : 'Claro'}
+        <div className="edu-nav__actions">
+          {isMockMode && (
+            <span
+              className="edu-nav__demo"
+              id="badge-demo-mode"
+              role="status"
+              aria-label="Modo demonstração ativo"
+            >
+              Modo demonstração
             </span>
-          </button>
-        </div>
-      </aside>
+          )}
 
-      {/* ── Área principal ── */}
-      <div className="app-main">
-        {/* ── Topbar ── */}
-        <header className="app-topbar">
-          {/* Abas de texto */}
-          <nav className="app-topbar__tabs" aria-label="Abas de navegação">
-            {tabItems.map((tab) => (
-              <NavLink
-                key={tab.to}
-                to={tab.to}
-                className={({ isActive }) =>
-                  `app-topbar__tab${isActive ? ' app-topbar__tab--active' : ''}`
-                }
-              >
-                {tab.label}
-              </NavLink>
-            ))}
-          </nav>
-
-          {/* Ações à direita */}
-          <div className="app-topbar__actions">
-            {isMockMode && (
-              <span
-                className="app-topbar__demo-badge"
-                id="badge-demo-mode"
-                role="status"
-                aria-label="Modo demonstração ativo"
-              >
-                Modo demonstração
-              </span>
-            )}
-
-            {/* Alternador de tema (pílula) */}
-            <div className="app-topbar__theme-toggle" role="group" aria-label="Alternador de tema">
-              <button
-                type="button"
-                id="theme-btn-light"
-                className={`app-topbar__theme-btn${theme === 'light' ? ' app-topbar__theme-btn--active' : ''}`}
-                onClick={() => theme !== 'light' && toggleTheme()}
-                aria-pressed={theme === 'light'}
-                aria-label="Tema claro"
-              >
-                <IconSun size={14} />
-                Claro
-              </button>
-              <button
-                type="button"
-                id="theme-btn-dark"
-                className={`app-topbar__theme-btn${theme === 'dark' ? ' app-topbar__theme-btn--active' : ''}`}
-                onClick={() => theme !== 'dark' && toggleTheme()}
-                aria-pressed={theme === 'dark'}
-                aria-label="Tema escuro"
-              >
-                <IconMoon size={14} />
-                Escuro
-              </button>
-            </div>
-
-            {/* Sino */}
+          <div className="edu-theme" role="group" aria-label="Alternador de tema">
             <button
               type="button"
-              className="app-topbar__icon-btn"
-              aria-label="Notificações"
-              id="btn-notifications"
+              id="theme-btn-light"
+              className={`edu-theme__btn${theme === 'light' ? ' edu-theme__btn--active' : ''}`}
+              onClick={() => theme !== 'light' && toggleTheme()}
+              aria-pressed={theme === 'light'}
+              aria-label="Tema claro"
+              title="Tema claro"
             >
-              <IconBell size={18} />
+              <IconSun size={15} />
+            </button>
+            <button
+              type="button"
+              id="theme-btn-dark"
+              className={`edu-theme__btn${theme === 'dark' ? ' edu-theme__btn--active' : ''}`}
+              onClick={() => theme !== 'dark' && toggleTheme()}
+              aria-pressed={theme === 'dark'}
+              aria-label="Tema escuro"
+              title="Tema escuro"
+            >
+              <IconMoon size={15} />
+            </button>
+          </div>
+
+          <div className="edu-user" ref={userMenuRef}>
+            <button
+              type="button"
+              className="edu-user__btn"
+              onClick={() => setUserMenuOpen((v) => !v)}
+              aria-haspopup="menu"
+              aria-expanded={userMenuOpen}
+              aria-label={`Menu do professor ${teacher?.name ?? ''}`}
+              id="btn-user-menu"
+            >
+              <Avatar name={teacher?.name ?? 'P'} size="sm" />
             </button>
 
-            {/* Menu do usuário */}
-            <div className="app-topbar__user-menu" ref={userMenuRef}>
-              <button
-                type="button"
-                className="app-topbar__user-btn"
-                onClick={() => setUserMenuOpen((v) => !v)}
-                aria-haspopup="menu"
-                aria-expanded={userMenuOpen}
-                aria-label={`Menu do professor ${teacher?.name ?? ''}`}
-                id="btn-user-menu"
-              >
-                <Avatar name={teacher?.name ?? 'P'} size="sm" />
-                <span className="app-topbar__user-name">
-                  {teacher?.name?.split(' ')[0] ?? 'Professor'}
-                </span>
-              </button>
-
-              {userMenuOpen && (
-                <div
-                  className="app-topbar__dropdown"
-                  role="menu"
-                  aria-label="Opções do usuário"
-                >
-                  <div className="app-topbar__dropdown-header">
-                    <Avatar name={teacher?.name ?? 'P'} size="md" />
-                    <div>
-                      <p className="app-topbar__dropdown-name">{teacher?.name}</p>
-                      <p className="app-topbar__dropdown-email">{teacher?.email}</p>
-                    </div>
-                  </div>
-                  <hr className="app-topbar__dropdown-divider" />
-                  <button
-                    type="button"
-                    role="menuitem"
-                    className="app-topbar__dropdown-item app-topbar__dropdown-item--danger"
-                    onClick={handleLogout}
-                    id="btn-logout-dropdown"
-                  >
-                    <IconLogout size={16} />
-                    Sair
-                  </button>
+            {userMenuOpen && (
+              <div className="edu-user__menu" role="menu" aria-label="Opções do usuário">
+                <div className="edu-user__head">
+                  <p className="edu-user__name">{teacher?.name}</p>
+                  <p className="edu-user__email">{teacher?.email}</p>
                 </div>
-              )}
-            </div>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="edu-user__item"
+                  onClick={handleLogout}
+                  id="btn-logout-dropdown"
+                >
+                  <IconLogout size={16} />
+                  Sair
+                </button>
+              </div>
+            )}
           </div>
-        </header>
+        </div>
+      </header>
 
-        {/* ── Conteúdo ── */}
-        <main className="app-content" id="main-content" tabIndex={-1}>
-          {children}
-        </main>
-      </div>
+      {/* ── Conteúdo ── */}
+      <main className="edu-content" id="main-content" tabIndex={-1}>
+        {children}
+      </main>
 
-      {/* ── Barra inferior (mobile) ── */}
-      <nav className="app-bottombar" aria-label="Navegação inferior">
+      {/* ── Abas inferiores (celular / PWA) ── */}
+      <nav className="edu-tabbar" aria-label="Navegação inferior">
         {navItems.map((item) => (
           <NavLink
             key={item.id + '-mobile'}
             to={item.to}
             className={({ isActive }) =>
-              `app-bottombar__item${isActive ? ' app-bottombar__item--active' : ''}`
+              `edu-tabbar__item${isActive ? ' edu-tabbar__item--active' : ''}`
             }
             aria-label={item.label}
           >
             {item.icon}
-            <span className="app-bottombar__label">{item.label}</span>
+            <span className="edu-tabbar__label">{item.short}</span>
           </NavLink>
         ))}
       </nav>

@@ -13,6 +13,7 @@ import type {
   Student,
   CriterionScore,
   DashboardSummary,
+  ExamImportResult,
 } from '../types';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
@@ -109,6 +110,17 @@ export async function createActivity(data: {
   return request('/activities', {
     method: 'POST',
     body: JSON.stringify(data),
+  });
+}
+
+/**
+ * Envia o arquivo de uma prova (PDF, .docx, foto ou .txt) para a IA ler e devolver
+ * rascunhos de atividades. Nada é salvo: o professor revisa antes de criar.
+ */
+export async function importExam(fileName: string, dataBase64: string): Promise<ExamImportResult> {
+  return request('/activities/import', {
+    method: 'POST',
+    body: JSON.stringify({ fileName, dataBase64 }),
   });
 }
 
