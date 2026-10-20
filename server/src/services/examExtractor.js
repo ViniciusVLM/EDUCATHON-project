@@ -13,6 +13,7 @@ import {
   isMockEnabled,
   isTransientError,
   formatErrorSummary,
+  getClientForKey,
 } from './gemini.js';
 import { DocumentError } from './documentReader.js';
 
@@ -24,7 +25,20 @@ export const LIMITS = {
   criterion: 200,
   criteriaPerQuestion: 20,
   questions: 30,
+  option: 500,
+  options: 6,
 };
+
+const OPTION_LETTERS = ['A', 'B', 'C', 'D', 'E', 'F'];
+
+function cleanOptions(list) {
+  if (!Array.isArray(list)) return [];
+  return list
+    .map((o) => cleanString(typeof o === 'string' ? o : o?.texto, LIMITS.option))
+    .filter(Boolean)
+    .slice(0, LIMITS.options)
+    .map((texto, i) => ({ letra: OPTION_LETTERS[i], texto }));
+}
 
 const VALID_LEVELS = ['fundamental', 'medio', 'superior'];
 
@@ -144,6 +158,7 @@ export function normalizeExtraction(raw, classes = []) {
 
   const rawQuestions = Array.isArray(data.questoes) ? data.questoes : [];
   const questions = [];
+  let unusableObjective = 0;
   for (const q of rawQuestions) {
     const question = cleanString(q?.enunciado, LIMITS.question);
     if (question.length < 5) continue;
@@ -155,18 +170,42 @@ export function normalizeExtraction(raw, classes = []) {
       title = `${examTitle} — Questão ${number}${shortTitle ? `: ${shortTitle}` : ''}`;
     }
 
-    questions.push({
-      number: number || String(questions.length + 1),
-      title: cleanString(title, LIMITS.title),
-      question,
-      rubric: cleanString(q?.rubrica, LIMITS.rubric),
-      rubricFromDocument: q?.gabarito_no_documento === true,
-      criteria: cleanCriteria(q?.criterios),
-    });
+    if (q?.tipo === 'objetiva') {
+      const options = cleanOptions(q?.alternativas);
+      if (options.length < 2) {
+        unusableObjective++;
+        continue;
+      }
+      const letter = cleanString(q?.alternativa_correta, 2).toUpperCase().replace(/[^A-F]/g, '');
+      const correctOption = options.some((o) => o.letra === letter) ? letter : null;
+      questions.push({
+        number: number || String(questions.length + 1),
+        title: cleanString(title, LIMITS.title),
+        type: 'objetiva',
+        question,
+        options,
+        correctOption,
+        rubric: cleanString(q?.rubrica, LIMITS.rubric),
+        rubricFromDocument: Boolean(correctOption),
+        criteria: [],
+      });
+    } else {
+      questions.push({
+        number: number || String(questions.length + 1),
+        title: cleanString(title, LIMITS.title),
+        type: 'dissertativa',
+        question,
+        options: [],
+        correctOption: null,
+        rubric: cleanString(q?.rubrica, LIMITS.rubric),
+        rubricFromDocument: q?.gabarito_no_documento === true,
+        criteria: cleanCriteria(q?.criterios),
+      });
+    }
     if (questions.length >= LIMITS.questions) break;
   }
 
-  const ignored = Math.max(0, Math.round(Number(data.questoes_objetivas_ignoradas) || 0));
+  const ignored = Math.max(0, Math.round(Number(data.questoes_objetivas_ignoradas) || 0)) + unusableObjective;
 
   return {
     exam: {
@@ -188,7 +227,8 @@ export function normalizeExtraction(raw, classes = []) {
 
 const QUESTION_START = /^\s*(?:quest[aã]o\s*(\d{1,2}[a-z]?)\s*[:.)\-–—]?|(\d{1,2})\s*[).\-–—]\s+)/i;
 const ANSWER_KEY = /^\s*(?:gabarito|resposta\s+esperada|crit[ée]rios?\s+de\s+corre[çc][ãa]o|espera-se\s+que)\s*[:\-–—]?\s*/i;
-const OPTION_LINE = /^\s*\(?[a-e]\s*[).]\s+\S/i;
+const OPTION_LINE = /^\s*\(?([a-f])\s*[).]\s+(\S.*)$/i;
+const OBJECTIVE_KEY = /^\s*(?:gabarito|resposta(?:\s+correta)?|alternativa\s+correta)\s*[:\-–—]\s*\(?([a-f])\)?\s*(?:[).,;:\-–—]\s*(.*))?$/i;
 
 function detectLevel(text) {
   const t = text.toLowerCase();
@@ -230,12 +270,40 @@ export function mockExtractExam(text) {
     }
   }
 
-  let ignored = 0;
+  const ignored = 0;
   const questoes = [];
   for (const block of blocks) {
-    const options = block.lines.filter((l) => OPTION_LINE.test(l)).length;
-    if (options >= 3) {
-      ignored++;
+    const optionLines = block.lines.filter((l) => OPTION_LINE.test(l));
+    if (optionLines.length >= 3) {
+      const enunciadoLines = [];
+      let correta = null;
+      let justificativa = '';
+      for (const line of block.lines) {
+        if (OPTION_LINE.test(line)) continue;
+        const key = line.match(OBJECTIVE_KEY);
+        if (key) {
+          correta = key[1].toUpperCase();
+          justificativa = (key[2] || '').trim();
+          continue;
+        }
+        if (/_{3,}/.test(line) || /^\s*(nome|data|n[ºo°]|assinatura)\s*:/i.test(line)) continue;
+        enunciadoLines.push(line);
+      }
+      const enunciado = enunciadoLines.join('\n').trim();
+      questoes.push({
+        numero: block.numero,
+        tipo: 'objetiva',
+        titulo: enunciado.replace(/\s+/g, ' ').split(' ').slice(0, 8).join(' ').replace(/[.,;:?!]+$/, ''),
+        enunciado,
+        alternativas: optionLines.map((l) => {
+          const m = l.match(OPTION_LINE);
+          return { letra: m[1].toUpperCase(), texto: m[2].trim() };
+        }),
+        alternativa_correta: correta,
+        gabarito_no_documento: Boolean(correta),
+        rubrica: justificativa,
+        criterios: [],
+      });
       continue;
     }
     const answerIdx = block.lines.findIndex((l) => ANSWER_KEY.test(l));
@@ -249,6 +317,7 @@ export function mockExtractExam(text) {
     const firstWords = enunciado.replace(/\s+/g, ' ').split(' ').slice(0, 8).join(' ');
     questoes.push({
       numero: block.numero,
+      tipo: 'dissertativa',
       titulo: firstWords.replace(/[.,;:?!]+$/, ''),
       enunciado,
       gabarito_no_documento: Boolean(rubrica),
@@ -279,18 +348,23 @@ export function mockExtractExam(text) {
 // Chamada ao Gemini
 // ──────────────────────────────────────────
 
-function getExamModel() {
+function getExamModel(ownKey = null) {
   if (customExamModel) return customExamModel;
 
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (isGeminiApiKeyPlaceholder(apiKey)) {
-    throw new DocumentError(
-      'A leitura de provas precisa da chave do Gemini configurada no servidor (GEMINI_API_KEY).',
-      503
-    );
+  let client;
+  if (ownKey) {
+    client = getClientForKey(ownKey).client;
+  } else {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (isGeminiApiKeyPlaceholder(apiKey)) {
+      throw new DocumentError(
+        'A leitura de provas precisa da chave do Gemini configurada no servidor (GEMINI_API_KEY).',
+        503
+      );
+    }
+    if (!genAI) genAI = new GoogleGenAI({ apiKey });
+    client = genAI;
   }
-  if (!genAI) genAI = new GoogleGenAI({ apiKey });
-  const client = genAI;
   const model = process.env.GEMINI_IMPORT_MODEL || process.env.GEMINI_MODEL || 'gemini-3.8-flash';
 
   return {
@@ -305,7 +379,7 @@ function getExamModel() {
  * @param {{kind: string, mimeType: string, text?: string, buffer?: Buffer, truncated?: boolean}} doc
  * @param {{fileName?: string, classes?: Array}} options
  */
-export async function extractExam(doc, { fileName, classes = [] } = {}) {
+export async function extractExam(doc, { fileName, classes = [], apiKey = null } = {}) {
   if (!customExamModel && isMockEnabled()) {
     if (typeof doc.text !== 'string') {
       throw new DocumentError(
@@ -316,7 +390,7 @@ export async function extractExam(doc, { fileName, classes = [] } = {}) {
     return normalizeExtraction(mockExtractExam(doc.text), classes);
   }
 
-  const model = getExamModel();
+  const model = getExamModel(apiKey);
   const prompt = buildExamImportPrompt({ text: doc.text, fileName, truncated: doc.truncated });
   const parts = [{ text: prompt }];
   if (typeof doc.text !== 'string') {

@@ -49,10 +49,38 @@ npm run dev
 ### 🔑 Credenciais de Demonstração
 
 Faça login com a conta de demonstração pré-populada:
-- **E-mail**: `demo@educathon.dev`
-- **Senha**: `Demo@123456`
+- **Professor (administrador da instituição)**: `demo@educathon.dev` / `Demo@123456`
+- **Professora da mesma instituição**: `ana.lima@educathon.dev` / `Demo@123456`
+- **Aluna (portal do aluno, em `/aluno/entrar`)**: `mariana@aluno.educathon.dev` / `Aluno@123456`
+- **Código da turma de demonstração**: `BIO-2026` (para cadastrar um aluno novo em `/aluno/cadastro`)
 
 *(Ao acessar, o cabeçalho exibirá o selo visual **"Modo demonstração"**, confirmando que a IA está operando de forma simulada, realista e determinística, sem consumo de cotas externas).*
+
+---
+
+## 🏫 Instituições, planos e portal do aluno
+
+| Recurso | Onde | Como funciona |
+|---|---|---|
+| **Área da instituição** | Menu do avatar → *Criar instituição* / *Painel da instituição* (`/instituicao`) | Um professor cria a instituição e vira administrador. Ele vê professores, turmas, alunos com conta e o uso de IA da equipe; cria acessos (com senha provisória mostrada uma única vez) e gera códigos de turma. **Não vê respostas nem feedbacks** dos alunos (minimização de dados). |
+| **Planos e cota de IA** | Menu do avatar → *Planos e uso de IA* (`/planos`) | Plano **Gratuito** com cota mensal (50 gerações por professor, 200 por instituição). Ao acabar, a geração é bloqueada com aviso. **Professor Premium** e **Instituição** são ativados por um **checkout simulado** (Pix/cartão de mentira): nenhuma cobrança real e nenhum dado de cartão sai do navegador. |
+| **Chave própria do Gemini** | `/planos` → *Usar a sua própria chave paga* | O professor (ou o administrador da instituição) cadastra uma chave paga do Google AI Studio. Ela é guardada **criptografada (AES-256-GCM)** e nunca volta ao navegador — só os 4 últimos caracteres. Com chave própria, a plataforma não limita o uso. |
+| **Portal do aluno** | `/aluno` | O aluno cria a conta com o **código da turma** (ou recebe acesso da instituição) e vê suas matérias, as atividades, a **nota lançada pelo professor** e o **feedback aprovado**. Nada aparece antes da aprovação. |
+| **Nota do professor** | Tela de revisão, abaixo do feedback | Campo opcional de 0 a 10 (aceita vírgula). A IA nunca sugere nota. A nota vai para o CSV exportado e para o portal do aluno. |
+| **Múltipla escolha** | Nova atividade → *Tipo de questão* | Alternativas + gabarito. A correção é automática pelo gabarito (sem IA e sem gastar cota); a IA só escreve a explicação para quem errou. A leitura de provas também reconhece questões objetivas. |
+| **Login com Google** | Telas de login do professor e do aluno | Firebase Authentication. O servidor confere o token com os certificados públicos do Google (sem `firebase-admin`). Os usuários aparecem no console do Firebase. |
+
+### Como ligar o login com Google (Firebase)
+
+1. Crie um projeto no [console do Firebase](https://console.firebase.google.com/) e ative **Authentication → Método de login → Google**.
+2. Em *Configurações do projeto → Seus apps*, crie um **app da Web** e copie o `firebaseConfig`.
+3. No `client/`, crie `.env.local` com `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID` e `VITE_FIREBASE_APP_ID` (veja `client/.env.example`).
+4. No `server/.env`, defina `FIREBASE_PROJECT_ID` com o mesmo ID do projeto.
+5. Em *Authentication → Configurações → Domínios autorizados*, inclua o domínio onde o site for publicado.
+
+Sem essas variáveis, o botão "Entrar com Google" simplesmente não aparece.
+
+> ⚖️ **Antes de virar produto**: cobrança real exige contrato, emissão de nota fiscal e um gateway de pagamento; contas de alunos menores de idade exigem o consentimento dos responsáveis (LGPD, art. 14). Esses pontos precisam de validação jurídica e financeira.
 
 ---
 
@@ -211,6 +239,8 @@ Paleta escura de alto contraste com tons profundos de azul e ametista, projetada
 ### Limitações Conhecidas
 
 - **Token JWT em `localStorage`**: Adotado na fase atual para viabilizar desacoplamento imediato entre cliente e servidor sem necessidade de configuração complexa de domínios cruzados. Para produção corporativa de alta criticidade, recomenda-se migrar para cookies `HttpOnly` com rotação de *Refresh Tokens*.
+- **Pagamento simulado**: os planos são ativados por um checkout de demonstração, sem gateway de pagamento. Serve para mostrar o fluxo; não há cobrança.
+- **E-mail do aluno não é verificado no cadastro com senha**: por isso, uma conta criada com senha **não** é ligada ao cadastro que o professor fez com o mesmo e-mail (senão qualquer um veria as notas de um colega digitando o e-mail dele). A ligação acontece quando o e-mail é confirmado: login com Google ou acesso criado pela instituição. Ao ligar o Google a uma conta existente, a senha antiga e as sessões abertas deixam de valer. Respostas nunca são ligadas pelo nome a cadastros criados pelo próprio aluno.
 - **SQLite em Instância Única**: Ideal para zero custos de infraestrutura e extrema rapidez no Educathon. Para escalabilidade horizontal com múltiplos servidores balanceados, recomenda-se o uso de replicação contínua (ex: Litestream/Turso) ou migração para PostgreSQL.
 
 ### Próximos Passos no Roadmap
@@ -234,5 +264,9 @@ Para conectar à API real do Google Gemini em ambiente de produção:
    GEMINI_MODEL=gemini-3.8-flash
    # Opcional: modelo usado só na leitura de provas (padrão: o mesmo de GEMINI_MODEL)
    # GEMINI_IMPORT_MODEL=gemini-3.8-flash
+   # Recomendado: chave para criptografar as chaves do Gemini cadastradas pelos usuários
+   ENCRYPTION_KEY=outro_valor_aleatorio_de_64_caracteres
+   # Opcional: login com Google
+   # FIREBASE_PROJECT_ID=seu-projeto-firebase
    ```
 3. Inicie o servidor normalmente com `npm start` ou `npm run dev`.

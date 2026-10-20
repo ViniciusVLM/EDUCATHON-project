@@ -8,6 +8,7 @@ import {
   addStudent,
   addStudentsBatch,
   deleteStudent,
+  generateJoinCode,
 } from '../services/api';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
@@ -35,6 +36,38 @@ export default function ClassesManagement() {
   const [studentEmail, setStudentEmail] = useState('');
   const [batchText, setBatchText] = useState('');
   const [addingStudent, setAddingStudent] = useState(false);
+  const [codeLoading, setCodeLoading] = useState(false);
+  const [codeCopied, setCodeCopied] = useState(false);
+
+  async function handleGenerateCode() {
+    if (!selectedClass) return;
+    if (selectedClass.join_code && !window.confirm('Gerar um novo código? O código atual deixa de funcionar (quem já entrou continua na turma).')) {
+      return;
+    }
+    setCodeLoading(true);
+    setError('');
+    try {
+      const { joinCode } = await generateJoinCode(selectedClass.id);
+      setSelectedClass({ ...selectedClass, join_code: joinCode });
+      setClasses((prev) => prev.map((c) => (c.id === selectedClass.id ? { ...c, join_code: joinCode } : c)));
+      setCodeCopied(false);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Não foi possível gerar o código.');
+    } finally {
+      setCodeLoading(false);
+    }
+  }
+
+  async function handleCopyInvite() {
+    if (!selectedClass?.join_code) return;
+    const link = `${window.location.origin}/aluno/cadastro?codigo=${selectedClass.join_code}`;
+    try {
+      await navigator.clipboard.writeText(link);
+      setCodeCopied(true);
+    } catch {
+      window.prompt('Copie o link de cadastro:', link);
+    }
+  }
 
   useEffect(() => {
     loadClasses();
@@ -379,6 +412,28 @@ export default function ClassesManagement() {
               </Button>
             </div>
 
+            {/* Código da turma para o portal do aluno */}
+            <div className="join-code-box" aria-live="polite">
+              <div>
+                <p className="join-code-box__label">Código da turma (portal do aluno)</p>
+                {selectedClass.join_code ? (
+                  <p className="join-code-box__code" id="class-join-code">{selectedClass.join_code}</p>
+                ) : (
+                  <p className="join-code-box__hint">Gere um código para os alunos criarem a conta e verem notas e feedbacks aprovados.</p>
+                )}
+              </div>
+              <div className="join-code-box__actions">
+                <Button type="button" variant="primary" size="sm" loading={codeLoading} onClick={handleGenerateCode} id="btn-join-code">
+                  {selectedClass.join_code ? 'Gerar novo código' : 'Gerar código'}
+                </Button>
+                {selectedClass.join_code && (
+                  <Button type="button" variant="ghost" size="sm" onClick={handleCopyInvite}>
+                    {codeCopied ? 'Link copiado!' : 'Copiar link de cadastro'}
+                  </Button>
+                )}
+              </div>
+            </div>
+
             {/* Painel de Adicionar Alunos */}
             <div className="students-panel__add-box">
               <div className="filter-tabs" style={{ marginBottom: 'var(--space-3)' }}>
@@ -468,7 +523,10 @@ export default function ClassesManagement() {
                   {selectedClass.students.map((student) => (
                     <div key={student.id} className="student-row">
                       <div>
-                        <div className="student-row__name">{student.name}</div>
+                        <div className="student-row__name">
+                          {student.name}
+                          {student.account_id ? <span className="student-row__account">conta ativa</span> : null}
+                        </div>
                         {student.email && (
                           <div className="student-row__email">
                             {student.email}

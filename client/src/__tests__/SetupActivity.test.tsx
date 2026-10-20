@@ -162,7 +162,7 @@ describe('SetupActivity — Preencher a partir da prova', () => {
     await uploadExam(user);
 
     expect(mockImportExam).toHaveBeenCalledWith('prova.pdf', expect.any(String));
-    expect(screen.getByText(/1 questão de múltipla escolha foi ignorada/i)).toBeInTheDocument();
+    expect(screen.getByText(/1 questão de verdadeiro\/falso ou de ligar colunas foi ignorada/i)).toBeInTheDocument();
     expect(screen.getByText(/identificada e selecionada/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/Turma/i, { selector: 'select' })).toHaveValue('5');
     expect(screen.getByLabelText(/Disciplina/i)).toHaveValue('Ciências');
@@ -231,5 +231,43 @@ describe('SetupActivity — Preencher a partir da prova', () => {
     await user.upload(screen.getByLabelText(/Arquivo da prova/i), file);
 
     expect(await screen.findByText(/Não encontramos questões dissertativas/i)).toBeInTheDocument();
+  });
+});
+
+describe('SetupActivity — Questão de múltipla escolha', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('exige gabarito e cria a atividade objetiva com as alternativas', async () => {
+    const user = userEvent.setup();
+    mockCreateActivity.mockResolvedValue({ message: 'OK', id: 77 });
+    renderSetup();
+
+    await user.click(screen.getByRole('radio', { name: /Múltipla escolha/i }));
+    expect(screen.queryByRole('button', { name: /\+ Adicionar Critério/i })).not.toBeInTheDocument();
+
+    await user.type(screen.getByLabelText(/Título da Atividade/i), 'Quiz de células');
+    await user.type(screen.getByLabelText(/Pergunta feita aos alunos/i), 'Qual organela faz fotossíntese?');
+    await user.click(screen.getAllByRole('button', { name: /Remover alternativa/i })[3]);
+    await user.click(screen.getAllByRole('button', { name: /Remover alternativa/i })[2]);
+    await user.type(screen.getByLabelText(/Texto da alternativa A/i), 'Cloroplasto');
+    await user.type(screen.getByLabelText(/Texto da alternativa B/i), 'Centríolo');
+
+    await user.click(screen.getByRole('button', { name: /Próximo/i }));
+    expect(await screen.findByText(/Marque qual alternativa é a correta/i)).toBeInTheDocument();
+    expect(mockCreateActivity).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole('radio', { name: /Alternativa A é a correta/i }));
+    await user.click(screen.getByRole('button', { name: /Próximo/i }));
+
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/upload/77'));
+    expect(mockCreateActivity).toHaveBeenCalledWith(expect.objectContaining({
+      title: 'Quiz de células',
+      questionType: 'objetiva',
+      options: [{ texto: 'Cloroplasto' }, { texto: 'Centríolo' }],
+      correctOption: 'A',
+      rubricCriteria: undefined,
+    }));
   });
 });

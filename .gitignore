@@ -8,3 +8,7 @@ dist/
 *.db-journal
 .DS_Store
 *.tsbuildinfo
+.env.local
+.env.*.local
+.firebase/
+firebase-debug.log

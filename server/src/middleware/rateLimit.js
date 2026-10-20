@@ -52,3 +52,18 @@ export const examImportLimiter = rateLimit({
   },
   skip: () => isTest && !process.env.TEST_RATE_LIMIT,
 });
+
+/**
+ * Limiter para o acesso dos alunos (cadastro, login e entrada com código da turma).
+ * Também dificulta tentar códigos de turma no chute.
+ */
+export const studentAuthLimiter = rateLimit({
+  windowMs: Number(process.env.STUDENT_AUTH_RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,
+  max: Number(process.env.STUDENT_AUTH_RATE_LIMIT_MAX) || 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    error: 'Muitas tentativas a partir deste IP. Tente novamente mais tarde.',
+  },
+  skip: () => isTest && !process.env.TEST_RATE_LIMIT,
+});

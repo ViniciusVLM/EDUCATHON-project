@@ -19,6 +19,22 @@ export interface Activity {
   updated_at?: string | null;
   is_archived?: number; // 0 = ativo, 1 = arquivado
   rubric_criteria?: string | null; // JSON: [{criterio: string, peso: number}]
+  // ── Questões objetivas ──
+  question_type?: 'dissertativa' | 'objetiva';
+  options?: string | null; // JSON: [{letra, texto}]
+  correct_option?: string | null;
+}
+
+export interface ObjectiveOption {
+  letra: string;
+  texto: string;
+}
+
+/** Correção automática de questão objetiva (pelo gabarito do professor). */
+export interface ObjectiveResult {
+  escolhida: string | null;
+  correta: string;
+  acertou: boolean;
 }
 
 export interface StudentResponse {
@@ -46,6 +62,9 @@ export interface StudentResponse {
   teacher_rating?: -1 | 0 | 1 | null;
   criteria_scores?: string | null; // JSON: [{criterio, atendido: boolean}]
   sent_to_student_at?: string | null;
+  // Nota de 0 a 10 lançada pelo professor (a IA nunca preenche)
+  teacher_grade?: number | null;
+  auto_result?: string | null; // JSON: ObjectiveResult
 }
 
 export interface ActivityStats {
@@ -89,6 +108,7 @@ export interface Class {
   id: number;
   teacher_id: number;
   name: string;
+  join_code?: string | null;
   code?: string | null;
   grade_level?: string | null;
   school_year?: string | null;
@@ -106,6 +126,7 @@ export interface Student {
   email?: string | null;
   class_id?: number | null;
   created_at?: string;
+  account_id?: number | null;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────
@@ -132,6 +153,8 @@ export interface AuthTeacher {
   name: string;
   email: string;
   createdAt?: string;
+  role?: 'teacher' | 'org_admin';
+  organization?: { id: number; name: string } | null;
 }
 
 export interface AuthResponse {
@@ -205,6 +228,9 @@ export interface DashboardSummary {
 export interface ExamImportQuestion {
   number: string;
   title: string;
+  type?: 'dissertativa' | 'objetiva';
+  options?: ObjectiveOption[];
+  correctOption?: string | null;
   question: string;
   rubric: string;
   rubricFromDocument: boolean;
@@ -225,4 +251,123 @@ export interface ExamImportResult {
   questions: ExamImportQuestion[];
   ignoredObjectiveQuestions: number;
   warnings: string[];
+}
+
+
+// ── Planos, cota de IA e chave própria ──────────────────────────────────
+export interface QuotaStatus {
+  entity: { type: 'teacher' | 'organization'; id: number; name: string };
+  plan: { id: string; name: string; renewsAt: string | null };
+  canManage: boolean;
+  ownKey: { configured: boolean; last4: string | null; unreadable?: boolean };
+  quota: number | null;
+  used: number;
+  usedWithOwnKey: number;
+  remaining: number | null;
+}
+
+export interface PlanInfo {
+  id: string;
+  name: string;
+  audience: 'todos' | 'professor' | 'instituicao';
+  priceCents: number;
+  monthlyQuota: number;
+  description: string;
+  features: string[];
+}
+
+export interface SimulatedPayment {
+  id: number;
+  plan: string;
+  amount_cents: number;
+  method: 'pix' | 'cartao';
+  status: string;
+  created_at: string;
+}
+
+export interface BillingInfo extends QuotaStatus {
+  catalog: PlanInfo[];
+  payments: SimulatedPayment[];
+  simulated: boolean;
+}
+
+// ── Instituição ──────────────────────────────────────────────────────────
+export interface OrgTeacher {
+  id: number;
+  name: string;
+  email: string;
+  role: 'teacher' | 'org_admin';
+  classes: number;
+  activities: number;
+  usage_month: number;
+}
+
+export interface OrgClass {
+  id: number;
+  name: string;
+  school_year: string | null;
+  join_code: string | null;
+  teacher_name: string;
+  teacher_id: number;
+  student_count: number;
+  accounts_linked: number;
+}
+
+export interface OrgStudentAccount {
+  id: number;
+  name: string;
+  email: string;
+  class_id: number;
+  class_name: string;
+}
+
+export interface OrgOverview {
+  organization: { id: number; name: string; plan: string; plan_renews_at: string | null; created_at: string };
+  quota: QuotaStatus;
+  totals: { teachers: number; classes: number; studentsOnRoster: number; studentAccounts: number };
+  teachers: OrgTeacher[];
+  classes: OrgClass[];
+  students: OrgStudentAccount[];
+}
+
+// ── Portal do aluno ──────────────────────────────────────────────────────
+export interface StudentUser {
+  id: number;
+  name: string;
+  email: string;
+}
+
+export interface StudentClass {
+  id: number;
+  name: string;
+  school_year: string | null;
+  teacher_name: string;
+}
+
+export interface StudentPortalActivity {
+  id: number;
+  title: string;
+  subject: string;
+  question: string;
+  questionType: 'dissertativa' | 'objetiva';
+  options: ObjectiveOption[];
+  dueDate: string | null;
+  classId: number;
+  className: string;
+  teacherName: string;
+  situation: 'sem_entrega' | 'em_correcao' | 'corrigida';
+  myAnswer: string | null;
+  feedback: string | null;
+  grade: number | null;
+  criteria: { criterio: string; atendido: boolean }[];
+  objectiveResult: ObjectiveResult | null;
+  approvedAt: string | null;
+}
+
+export interface StudentSubjectSummary {
+  subject: string;
+  activities: number;
+  corrected: number;
+  gradesCount: number;
+  average: number | null;
 }

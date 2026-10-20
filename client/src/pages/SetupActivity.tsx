@@ -25,11 +25,20 @@ interface Draft {
   criteria: CriterionInput[];
   /** true = rubrica copiada do gabarito da prova; false = sugerida pela IA; undefined = manual */
   rubricFromDocument?: boolean;
+  /** Dissertativa (feedback da IA pela rubrica) ou objetiva (correção pelo gabarito) */
+  type: QuestionType;
+  options: string[];
+  correctOption: string;
 }
+
+type QuestionType = 'dissertativa' | 'objetiva';
+const LETTERS = ['A', 'B', 'C', 'D', 'E', 'F'];
 
 interface ImportSummary {
   fileName: string;
   count: number;
+  objective: number;
+  objectiveWithoutKey: number;
   ignored: number;
   classText: string | null;
   classMatched: boolean;
@@ -44,7 +53,17 @@ function newId() {
 }
 
 function emptyDraft(): Draft {
-  return { key: newId(), include: true, title: '', question: '', rubric: '', criteria: [] };
+  return {
+    key: newId(),
+    include: true,
+    title: '',
+    question: '',
+    rubric: '',
+    criteria: [],
+    type: 'dissertativa',
+    options: ['', '', '', ''],
+    correctOption: '',
+  };
 }
 
 export default function SetupActivity() {
@@ -105,6 +124,32 @@ export default function SetupActivity() {
     });
   }
 
+  function setType(type: QuestionType) {
+    updateDraft({ type });
+  }
+
+  function handleOptionChange(index: number, value: string) {
+    updateDraft({ options: draft.options.map((o, i) => (i === index ? value : o)) });
+  }
+
+  function handleAddOption() {
+    if (draft.options.length >= LETTERS.length) return;
+    updateDraft({ options: [...draft.options, ''] });
+  }
+
+  function handleRemoveOption(index: number) {
+    if (draft.options.length <= 2) return;
+    const removedLetter = LETTERS[index];
+    const options = draft.options.filter((_, i) => i !== index);
+    // Ajusta o gabarito: a letra removida some e as seguintes sobem uma posição
+    let correctOption = draft.correctOption;
+    if (correctOption === removedLetter) correctOption = '';
+    else if (correctOption && LETTERS.indexOf(correctOption) > index) {
+      correctOption = LETTERS[LETTERS.indexOf(correctOption) - 1];
+    }
+    updateDraft({ options, correctOption });
+  }
+
   function toggleInclude(index: number) {
     setDrafts((prev) => prev.map((d, i) => (i === index ? { ...d, include: !d.include } : d)));
   }
@@ -122,21 +167,30 @@ export default function SetupActivity() {
     }));
 
     setDrafts(
-      result.questions.map((q) => ({
-        key: newId(),
-        number: q.number,
-        include: true,
-        title: q.title,
-        question: q.question,
-        rubric: q.rubric,
-        rubricFromDocument: q.rubricFromDocument,
-        criteria: q.criteria.map((c) => ({ id: newId(), criterio: c.criterio, peso: c.peso })),
-      }))
+      result.questions.map((q) => {
+        const type: QuestionType = q.type === 'objetiva' ? 'objetiva' : 'dissertativa';
+        return {
+          key: newId(),
+          number: q.number,
+          include: true,
+          title: q.title,
+          question: q.question,
+          rubric: q.rubric,
+          rubricFromDocument: q.rubricFromDocument,
+          criteria: q.criteria.map((c) => ({ id: newId(), criterio: c.criterio, peso: c.peso })),
+          type,
+          options: type === 'objetiva' && q.options?.length ? q.options.map((o) => o.texto) : ['', '', '', ''],
+          correctOption: q.correctOption || '',
+        };
+      })
     );
     setActive(0);
+    const objectiveQuestions = result.questions.filter((q) => q.type === 'objetiva');
     setSummary({
       fileName: result.fileName,
       count: result.questions.length,
+      objective: objectiveQuestions.length,
+      objectiveWithoutKey: objectiveQuestions.filter((q) => !q.correctOption).length,
       ignored: result.ignoredObjectiveQuestions,
       classText: result.exam.classText,
       classMatched: Boolean(suggested),
@@ -161,6 +215,22 @@ export default function SetupActivity() {
   }
 
   function validateDraft(d: Draft): string | null {
+    if (d.type === 'objetiva') {
+      if (!d.title.trim() || !d.question.trim()) {
+        return 'Preencha todos os campos obrigatórios.';
+      }
+      const filled = d.options.filter((o) => o.trim());
+      if (filled.length !== d.options.length) {
+        return 'Preencha o texto de todas as alternativas (ou remova as que sobraram).';
+      }
+      if (filled.length < 2) {
+        return 'A questão de múltipla escolha precisa de pelo menos 2 alternativas.';
+      }
+      if (!d.correctOption) {
+        return 'Marque qual alternativa é a correta (gabarito).';
+      }
+      return null;
+    }
     if (!d.title.trim() || !d.question.trim() || !d.rubric.trim()) {
       return 'Preencha todos os campos obrigatórios.';
     }
@@ -204,8 +274,9 @@ export default function SetupActivity() {
     const createdKeys = new Set<string>();
     try {
       for (const { d } of toCreate) {
+        const isObjective = d.type === 'objetiva';
         const rubricCriteria =
-          d.criteria.length > 0
+          !isObjective && d.criteria.length > 0
             ? d.criteria.map((c) => ({ criterio: c.criterio.trim(), peso: Number(c.peso) || 1 }))
             : undefined;
 
@@ -218,6 +289,13 @@ export default function SetupActivity() {
           classId: form.classId ? Number(form.classId) : undefined,
           dueDate: form.dueDate ? form.dueDate : undefined,
           rubricCriteria,
+          ...(isObjective
+            ? {
+                questionType: 'objetiva' as const,
+                options: d.options.map((texto) => ({ texto: texto.trim() })),
+                correctOption: d.correctOption,
+              }
+            : {}),
         });
         createdIds.push(result.id);
         createdKeys.add(d.key);
@@ -281,12 +359,20 @@ export default function SetupActivity() {
               em “{summary.fileName}”.{' '}
               {summary.count > 1 && 'Cada questão vira uma atividade. Revise uma por uma nas abas abaixo.'}
             </p>
+            {summary.objective > 0 && (
+              <p>
+                {summary.objective === 1
+                  ? '1 questão é de múltipla escolha: o Educathon corrige pelo gabarito e a IA explica os erros.'
+                  : `${summary.objective} questões são de múltipla escolha: o Educathon corrige pelo gabarito e a IA explica os erros.`}
+                {summary.objectiveWithoutKey > 0 && ' Marque o gabarito das que vieram sem resposta no arquivo.'}
+              </p>
+            )}
             {summary.ignored > 0 && (
               <p>
                 {summary.ignored === 1
-                  ? '1 questão de múltipla escolha foi ignorada'
-                  : `${summary.ignored} questões de múltipla escolha foram ignoradas`}{' '}
-                (o Educathon dá feedback só em questões dissertativas).
+                  ? '1 questão de verdadeiro/falso ou de ligar colunas foi ignorada'
+                  : `${summary.ignored} questões de verdadeiro/falso ou de ligar colunas foram ignoradas`}{' '}
+                (esses formatos ainda não são corrigidos).
               </p>
             )}
             {summary.classText && summary.classMatched && (
@@ -416,6 +502,37 @@ export default function SetupActivity() {
             <p className="input-hint">Esta questão está desmarcada e não será criada.</p>
           )}
 
+          <fieldset className="qtype" aria-describedby="qtype-hint">
+            <legend className="input-label">Tipo de questão</legend>
+            <div className="qtype__options" role="radiogroup">
+              <label className={`qtype__option${draft.type === 'dissertativa' ? ' qtype__option--on' : ''}`}>
+                <input
+                  type="radio"
+                  name={`qtype-${draft.key}`}
+                  checked={draft.type === 'dissertativa'}
+                  onChange={() => setType('dissertativa')}
+                />
+                <span>
+                  <strong>Dissertativa</strong>
+                  <small>A IA compara com a rubrica e escreve o rascunho do feedback.</small>
+                </span>
+              </label>
+              <label className={`qtype__option${draft.type === 'objetiva' ? ' qtype__option--on' : ''}`}>
+                <input
+                  type="radio"
+                  name={`qtype-${draft.key}`}
+                  checked={draft.type === 'objetiva'}
+                  onChange={() => setType('objetiva')}
+                />
+                <span>
+                  <strong>Múltipla escolha</strong>
+                  <small>Corrige pelo gabarito; a IA só explica as respostas erradas.</small>
+                </span>
+              </label>
+            </div>
+            <p className="input-hint" id="qtype-hint">Em nenhum dos dois a IA dá nota: quem lança a nota é você, na revisão.</p>
+          </fieldset>
+
           <div className="input-group">
             <label className="input-label" htmlFor="title">
               Título da Atividade *
@@ -451,6 +568,74 @@ export default function SetupActivity() {
             />
           </div>
 
+          {draft.type === 'objetiva' ? (
+            <>
+              <fieldset className="options-editor">
+                <legend className="input-label">Alternativas e gabarito *</legend>
+                <p className="input-hint">Escreva as alternativas e marque a correta. O aluno pode responder só com a letra.</p>
+                {draft.rubricFromDocument === false && !draft.correctOption && (
+                  <p className="exam-import__notice">A prova não trazia o gabarito desta questão. Marque a alternativa correta.</p>
+                )}
+                {draft.options.map((opt, i) => (
+                  <div key={i} className="options-editor__row">
+                    <label className="options-editor__correct" title={`Alternativa ${LETTERS[i]} é a correta`}>
+                      <input
+                        type="radio"
+                        name={`correct-${draft.key}`}
+                        checked={draft.correctOption === LETTERS[i]}
+                        onChange={() => updateDraft({ correctOption: LETTERS[i] })}
+                        aria-label={`Alternativa ${LETTERS[i]} é a correta`}
+                      />
+                      <span aria-hidden="true">{LETTERS[i]}</span>
+                    </label>
+                    <input
+                      type="text"
+                      className="input"
+                      value={opt}
+                      placeholder={`Texto da alternativa ${LETTERS[i]}`}
+                      onChange={(e) => handleOptionChange(i, e.target.value)}
+                      aria-label={`Texto da alternativa ${LETTERS[i]}`}
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleRemoveOption(i)}
+                      disabled={draft.options.length <= 2}
+                      aria-label={`Remover alternativa ${LETTERS[i]}`}
+                      title="Remover alternativa"
+                    >
+                      <IconTrash size={16} />
+                    </Button>
+                  </div>
+                ))}
+                {draft.options.length < LETTERS.length && (
+                  <Button type="button" variant="ghost" size="sm" onClick={handleAddOption} icon={<IconPlus size={16} />}>
+                    Adicionar alternativa
+                  </Button>
+                )}
+              </fieldset>
+
+              <div className="input-group">
+                <label className="input-label" htmlFor="rubric">
+                  Justificativa do gabarito (opcional)
+                </label>
+                <p className="input-hint">
+                  Por que a alternativa correta está certa. A IA usa isso para explicar o erro a quem marcou outra.
+                </p>
+                <textarea
+                  id="rubric"
+                  name="rubric"
+                  className="textarea"
+                  placeholder="Ex: O cloroplasto contém clorofila e é onde a luz vira energia química."
+                  value={draft.rubric}
+                  onChange={handleChange}
+                  rows={3}
+                />
+              </div>
+            </>
+          ) : (
+            <>
           <div className="input-group">
             <label className="input-label" htmlFor="rubric">
               Rubrica / Gabarito *
@@ -551,6 +736,9 @@ export default function SetupActivity() {
               </div>
             )}
           </div>
+
+            </>
+          )}
 
           {error && (
             <div className="alert-box alert-box--error" role="alert">

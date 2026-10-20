@@ -9,6 +9,7 @@ import {
   createStudentsBatch,
   deleteStudentFromClass,
 } from '../database/db.js';
+import { rotateJoinCode } from '../database/accounts.js';
 
 const router = Router();
 
@@ -165,6 +166,26 @@ router.post('/:id/students', (req, res) => {
   } catch (err) {
     console.error('Erro ao adicionar aluno:', err);
     res.status(500).json({ error: 'Erro interno ao adicionar aluno.' });
+  }
+});
+
+/**
+ * POST /api/classes/:id/join-code
+ * Gera (ou troca) o código que os alunos usam para entrar na turma pelo portal.
+ * Trocar o código invalida o anterior, mas quem já entrou continua na turma.
+ */
+router.post('/:id/join-code', (req, res) => {
+  try {
+    const classId = Number(req.params.id);
+    const cls = getClassById(classId, req.teacher.id);
+    if (!cls) {
+      return res.status(404).json({ error: 'Turma não encontrada.' });
+    }
+    const joinCode = rotateJoinCode(classId);
+    res.json({ message: 'Código da turma gerado.', joinCode });
+  } catch (err) {
+    console.error('Erro ao gerar código da turma:', err);
+    res.status(500).json({ error: 'Erro interno ao gerar o código da turma.' });
   }
 });
 

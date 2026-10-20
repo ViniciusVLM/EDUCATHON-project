@@ -3,12 +3,15 @@ import {
   createTeacher,
   getTeacherByEmail,
   getTeacherById,
+  getDb,
 } from '../database/db.js';
 import {
   hashPassword,
   comparePassword,
   generateToken,
+  unusablePasswordHash,
 } from '../services/auth.js';
+import { verifyFirebaseIdToken, FirebaseAuthError, isFirebaseConfigured } from '../services/firebaseAuth.js';
 import { requireAuth } from '../middleware/auth.js';
 import { authLimiter } from '../middleware/rateLimit.js';
 
@@ -149,11 +152,104 @@ router.get('/me', requireAuth, (req, res) => {
         name: teacher.name,
         email: teacher.email,
         createdAt: teacher.created_at,
+        role: teacher.role || 'teacher',
+        organization: teacher.organization_id
+          ? { id: Number(teacher.organization_id), name: teacher.organization_name }
+          : null,
       },
     });
   } catch (err) {
     console.error('Erro ao buscar perfil:', err);
     res.status(500).json({ error: 'Erro interno ao buscar perfil.' });
+  }
+});
+
+/**
+ * POST /api/auth/password
+ * Troca a senha do professor (ex.: a senha provisória criada pela instituição).
+ * Body: { currentPassword, newPassword }
+ */
+router.post('/password', requireAuth, authLimiter, async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body || {};
+    if (typeof newPassword !== 'string' || newPassword.length < 8 || newPassword.length > 200) {
+      return res.status(400).json({ error: 'A nova senha deve ter pelo menos 8 caracteres.' });
+    }
+    const row = getDb().prepare('SELECT password_hash FROM teachers WHERE id = ?').get(req.teacher.id);
+    if (!row || typeof currentPassword !== 'string' || !(await comparePassword(currentPassword, row.password_hash))) {
+      return res.status(401).json({ error: 'A senha atual está incorreta.' });
+    }
+    getDb().prepare('UPDATE teachers SET password_hash = ?, session_epoch = session_epoch + 1 WHERE id = ?')
+      .run(await hashPassword(newPassword), req.teacher.id);
+    // Outras sessões abertas saem; esta recebe um token novo
+    res.json({ message: 'Senha alterada com sucesso.', token: generateToken(req.teacher) });
+  } catch (err) {
+    console.error('Erro ao trocar senha:', err);
+    res.status(500).json({ error: 'Erro interno ao trocar a senha.' });
+  }
+});
+
+/**
+ * GET /api/auth/providers
+ * Informa se o login com Google (Firebase) está configurado no servidor.
+ */
+router.get('/providers', (_req, res) => {
+  res.json({ google: isFirebaseConfigured() });
+});
+
+/**
+ * POST /api/auth/google
+ * Login (ou cadastro) de professor com Google via Firebase Authentication.
+ * Body: { idToken } — o ID token que o SDK do Firebase devolveu no navegador.
+ */
+router.post('/google', authLimiter, async (req, res) => {
+  try {
+    const identity = await verifyFirebaseIdToken(req.body?.idToken);
+    const db = getDb();
+
+    let teacher = db.prepare('SELECT * FROM teachers WHERE google_uid = ?').get(identity.uid);
+    let created = false;
+    let linked = false;
+
+    if (!teacher) {
+      teacher = getTeacherByEmail(identity.email);
+      if (teacher && teacher.google_uid) {
+        return res.status(409).json({ error: 'Este e-mail já está ligado a outra conta Google.' });
+      }
+      if (teacher) {
+        // E-mail verificado pelo Google: liga a conta existente ao login com Google.
+        // A senha antiga deixa de valer, porque quem criou a conta pode não ser o dono do e-mail.
+        db.prepare('UPDATE teachers SET google_uid = ?, password_hash = ?, session_epoch = session_epoch + 1 WHERE id = ? AND google_uid IS NULL')
+          .run(identity.uid, await unusablePasswordHash(), teacher.id);
+        linked = true;
+      } else {
+        const createdTeacher = createTeacher({
+          name: identity.name,
+          email: identity.email,
+          passwordHash: await unusablePasswordHash(),
+          googleUid: identity.uid,
+        });
+        teacher = { ...createdTeacher };
+        created = true;
+      }
+    }
+
+    const teacherData = { id: Number(teacher.id), name: teacher.name, email: teacher.email };
+    res.status(created ? 201 : 200).json({
+      message: created
+        ? 'Conta criada com Google!'
+        : linked
+          ? 'Sua conta agora entra com o Google.'
+          : 'Login realizado com sucesso!',
+      teacher: teacherData,
+      token: generateToken(teacherData),
+    });
+  } catch (err) {
+    if (err instanceof FirebaseAuthError) {
+      return res.status(err.status).json({ error: err.message });
+    }
+    console.error('Erro no login com Google:', err);
+    res.status(500).json({ error: 'Erro interno ao entrar com Google.' });
   }
 });
 

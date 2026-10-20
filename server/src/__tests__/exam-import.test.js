@@ -208,13 +208,51 @@ describe('Leitor de demonstração (sem IA)', () => {
     assert.equal(raw.disciplina, 'Ciências');
     assert.equal(raw.nivel_ensino, 'fundamental');
     assert.equal(raw.data_entrega, '2026-11-20');
-    assert.equal(raw.questoes_objetivas_ignoradas, 1);
-    assert.equal(raw.questoes.length, 2);
+    assert.equal(raw.questoes_objetivas_ignoradas, 0);
+    assert.equal(raw.questoes.length, 3);
     assert.match(raw.questoes[0].enunciado, /^Explique o processo de fotossíntese/);
+    assert.equal(raw.questoes[0].tipo, 'dissertativa');
     assert.equal(raw.questoes[0].gabarito_no_documento, true);
     assert.ok(raw.questoes[0].criterios.length >= 2);
-    assert.equal(raw.questoes[1].gabarito_no_documento, false);
-    assert.equal(raw.questoes[1].rubrica, '');
+    assert.equal(raw.questoes[1].tipo, 'objetiva');
+    assert.equal(raw.questoes[1].enunciado, 'Qual destas é uma organela vegetal?');
+    assert.equal(raw.questoes[1].alternativas.length, 4);
+    assert.equal(raw.questoes[1].alternativa_correta, null, 'sem gabarito no documento, não adivinha');
+    assert.equal(raw.questoes[2].gabarito_no_documento, false);
+    assert.equal(raw.questoes[2].rubrica, '');
+  });
+
+  test('lê o gabarito de questão objetiva quando ele está no documento', () => {
+    const raw = mockExtractExam(`Prova de Ciências
+1) Qual destas é uma organela vegetal?
+a) Cloroplasto
+b) Centríolo
+c) Lisossomo
+Gabarito: A) só a célula vegetal tem cloroplasto.`);
+    const result = normalizeExtraction(raw);
+    const [q] = result.questions;
+    assert.equal(q.type, 'objetiva');
+    assert.equal(q.correctOption, 'A');
+    assert.equal(q.rubric, 'só a célula vegetal tem cloroplasto.');
+    assert.deepEqual(q.options.map((o) => o.letra), ['A', 'B', 'C']);
+  });
+});
+
+describe('Limpeza de questão objetiva vinda da IA', () => {
+  test('descarta gabarito fora das alternativas e conta objetivas sem alternativas', () => {
+    const result = normalizeExtraction({
+      titulo_prova: 'Prova',
+      nivel_ensino: 'medio',
+      questoes_objetivas_ignoradas: 1,
+      questoes: [
+        { numero: '1', tipo: 'objetiva', titulo: 'Capital', enunciado: 'Qual é a capital do Brasil?', alternativas: [{ letra: 'A', texto: 'Brasília' }, { letra: 'B', texto: 'Rio' }], alternativa_correta: 'E', gabarito_no_documento: true, rubrica: '', criterios: [] },
+        { numero: '2', tipo: 'objetiva', titulo: 'Sem', enunciado: 'Questão sem alternativas legíveis.', alternativas: [], alternativa_correta: null, gabarito_no_documento: false, rubrica: '', criterios: [] },
+      ],
+    });
+    assert.equal(result.questions.length, 1);
+    assert.equal(result.questions[0].correctOption, null);
+    assert.equal(result.questions[0].rubricFromDocument, false);
+    assert.equal(result.ignoredObjectiveQuestions, 2);
   });
 });
 
@@ -272,8 +310,9 @@ describe('POST /api/activities/import', () => {
     assert.equal(res.body.exam.classText, '8º ano B');
     assert.equal(res.body.suggestedClassId, Number(classA.id));
     assert.equal(res.body.exam.subject, 'Ciências');
-    assert.equal(res.body.questions.length, 2);
-    assert.equal(res.body.ignoredObjectiveQuestions, 1);
+    assert.equal(res.body.questions.length, 3);
+    assert.equal(res.body.questions[1].type, 'objetiva');
+    assert.equal(res.body.ignoredObjectiveQuestions, 0);
   });
 
   test('nunca sugere turma de outro professor', async () => {

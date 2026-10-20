@@ -5,6 +5,7 @@ import {
   setAuthToken,
   loginTeacher,
   registerTeacher,
+  loginTeacherWithGoogle,
   getMe,
 } from '../services/api';
 
@@ -15,6 +16,9 @@ interface AuthContextType {
   isLoading: boolean;
   login: (credentials: { email: string; password: string }) => Promise<void>;
   register: (data: { name: string; email: string; password: string }) => Promise<void>;
+  loginWithGoogle: (idToken: string) => Promise<void>;
+  /** Recarrega o perfil (ex.: depois de criar uma instituição, o papel muda). */
+  refreshTeacher: () => Promise<void>;
   logout: () => void;
 }
 
@@ -62,6 +66,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setTokenState(res.token);
   };
 
+  const loginWithGoogle = async (idToken: string) => {
+    const res = await loginTeacherWithGoogle(idToken);
+    setTeacher(res.teacher);
+    setTokenState(res.token);
+  };
+
+  const refreshTeacher = async () => {
+    const { teacher: current } = await getMe();
+    setTeacher(current);
+  };
+
   const logout = () => {
     setAuthToken(null);
     setTeacher(null);
@@ -77,6 +92,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         isLoading,
         login,
         register,
+        loginWithGoogle,
+        refreshTeacher,
         logout,
       }}
     >

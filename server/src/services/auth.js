@@ -1,5 +1,25 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import { getDb } from '../database/db.js';
+
+/**
+ * "Época" da sessão: muda quando a senha é trocada ou a conta é ligada ao Google.
+ * Tokens emitidos antes disso deixam de valer (ver middleware/auth.js).
+ */
+export function getSessionEpoch(table, id) {
+  try {
+    const row = getDb().prepare(`SELECT session_epoch FROM ${table === 'student' ? 'student_accounts' : 'teachers'} WHERE id = ?`).get(id);
+    return row ? row.session_epoch : null;
+  } catch {
+    return null;
+  }
+}
+
+export function bumpSessionEpoch(table, id) {
+  getDb()
+    .prepare(`UPDATE ${table === 'student' ? 'student_accounts' : 'teachers'} SET session_epoch = session_epoch + 1 WHERE id = ?`)
+    .run(id);
+}
 
 const isTest =
   process.env.NODE_ENV === 'test' ||
@@ -90,10 +110,36 @@ export function generateToken(teacher) {
       id: teacher.id,
       name: teacher.name,
       email: teacher.email,
+      role: 'teacher',
+      ep: getSessionEpoch('teacher', teacher.id) ?? 0,
     },
     JWT_SECRET,
     { expiresIn: JWT_EXPIRES_IN }
   );
+}
+
+/**
+ * Token de aluno. O campo role impede que ele seja aceito nas rotas de professor.
+ * @param {{ id: number, name: string, email: string }} account
+ */
+export function generateStudentToken(account) {
+  return jwt.sign(
+    {
+      id: account.id,
+      name: account.name,
+      email: account.email,
+      role: 'student',
+      ep: getSessionEpoch('student', account.id) ?? 0,
+    },
+    JWT_SECRET,
+    { expiresIn: JWT_EXPIRES_IN }
+  );
+}
+
+/** Hash inutilizável para contas criadas pelo Google (não há senha para comparar). */
+export async function unusablePasswordHash() {
+  const { randomBytes } = await import('node:crypto');
+  return hashPassword(randomBytes(32).toString('hex'));
 }
 
 /**

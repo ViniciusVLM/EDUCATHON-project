@@ -3,6 +3,10 @@ import { readFileSync, mkdirSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 
+// Nos testes automatizados os logs de rotina ficam desligados: muita saída no stdout
+// atrapalha a comunicação do executor de testes do Node com cada arquivo.
+const log = process.env.NODE_TEST_CONTEXT ? () => {} : console.log;
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
@@ -72,6 +76,96 @@ const MIGRATIONS = [
       'CREATE UNIQUE INDEX IF NOT EXISTS idx_feedbacks_student_response_id ON feedbacks(student_response_id)',
     ],
   },
+  // ── Instituições, planos, uso de IA e chave própria do Gemini ─────────────
+  {
+    name: '009_organizations_plans_usage',
+    sqls: [
+      `CREATE TABLE IF NOT EXISTS organizations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        plan TEXT NOT NULL DEFAULT 'gratuito',
+        plan_renews_at DATETIME,
+        gemini_key_enc TEXT,
+        gemini_key_last4 TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )`,
+      'ALTER TABLE teachers ADD COLUMN organization_id INTEGER REFERENCES organizations(id) ON DELETE SET NULL',
+      "ALTER TABLE teachers ADD COLUMN role TEXT NOT NULL DEFAULT 'teacher' CHECK(role IN ('teacher','org_admin'))",
+      "ALTER TABLE teachers ADD COLUMN plan TEXT NOT NULL DEFAULT 'gratuito'",
+      'ALTER TABLE teachers ADD COLUMN plan_renews_at DATETIME',
+      'ALTER TABLE teachers ADD COLUMN gemini_key_enc TEXT',
+      'ALTER TABLE teachers ADD COLUMN gemini_key_last4 TEXT',
+      'ALTER TABLE teachers ADD COLUMN google_uid TEXT',
+      'CREATE UNIQUE INDEX IF NOT EXISTS idx_teachers_google_uid ON teachers(google_uid)',
+      `CREATE TABLE IF NOT EXISTS ai_usage (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        teacher_id INTEGER REFERENCES teachers(id) ON DELETE SET NULL,
+        organization_id INTEGER REFERENCES organizations(id) ON DELETE SET NULL,
+        kind TEXT NOT NULL CHECK(kind IN ('feedback','import')),
+        units INTEGER NOT NULL DEFAULT 1,
+        own_key INTEGER NOT NULL DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )`,
+      'CREATE INDEX IF NOT EXISTS idx_ai_usage_teacher ON ai_usage(teacher_id, created_at)',
+      'CREATE INDEX IF NOT EXISTS idx_ai_usage_org ON ai_usage(organization_id, created_at)',
+      // Pagamentos de mentira: o protótipo só demonstra o fluxo, nenhum dado de cartão é recebido.
+      `CREATE TABLE IF NOT EXISTS simulated_payments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        teacher_id INTEGER REFERENCES teachers(id) ON DELETE SET NULL,
+        organization_id INTEGER REFERENCES organizations(id) ON DELETE SET NULL,
+        plan TEXT NOT NULL,
+        amount_cents INTEGER NOT NULL,
+        method TEXT NOT NULL CHECK(method IN ('pix','cartao')),
+        status TEXT NOT NULL DEFAULT 'aprovado_simulado',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )`,
+    ],
+  },
+  // ── Portal do aluno: contas de aluno e código de turma ────────────────────
+  {
+    name: '010_student_accounts_join_codes',
+    sqls: [
+      `CREATE TABLE IF NOT EXISTS student_accounts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        email TEXT UNIQUE NOT NULL,
+        password_hash TEXT NOT NULL,
+        google_uid TEXT UNIQUE,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )`,
+      'ALTER TABLE students ADD COLUMN account_id INTEGER REFERENCES student_accounts(id) ON DELETE SET NULL',
+      'CREATE INDEX IF NOT EXISTS idx_students_account ON students(account_id)',
+      'ALTER TABLE classes ADD COLUMN join_code TEXT',
+      'CREATE UNIQUE INDEX IF NOT EXISTS idx_classes_join_code ON classes(join_code)',
+    ],
+  },
+  // ── Nota lançada pelo professor e questões objetivas ──────────────────────
+  {
+    name: '011_grades_objective_questions',
+    sqls: [
+      // Nota de 0 a 10 digitada pelo professor. A IA nunca preenche este campo.
+      'ALTER TABLE feedbacks ADD COLUMN teacher_grade REAL',
+      // JSON da correção automática de questão objetiva: {escolhida, correta, acertou}
+      'ALTER TABLE feedbacks ADD COLUMN auto_result TEXT',
+      "ALTER TABLE activities ADD COLUMN question_type TEXT NOT NULL DEFAULT 'dissertativa' CHECK(question_type IN ('dissertativa','objetiva'))",
+      // JSON: [{letra: 'A', texto: '...'}]
+      'ALTER TABLE activities ADD COLUMN options TEXT',
+      'ALTER TABLE activities ADD COLUMN correct_option TEXT',
+    ],
+  },
+  // ── Segurança do portal do aluno ──────────────────────────────────────────
+  {
+    name: '012_student_email_verified_self_joined',
+    sqls: [
+      // 1 = e-mail confirmado (login com Google ou acesso criado pela instituição)
+      'ALTER TABLE student_accounts ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 0',
+      // 1 = cadastro criado pelo próprio aluno ao entrar com o código (o nome foi digitado por ele)
+      'ALTER TABLE students ADD COLUMN self_joined INTEGER NOT NULL DEFAULT 0',
+      // Muda quando a senha é trocada ou a conta passa a entrar com Google: derruba sessões antigas
+      'ALTER TABLE student_accounts ADD COLUMN session_epoch INTEGER NOT NULL DEFAULT 0',
+      'ALTER TABLE teachers ADD COLUMN session_epoch INTEGER NOT NULL DEFAULT 0',
+    ],
+  },
 ];
 
 /**
@@ -86,14 +180,14 @@ function runMigrations(database) {
   for (const migration of MIGRATIONS) {
     if (applied.has(migration.name)) continue;
 
-    console.log(`🔄 Aplicando migração: ${migration.name}`);
+    log(`🔄 Aplicando migração: ${migration.name}`);
     database.transaction(() => {
       for (const sql of migration.sqls) {
         database.prepare(sql).run();
       }
       database.prepare('INSERT INTO schema_migrations (name) VALUES (?)').run(migration.name);
     })();
-    console.log(`✅ Migração aplicada: ${migration.name}`);
+    log(`✅ Migração aplicada: ${migration.name}`);
   }
 }
 
@@ -119,7 +213,7 @@ export function getDb() {
     // Aplica migrações de ALTER TABLE pendentes (idempotente)
     runMigrations(db);
 
-    console.log('✅ Banco de dados SQLite conectado:', DB_PATH);
+    log('✅ Banco de dados SQLite conectado:', DB_PATH);
   }
   return db;
 }
@@ -128,14 +222,14 @@ export function getDb() {
 // Helpers: Teachers (Fase 5.1)
 // ──────────────────────────────────────────
 
-export function createTeacher({ name, email, passwordHash }) {
+export function createTeacher({ name, email, passwordHash, organizationId = null, role = 'teacher', googleUid = null }) {
   const db = getDb();
   const stmt = db.prepare(`
-    INSERT INTO teachers (name, email, password_hash)
-    VALUES (?, ?, ?)
+    INSERT INTO teachers (name, email, password_hash, organization_id, role, google_uid)
+    VALUES (?, ?, ?, ?, ?, ?)
   `);
   const normalizedEmail = email.toLowerCase().trim();
-  const result = stmt.run(name.trim(), normalizedEmail, passwordHash);
+  const result = stmt.run(name.trim(), normalizedEmail, passwordHash, organizationId, role, googleUid);
   return { id: result.lastInsertRowid, name: name.trim(), email: normalizedEmail };
 }
 
@@ -146,7 +240,13 @@ export function getTeacherByEmail(email) {
 
 export function getTeacherById(id) {
   const db = getDb();
-  return db.prepare('SELECT id, name, email, created_at FROM teachers WHERE id = ?').get(id);
+  return db.prepare(`
+    SELECT t.id, t.name, t.email, t.created_at, t.role, t.organization_id, t.plan,
+           o.name AS organization_name
+    FROM teachers t
+    LEFT JOIN organizations o ON o.id = t.organization_id
+    WHERE t.id = ?
+  `).get(id);
 }
 
 // ──────────────────────────────────────────
@@ -276,11 +376,17 @@ export function createActivity({
   dueDate,
   rubricCriteria,
   teacherId,
+  questionType = 'dissertativa',
+  options = null,
+  correctOption = null,
 }) {
   const db = getDb();
   const stmt = db.prepare(`
-    INSERT INTO activities (title, question, rubric, education_level, subject, class_id, due_date, rubric_criteria, teacher_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO activities (
+      title, question, rubric, education_level, subject, class_id, due_date, rubric_criteria, teacher_id,
+      question_type, options, correct_option
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   const result = stmt.run(
     title,
@@ -293,7 +399,10 @@ export function createActivity({
     rubricCriteria
       ? (typeof rubricCriteria === 'string' ? rubricCriteria : JSON.stringify(rubricCriteria))
       : null,
-    teacherId || null
+    teacherId || null,
+    questionType === 'objetiva' ? 'objetiva' : 'dissertativa',
+    options ? (typeof options === 'string' ? options : JSON.stringify(options)) : null,
+    correctOption || null
   );
   return { id: result.lastInsertRowid };
 }
@@ -355,7 +464,7 @@ export function addResponses(activityId, responses, defaultMethod = 'manual') {
   // Se a atividade possui uma turma associada, busca os alunos cadastrados para reconciliação
   let registeredStudents = [];
   if (activity?.class_id) {
-    registeredStudents = db.prepare('SELECT id, name, email FROM students WHERE class_id = ?').all(activity.class_id);
+    registeredStudents = db.prepare('SELECT id, name, email, self_joined FROM students WHERE class_id = ?').all(activity.class_id);
   }
 
   const normalize = (str) =>
@@ -390,12 +499,15 @@ export function addResponses(activityId, responses, defaultMethod = 'manual') {
         const itemNormName = normalize(item.student_name);
         const itemEmail = studentEmail;
 
-        const matched = registeredStudents.find((s) => {
-          if (itemEmail && s.email && s.email.toLowerCase() === itemEmail) {
-            return true;
-          }
-          return normalize(s.name) === itemNormName;
-        });
+        // E-mail tem prioridade. Por nome, só liga se houver UM aluno com aquele nome na turma:
+        // com nomes repetidos (inclusive alguém que entrou pelo código com o nome de um colega),
+        // a resposta fica sem vínculo para o professor conferir.
+        const byEmail = itemEmail
+          ? registeredStudents.find((s) => s.email && s.email.toLowerCase() === itemEmail)
+          : null;
+        // Cadastros criados pelo próprio aluno (self_joined) nunca entram na busca por nome.
+        const byName = registeredStudents.filter((s) => !s.self_joined && normalize(s.name) === itemNormName);
+        const matched = byEmail || (byName.length === 1 ? byName[0] : null);
 
         if (matched) {
           matchedStudentId = matched.id;
@@ -427,7 +539,8 @@ export function getResponsesByActivity(activityId) {
   return db.prepare(`
     SELECT sr.*, f.id as feedback_id, f.ai_feedback_json, f.ai_feedback_text,
            f.teacher_feedback, f.status, f.generated_at, f.approved_at,
-           f.ai_model, f.teacher_rating, f.criteria_scores, f.sent_to_student_at
+           f.ai_model, f.teacher_rating, f.criteria_scores, f.sent_to_student_at,
+           f.teacher_grade, f.auto_result
     FROM student_responses sr
     LEFT JOIN feedbacks f ON f.student_response_id = sr.id
     WHERE sr.activity_id = ?
@@ -445,16 +558,24 @@ export function getResponseCount(activityId) {
 // Helpers: Feedbacks
 // ──────────────────────────────────────────
 
-export function saveFeedback(studentResponseId, aiFeedbackJson, aiFeedbackText, aiModel = null, criteriaScores = null) {
+export function saveFeedback(
+  studentResponseId,
+  aiFeedbackJson,
+  aiFeedbackText,
+  aiModel = null,
+  criteriaScores = null,
+  autoResult = null
+) {
   const db = getDb();
   const stmt = db.prepare(`
-    INSERT INTO feedbacks (student_response_id, ai_feedback_json, ai_feedback_text, ai_model, criteria_scores, status, generated_at)
-    VALUES (?, ?, ?, ?, ?, 'pendente', datetime('now'))
+    INSERT INTO feedbacks (student_response_id, ai_feedback_json, ai_feedback_text, ai_model, criteria_scores, auto_result, status, generated_at)
+    VALUES (?, ?, ?, ?, ?, ?, 'pendente', datetime('now'))
   `);
   const formattedCriteria = criteriaScores !== null && criteriaScores !== undefined
     ? (typeof criteriaScores === 'string' ? criteriaScores : JSON.stringify(criteriaScores))
     : null;
-  const result = stmt.run(studentResponseId, aiFeedbackJson, aiFeedbackText, aiModel, formattedCriteria);
+  const formattedAuto = autoResult ? (typeof autoResult === 'string' ? autoResult : JSON.stringify(autoResult)) : null;
+  const result = stmt.run(studentResponseId, aiFeedbackJson, aiFeedbackText, aiModel, formattedCriteria, formattedAuto);
   return { id: result.lastInsertRowid };
 }
 
@@ -476,6 +597,15 @@ export function updateFeedback(feedbackId, teacherFeedback, teacherRating = null
       : null,
     feedbackId
   );
+}
+
+/**
+ * Lança (ou apaga, com null) a nota do professor. Não altera o status do feedback:
+ * a nota só aparece para o aluno depois que o feedback for aprovado.
+ */
+export function setFeedbackGrade(feedbackId, grade) {
+  const db = getDb();
+  return db.prepare('UPDATE feedbacks SET teacher_grade = ? WHERE id = ?').run(grade, feedbackId);
 }
 
 export function approveFeedback(feedbackId) {
@@ -524,6 +654,7 @@ export function getExportData(activityId) {
   return db.prepare(`
     SELECT sr.student_name, sr.original_response,
            COALESCE(f.teacher_feedback, f.ai_feedback_text) as feedback_final,
+           f.teacher_grade as nota,
            f.status
     FROM student_responses sr
     LEFT JOIN feedbacks f ON f.student_response_id = sr.id

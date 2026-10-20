@@ -37,6 +37,19 @@ export const DEMO_TEACHER = {
 };
 
 export const DEMO_CLASS_NAME = '3º Ano B - Ensino Médio';
+export const DEMO_CLASS_CODE = 'BIO-2026';
+export const DEMO_ORG_NAME = 'Escola Demonstração Educathon';
+export const DEMO_SECOND_TEACHER = {
+  name: 'Profa. Ana Lima',
+  email: 'ana.lima@educathon.dev',
+  password: 'Demo@123456',
+};
+export const DEMO_STUDENT = {
+  name: 'Mariana Vasconcelos',
+  email: 'mariana@aluno.educathon.dev',
+  password: 'Aluno@123456',
+};
+export const DEMO_QUIZ_TITLE = 'Quiz — Organelas da célula vegetal';
 export const DEMO_ACTIVITY_TITLE = 'Fotossíntese e Fluxos de Energia nos Ecossistemas';
 
 export const DEMO_RUBRIC_CRITERIA = [
@@ -164,16 +177,122 @@ export async function seedDemoData() {
     console.log(`ℹ️  Atividade já contém ${existingResponses.length} respostas cadastradas.`);
   }
 
+  const portal = await seedInstitutionAndPortal({ teacherId: teacher.id, classId: demoClass.id, activityId: activity.id });
+
   console.log('🎉 Povoamento concluído com sucesso!');
-  console.log(`   E-mail: ${DEMO_TEACHER.email}`);
-  console.log(`   Senha:  ${DEMO_TEACHER.password}`);
+  console.log(`   Professor (administrador da instituição): ${DEMO_TEACHER.email} / ${DEMO_TEACHER.password}`);
+  console.log(`   Professora da instituição: ${DEMO_SECOND_TEACHER.email} / ${DEMO_SECOND_TEACHER.password}`);
+  console.log(`   Aluna (portal do aluno): ${DEMO_STUDENT.email} / ${DEMO_STUDENT.password}`);
+  console.log(`   Código da turma: ${DEMO_CLASS_CODE}`);
 
   return {
     teacherId: teacher.id,
     classId: demoClass.id,
     activityId: activity.id,
     responsesCount: DEMO_STUDENT_RESPONSES.length,
+    ...portal,
   };
+}
+
+/**
+ * Instituição de demonstração, segunda professora, código da turma, aluna com conta e
+ * um quiz objetivo já corrigido (para o portal do aluno mostrar nota e feedback aprovados).
+ * Idempotente.
+ */
+async function seedInstitutionAndPortal({ teacherId, classId, activityId }) {
+  const db = getDb();
+  const { createOrganizationForTeacher, createStudentAccount, getStudentAccountByEmail, joinClass } =
+    await import('./accounts.js');
+
+  // 1. Instituição (o professor de demonstração é o administrador)
+  const teacherRow = db.prepare('SELECT organization_id FROM teachers WHERE id = ?').get(teacherId);
+  let orgId = teacherRow.organization_id;
+  if (!orgId) {
+    orgId = createOrganizationForTeacher(teacherId, DEMO_ORG_NAME).id;
+    console.log(`✅ Instituição criada: ${DEMO_ORG_NAME}`);
+  }
+
+  if (!getTeacherByEmail(DEMO_SECOND_TEACHER.email)) {
+    createTeacher({
+      name: DEMO_SECOND_TEACHER.name,
+      email: DEMO_SECOND_TEACHER.email,
+      passwordHash: await hashPassword(DEMO_SECOND_TEACHER.password),
+      organizationId: orgId,
+    });
+    console.log(`✅ Professora da instituição criada: ${DEMO_SECOND_TEACHER.email}`);
+  }
+
+  // 2. Código fixo da turma de demonstração
+  const owner = db.prepare('SELECT id FROM classes WHERE join_code = ?').get(DEMO_CLASS_CODE);
+  if (!owner) db.prepare('UPDATE classes SET join_code = ? WHERE id = ?').run(DEMO_CLASS_CODE, classId);
+
+  // 3. Aluna com conta, ligada à resposta dela na atividade principal
+  let account = getStudentAccountByEmail(DEMO_STUDENT.email);
+  if (!account) {
+    account = createStudentAccount({
+      name: DEMO_STUDENT.name,
+      email: DEMO_STUDENT.email,
+      passwordHash: await hashPassword(DEMO_STUDENT.password),
+      emailVerified: true,
+    });
+    console.log(`✅ Aluna de demonstração criada: ${DEMO_STUDENT.email}`);
+  }
+  const { studentId } = joinClass(account.id, classId);
+  db.prepare(`
+    UPDATE student_responses SET student_id = ?, email = ?
+    WHERE activity_id = ? AND student_name = ? AND student_id IS NULL
+  `).run(studentId, DEMO_STUDENT.email, activityId, DEMO_STUDENT.name);
+
+  // 4. Quiz objetivo já corrigido e aprovado para a aluna
+  let quiz = db.prepare('SELECT * FROM activities WHERE teacher_id = ? AND title = ?').get(teacherId, DEMO_QUIZ_TITLE);
+  if (!quiz) {
+    const { id } = createActivity({
+      title: DEMO_QUIZ_TITLE,
+      question: 'Qual destas organelas realiza a fotossíntese e só existe em células vegetais e algas?',
+      rubric: 'O cloroplasto contém clorofila e é onde a luz é convertida em energia química (glicose).',
+      educationLevel: 'medio',
+      subject: 'Biologia',
+      classId,
+      teacherId,
+      questionType: 'objetiva',
+      options: [
+        { letra: 'A', texto: 'Cloroplasto' },
+        { letra: 'B', texto: 'Centríolo' },
+        { letra: 'C', texto: 'Lisossomo' },
+        { letra: 'D', texto: 'Flagelo' },
+      ],
+      correctOption: 'A',
+    });
+    quiz = db.prepare('SELECT * FROM activities WHERE id = ?').get(id);
+    addResponses(quiz.id, [
+      { student_name: DEMO_STUDENT.name, original_response: 'A', student_id: studentId, email: DEMO_STUDENT.email },
+      { student_name: 'Lucas Silveira', original_response: 'Letra A' },
+      { student_name: 'Enzo Gabriel', original_response: 'B' },
+      { student_name: 'Camila Duarte', original_response: 'c) Lisossomo' },
+    ], 'manual');
+
+    // Correção pelo gabarito; as explicações de erro usam o modo de demonstração (sem chamar a API)
+    const { generateAndSave } = await import('../services/queue.js');
+    const previousMock = process.env.GEMINI_MOCK;
+    process.env.GEMINI_MOCK = 'true';
+    try {
+      for (const response of getResponsesByActivity(quiz.id)) {
+        await generateAndSave(quiz, response);
+      }
+    } finally {
+      if (previousMock === undefined) delete process.env.GEMINI_MOCK;
+      else process.env.GEMINI_MOCK = previousMock;
+    }
+
+    const mariana = getResponsesByActivity(quiz.id).find((r) => r.student_name === DEMO_STUDENT.name);
+    db.prepare(`
+      UPDATE feedbacks SET teacher_feedback = ai_feedback_text, status = 'aprovado', approved_at = datetime('now'), teacher_grade = 10
+      WHERE id = ?
+    `).run(mariana.feedback_id);
+    console.log('✅ Quiz objetivo criado e corrigido (feedback da aluna aprovado com nota 10).');
+  }
+
+  return { organizationId: orgId, studentAccountId: account.id, quizId: quiz.id, classCode: DEMO_CLASS_CODE };
 }
 
 // Execução direta via CLI (npm run seed)

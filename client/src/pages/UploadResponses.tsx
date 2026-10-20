@@ -136,6 +136,12 @@ export default function UploadResponses() {
           <p className="page-subtitle">
             Envie as respostas dos alunos via arquivo CSV ou digite manualmente.
           </p>
+          {activity?.question_type === 'objetiva' && (
+            <p className="exam-import__notice">
+              Questão de múltipla escolha: a resposta de cada aluno pode ser só a letra marcada (ex.: “B”).
+              A correção é feita pelo gabarito; a IA só escreve a explicação para quem errou.
+            </p>
+          )}
         </div>
       </div>
 

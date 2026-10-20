@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import {
   getActivity,
   generateFeedbacks,
@@ -15,6 +15,8 @@ import type {
   FilterType,
   FeedbackParsed,
   CriterionScore,
+  ObjectiveOption,
+  ObjectiveResult,
 } from '../types';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
@@ -44,6 +46,7 @@ export default function ReviewDashboard() {
   const [error, setError] = useState('');
   const [progress, setProgress] = useState<Progress | null>(null);
   const [generating, setGenerating] = useState(false);
+  const [gradeText, setGradeText] = useState('');
 
   function filterResponses(responses: StudentResponse[], f: FilterType): StudentResponse[] {
     if (f === 'todos') return responses;
@@ -136,10 +139,13 @@ export default function ReviewDashboard() {
         }
       }
       setCurrentCriteriaScores(scores || []);
+      setGradeText(formatGradeInput(selected.teacher_grade));
     } else {
       setCurrentCriteriaScores([]);
+      setGradeText('');
     }
   }, [
+    selected?.teacher_grade,
     selected?.id,
     selected?.teacher_feedback,
     selected?.ai_feedback_text,
@@ -147,8 +153,12 @@ export default function ReviewDashboard() {
     selected?.ai_feedback_json,
   ]);
 
-  // Checa se há edições locais não salvas
-  const isDirty = useCallback((): boolean => {
+  const isGradeDirty = useCallback((): boolean => {
+    if (!selected) return false;
+    return gradeText.trim() !== formatGradeInput(selected.teacher_grade);
+  }, [selected, gradeText]);
+
+  const isTextOrCriteriaDirty = useCallback((): boolean => {
     if (!selected) return false;
     const initialText = selected.teacher_feedback || selected.ai_feedback_text || '';
     if (editText !== initialText) return true;
@@ -179,6 +189,23 @@ export default function ReviewDashboard() {
 
     return false;
   }, [selected, editText, currentCriteriaScores]);
+
+  // Checa se há edições locais não salvas (texto, critérios ou nota)
+  const isDirty = useCallback(
+    (): boolean => isTextOrCriteriaDirty() || isGradeDirty(),
+    [isTextOrCriteriaDirty, isGradeDirty]
+  );
+
+  /** Valida a nota digitada. Vazio = sem nota. */
+  function readGrade(): { value: number | null; error?: string } {
+    const raw = gradeText.trim().replace(',', '.');
+    if (!raw) return { value: null };
+    const num = Number(raw);
+    if (!Number.isFinite(num) || num < 0 || num > 10) {
+      return { value: null, error: 'A nota deve ser um número de 0 a 10.' };
+    }
+    return { value: Math.round(num * 10) / 10 };
+  }
 
   // Troca de aluno com proteção contra descarte acidental
   function handleSelectStudent(newIndex: number) {
@@ -243,13 +270,24 @@ export default function ReviewDashboard() {
 
   async function handleSave() {
     if (!selected?.feedback_id) return;
+    const grade = readGrade();
+    if (grade.error) {
+      setError(grade.error);
+      return;
+    }
     setActionLoading('save');
     setError('');
     try {
-      await updateFeedback(selected.feedback_id, {
-        teacherFeedback: editText,
-        criteriaScores: currentCriteriaScores,
-      });
+      if (isTextOrCriteriaDirty() || !isGradeDirty()) {
+        await updateFeedback(selected.feedback_id, {
+          teacherFeedback: editText,
+          criteriaScores: currentCriteriaScores,
+          ...(isGradeDirty() ? { teacherGrade: grade.value } : {}),
+        });
+      } else {
+        // Só a nota mudou: não altera o status (um feedback aprovado continua aprovado)
+        await updateFeedback(selected.feedback_id, { teacherGrade: grade.value });
+      }
       await loadActivity();
     } catch (err: unknown) {
       const msg =
@@ -264,12 +302,18 @@ export default function ReviewDashboard() {
 
   const handleApprove = useCallback(async () => {
     if (!selected?.feedback_id) return;
+    const grade = readGrade();
+    if (grade.error) {
+      setError(grade.error);
+      return;
+    }
     setActionLoading('approve');
     setError('');
     try {
       await updateFeedback(selected.feedback_id, {
         teacherFeedback: editText,
         criteriaScores: currentCriteriaScores,
+        ...(isGradeDirty() ? { teacherGrade: grade.value } : {}),
       });
       await approveFeedback(selected.feedback_id);
       await loadActivity();
@@ -295,7 +339,7 @@ export default function ReviewDashboard() {
     } finally {
       setActionLoading('');
     }
-  }, [selected?.feedback_id, editText, currentCriteriaScores, loadActivity, filteredResponses, selectedIndex]);
+  }, [selected?.feedback_id, editText, currentCriteriaScores, loadActivity, filteredResponses, selectedIndex, gradeText, isGradeDirty]);
 
   async function handleRegenerate() {
     if (!selected?.feedback_id) return;
@@ -446,6 +490,9 @@ export default function ReviewDashboard() {
     );
   }
 
+  const isObjective = activity.question_type === 'objetiva';
+  const objectiveOptions: ObjectiveOption[] = isObjective ? parseJsonArray<ObjectiveOption>(activity.options) : [];
+  const objectiveResult: ObjectiveResult | null = selected?.auto_result ? parseJsonObject<ObjectiveResult>(selected.auto_result) : null;
   const needsGeneration = activity.responses.some((r) => !r.feedback_id);
   const pendingFeedbacksCount = activity.responses.filter(
     (r) => r.feedback_id && r.status !== 'aprovado'
@@ -460,6 +507,11 @@ export default function ReviewDashboard() {
           <p className="page-subtitle" style={{ marginBottom: 0 }}>
             {activity.question}
           </p>
+          {isObjective && (
+            <p className="review-objective-tag">
+              Múltipla escolha · gabarito <strong>{activity.correct_option}</strong> · correção automática; a IA só explica os erros
+            </p>
+          )}
         </div>
         <div className="table-actions">
           {pendingFeedbacksCount > 0 && (
@@ -683,8 +735,42 @@ export default function ReviewDashboard() {
                     {selected.original_response}
                   </div>
 
+                  {/* Questão objetiva: alternativa marcada x gabarito */}
+                  {isObjective && objectiveOptions.length > 0 && (
+                    <div className="review-objective">
+                      <p className="review-criteria-title">
+                        {objectiveResult
+                          ? objectiveResult.acertou
+                            ? '✓ Acertou'
+                            : objectiveResult.escolhida
+                              ? `✗ Marcou ${objectiveResult.escolhida}`
+                              : '? Alternativa não identificada'
+                          : 'Alternativas'}
+                      </p>
+                      <ul className="portal-options">
+                        {objectiveOptions.map((o) => {
+                          const isCorrect = o.letra === activity.correct_option;
+                          const isChosen = objectiveResult?.escolhida === o.letra;
+                          return (
+                            <li
+                              key={o.letra}
+                              className={`portal-options__item${isCorrect ? ' portal-options__item--correct' : ''}${isChosen && !isCorrect ? ' portal-options__item--wrong' : ''}`}
+                            >
+                              <span className="portal-options__letter">{o.letra}</span>
+                              <span>{o.texto}</span>
+                              <span className="portal-options__tags">
+                                {isChosen && <span className="portal-options__tag">marcada</span>}
+                                {isCorrect && <span className="portal-options__tag">gabarito</span>}
+                              </span>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </div>
+                  )}
+
                   {/* Avaliação por Critério da Rubrica */}
-                  {currentCriteriaScores.length > 0 && (
+                  {!isObjective && currentCriteriaScores.length > 0 && (
                     <div className="review-criteria-container">
                       <div className="review-criteria-header">
                         <span className="review-criteria-title">
@@ -750,6 +836,7 @@ export default function ReviewDashboard() {
                   </div>
                   {selected.ai_feedback_text ? (
                     <textarea
+                      aria-label="Texto do feedback para o aluno"
                       className="review-editor"
                       value={editText}
                       onChange={(e) => setEditText(e.target.value)}
@@ -768,6 +855,24 @@ export default function ReviewDashboard() {
                       <p style={{ color: 'var(--text-muted)' }}>
                         Clique em "Gerar Feedbacks com IA" para processar esta resposta.
                       </p>
+                    </div>
+                  )}
+                  {selected.feedback_id && (
+                    <div className="review-grade">
+                      <label htmlFor="teacher-grade" className="review-grade__label">
+                        Nota (0 a 10)
+                      </label>
+                      <input
+                        id="teacher-grade"
+                        className="input review-grade__input"
+                        inputMode="decimal"
+                        placeholder="—"
+                        value={gradeText}
+                        onChange={(e) => setGradeText(e.target.value)}
+                      />
+                      <span className="review-grade__hint">
+                        Opcional. Quem lança a nota é você; a IA não sugere nota. O aluno vê depois da aprovação.
+                      </span>
                     </div>
                   )}
                 </Window>
@@ -822,7 +927,15 @@ export default function ReviewDashboard() {
       {error && (
         <div className="alert-box alert-box--error" role="alert" style={{ marginTop: 'var(--space-6)' }}>
           <IconAlertCircle size={18} />
-          <span style={{ flex: 1 }}>{error}</span>
+          <span style={{ flex: 1 }}>
+            {error}
+            {/cota/i.test(error) && (
+              <>
+                {' '}
+                <Link to="/planos">Ver planos e cota</Link>
+              </>
+            )}
+          </span>
           <Button
             type="button"
             variant="ghost"
@@ -835,4 +948,26 @@ export default function ReviewDashboard() {
       )}
     </div>
   );
+}
+
+function formatGradeInput(grade: number | null | undefined): string {
+  return typeof grade === 'number' ? String(grade).replace('.', ',') : '';
+}
+
+function parseJsonArray<T>(value: string | null | undefined): T[] {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function parseJsonObject<T>(value: string): T | null {
+  try {
+    return JSON.parse(value) as T;
+  } catch {
+    return null;
+  }
 }

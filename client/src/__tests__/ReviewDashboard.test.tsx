@@ -203,7 +203,7 @@ describe('ReviewDashboard — Recursos da Fase 6D', () => {
     });
 
     // Edita o texto do feedback de Beatriz
-    const editor = screen.getByRole('textbox');
+    const editor = screen.getByRole('textbox', { name: /Texto do feedback/i });
     await user.type(editor, ' Nota adicional do professor.');
 
     // 1. Tenta trocar para Carlos, mas clica em Cancelar na confirmação
@@ -309,5 +309,63 @@ describe('ReviewDashboard — Recursos da Fase 6D', () => {
     await waitFor(() => {
       expect(screen.getByText('As plantas usam a luz do sol e água para crescer.')).toBeInTheDocument();
     });
+  });
+});
+
+describe('ReviewDashboard — Nota do professor e questão objetiva', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('salva só a nota sem mexer no texto (aceita vírgula)', async () => {
+    const user = userEvent.setup();
+    mockGetActivity.mockResolvedValue(sampleActivity);
+    renderDashboard();
+
+    const grade = await screen.findByLabelText(/Nota \(0 a 10\)/i);
+    await user.type(grade, '8,5');
+    await user.click(screen.getByRole('button', { name: /Salvar edição/i }));
+
+    await waitFor(() => expect(mockUpdateFeedback).toHaveBeenCalledWith(201, { teacherGrade: 8.5 }));
+  });
+
+  it('recusa nota fora de 0 a 10', async () => {
+    const user = userEvent.setup();
+    mockGetActivity.mockResolvedValue(sampleActivity);
+    renderDashboard();
+
+    const grade = await screen.findByLabelText(/Nota \(0 a 10\)/i);
+    await user.type(grade, '12');
+    await user.click(screen.getByRole('button', { name: /Salvar edição/i }));
+
+    expect(await screen.findByText(/A nota deve ser um número de 0 a 10/i)).toBeInTheDocument();
+    expect(mockUpdateFeedback).not.toHaveBeenCalled();
+  });
+
+  it('mostra alternativa marcada e gabarito em questão objetiva', async () => {
+    mockGetActivity.mockResolvedValue({
+      ...sampleActivity,
+      question_type: 'objetiva',
+      options: JSON.stringify([
+        { letra: 'A', texto: 'Cloroplasto' },
+        { letra: 'B', texto: 'Centríolo' },
+      ]),
+      correct_option: 'A',
+      responses: [
+        {
+          ...sampleActivity.responses[0],
+          original_response: 'B',
+          criteria_scores: null,
+          auto_result: JSON.stringify({ escolhida: 'B', correta: 'A', acertou: false }),
+        },
+      ],
+    });
+    renderDashboard();
+
+    expect(await screen.findByText(/✗ Marcou B/)).toBeInTheDocument();
+    expect(screen.getByText(/Múltipla escolha · gabarito/i)).toBeInTheDocument();
+    expect(screen.getByText('marcada')).toBeInTheDocument();
+    expect(screen.getByText('gabarito')).toBeInTheDocument();
+    expect(screen.queryByText(/Critérios da rubrica/i)).not.toBeInTheDocument();
   });
 });

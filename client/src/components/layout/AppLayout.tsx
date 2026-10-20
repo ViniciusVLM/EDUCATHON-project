@@ -25,6 +25,7 @@ import {
 import { Mascot } from '../ui/Mascot';
 import { Avatar } from '../ui/Avatar';
 import { getHealth } from '../../services/api';
+import { IconSparkles } from '../ui/Icons';
 
 interface NavItem {
   to: string;
@@ -173,7 +174,47 @@ export function AppLayout({ children }: AppLayoutProps) {
                 <div className="edu-user__head">
                   <p className="edu-user__name">{teacher?.name}</p>
                   <p className="edu-user__email">{teacher?.email}</p>
+                  {teacher?.organization && (
+                    <p className="edu-user__org">
+                      {teacher.organization.name}
+                      {teacher.role === 'org_admin' ? ' · administrador' : ''}
+                    </p>
+                  )}
                 </div>
+                <Link
+                  to="/conta"
+                  role="menuitem"
+                  className="edu-user__item"
+                  onClick={() => setUserMenuOpen(false)}
+                  id="menu-conta"
+                >
+                  <IconDocument size={16} />
+                  Minha conta e senha
+                </Link>
+                <Link
+                  to="/planos"
+                  role="menuitem"
+                  className="edu-user__item"
+                  onClick={() => setUserMenuOpen(false)}
+                  id="menu-planos"
+                >
+                  <IconSparkles size={16} />
+                  Planos e uso de IA
+                </Link>
+                <Link
+                  to="/instituicao"
+                  role="menuitem"
+                  className="edu-user__item"
+                  onClick={() => setUserMenuOpen(false)}
+                  id="menu-instituicao"
+                >
+                  <IconUsers size={16} />
+                  {teacher?.role === 'org_admin'
+                    ? 'Painel da instituição'
+                    : teacher?.organization
+                      ? 'Minha instituição'
+                      : 'Criar instituição'}
+                </Link>
                 <button
                   type="button"
                   role="menuitem"

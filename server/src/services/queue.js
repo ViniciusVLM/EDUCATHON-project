@@ -1,5 +1,71 @@
 import { generateFeedback, formatErrorSummary } from './gemini.js';
 import { saveFeedback, getDb } from '../database/db.js';
+import { generateObjectiveFeedback } from './objective.js';
+import { recordUsage } from './plans.js';
+
+// Nos testes automatizados os logs de rotina ficam desligados: muita saída no stdout
+// atrapalha a comunicação do executor de testes do Node com cada arquivo.
+const log = process.env.NODE_TEST_CONTEXT ? () => {} : console.log;
+
+/**
+ * Quando a cota foi reservada antes de começar, devolve as unidades que não viraram feedback.
+ * Em questões objetivas, só as respostas que precisam de IA falham, então o número de erros
+ * (ou o que sobrou, se o processamento foi abortado) é o que volta para a cota.
+ */
+function refundFailures(activityId, teacherId, reservedUnits, aborted = false) {
+  if (!reservedUnits || !teacherId) return;
+  const progress = getProgress(activityId);
+  const unused = aborted ? progress.total - progress.processed + progress.errors : progress.errors;
+  const refund = Math.min(reservedUnits, Math.max(0, unused));
+  if (refund > 0) recordUsage(teacherId, 'feedback', -refund);
+}
+
+/**
+ * Gera o feedback de UMA resposta, dissertativa ou objetiva, e salva no banco.
+ * Registra o uso de IA na cota de quem paga (professor ou instituição) quando a IA foi chamada.
+ */
+export async function generateAndSave(activity, response, { teacherId = null, apiKey = null, parsedCriteria = null, beforeSave = null, alreadyReserved = false } = {}) {
+  if (activity.question_type === 'objetiva') {
+    const result = await generateObjectiveFeedback({
+      activity,
+      studentName: response.student_name,
+      studentResponse: response.original_response,
+      apiKey,
+    });
+    if (beforeSave) beforeSave();
+    const saved = saveFeedback(
+      response.id,
+      result.raw,
+      result.parsed.feedback_completo,
+      result.modelUsed,
+      result.parsed.criterios_avaliacao,
+      result.autoResult
+    );
+    if (result.usedAi && teacherId && !alreadyReserved) recordUsage(teacherId, 'feedback', 1);
+    return { saved, parsed: result.parsed };
+  }
+
+  const result = await generateFeedback({
+    studentName: response.student_name,
+    question: activity.question,
+    rubric: activity.rubric,
+    studentResponse: response.original_response,
+    educationLevel: activity.education_level,
+    subject: activity.subject,
+    rubricCriteria: parsedCriteria,
+    apiKey,
+  });
+  if (beforeSave) beforeSave();
+  const saved = saveFeedback(
+    response.id,
+    result.raw,
+    result.parsed.feedback_completo,
+    result.modelUsed || process.env.GEMINI_MODEL || 'gemini-3.8-flash',
+    result.parsed?.criterios_avaliacao || null
+  );
+  if (teacherId && !alreadyReserved) recordUsage(teacherId, 'feedback', 1);
+  return { saved, parsed: result.parsed };
+}
 
 // ──────────────────────────────────────────
 // Helpers: processing_jobs (SQLite)
@@ -92,7 +158,11 @@ export function getProgress(activityId) {
  * @param {Object} activity - Dados da atividade
  * @param {Array}  responses - Lista de respostas dos alunos com seus IDs
  */
-export async function processResponses(activity, responses) {
+export async function processResponses(
+  activity,
+  responses,
+  { teacherId = activity.teacher_id ?? null, apiKey = null, reservedUnits = 0 } = {}
+) {
   const activityId = activity.id;
   const rawConcurrency = process.env.GEMINI_CONCURRENCY;
   const parsedConcurrency = rawConcurrency ? parseInt(rawConcurrency, 10) : NaN;
@@ -121,26 +191,13 @@ export async function processResponses(activity, responses) {
       const results = await Promise.allSettled(
         batch.map(async (response) => {
           try {
-            const result = await generateFeedback({
-              studentName: response.student_name,
-              question: activity.question,
-              rubric: activity.rubric,
-              studentResponse: response.original_response,
-              educationLevel: activity.education_level,
-              subject: activity.subject,
-              rubricCriteria: parsedCriteria,
-            });
-
-            const criteriaScores = result.parsed?.criterios_avaliacao || null;
-
             // Salva no banco com registro do modelo utilizado e critérios avaliados
-            saveFeedback(
-              response.id,
-              result.raw,
-              result.parsed.feedback_completo,
-              result.modelUsed || process.env.GEMINI_MODEL || 'gemini-3.8-flash',
-              criteriaScores
-            );
+            await generateAndSave(activity, response, {
+              teacherId,
+              apiKey,
+              parsedCriteria,
+              alreadyReserved: reservedUnits > 0,
+            });
 
             return { success: true, studentName: response.student_name, responseId: response.id };
           } catch (error) {
@@ -163,7 +220,7 @@ export async function processResponses(activity, responses) {
       }
 
       const progress = getProgress(activityId);
-      console.log(`📊 Progresso: ${progress.processed}/${progress.total} (erros: ${progress.errors})`);
+      log(`📊 Progresso: ${progress.processed}/${progress.total} (erros: ${progress.errors})`);
 
       // Delay entre lotes (exceto no último)
       if (i + BATCH_SIZE < responses.length) {
@@ -171,11 +228,15 @@ export async function processResponses(activity, responses) {
       }
     }
 
+    // Devolve à cota as gerações reservadas que falharam
+    refundFailures(activityId, teacherId, reservedUnits);
+
     // Marca como completo
     markJobComplete(activityId);
-    console.log(`✅ Processamento da atividade ${activityId} finalizado.`);
+    log(`✅ Processamento da atividade ${activityId} finalizado.`);
   } catch (criticalError) {
     console.error(`❌ Processamento abortado para atividade ${activityId}:`, criticalError);
+    refundFailures(activityId, teacherId, reservedUnits, true);
     markJobError(activityId);
     throw criticalError;
   }

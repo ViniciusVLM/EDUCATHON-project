@@ -3,6 +3,7 @@ import { getClassesByTeacher } from '../database/db.js';
 import { readExamDocument, DocumentError, MAX_IMPORT_FILE_BYTES } from '../services/documentReader.js';
 import { extractExam } from '../services/examExtractor.js';
 import { examImportLimiter } from '../middleware/rateLimit.js';
+import { reserveQuota, recordUsage, resolveGeminiKey, QuotaError } from '../services/plans.js';
 
 const router = Router();
 
@@ -45,17 +46,24 @@ router.post('/', examImportLimiter, parseLargeJson, async (req, res) => {
     return res.status(413).json({ error: 'O arquivo é maior que o limite de 8 MB.' });
   }
 
+  let reserved = false;
   try {
+    reserveQuota(req.teacher.id, 'import', 1);
+    reserved = true;
     const doc = readExamDocument(buffer);
     const classes = getClassesByTeacher(req.teacher.id);
-    const result = await extractExam(doc, { fileName: safeName, classes });
+    const result = await extractExam(doc, {
+      fileName: safeName,
+      classes,
+      apiKey: resolveGeminiKey(req.teacher.id),
+    });
 
     if (result.questions.length === 0) {
       const objectiveNote = result.ignoredObjectiveQuestions > 0
-        ? ` Encontramos ${result.ignoredObjectiveQuestions} questão(ões) de múltipla escolha, que o Educathon não corrige.`
+        ? ` Encontramos ${result.ignoredObjectiveQuestions} questão(ões) de verdadeiro/falso ou de ligar colunas, que o Educathon ainda não corrige.`
         : '';
       return res.status(422).json({
-        error: `Não encontramos questões dissertativas neste arquivo.${objectiveNote}`,
+        error: `Não encontramos questões dissertativas nem de múltipla escolha neste arquivo.${objectiveNote}`,
       });
     }
 
@@ -71,6 +79,11 @@ router.post('/', examImportLimiter, parseLargeJson, async (req, res) => {
       warnings,
     });
   } catch (error) {
+    // A leitura não aconteceu: devolve a geração reservada
+    if (reserved) recordUsage(req.teacher.id, 'import', -1);
+    if (error instanceof QuotaError) {
+      return res.status(402).json({ error: error.message, quota: error.status, upgradeUrl: '/planos' });
+    }
     if (error instanceof DocumentError) {
       if (error.cause) console.error('Erro na leitura da prova:', error.cause.message || error.cause);
       return res.status(error.status).json({ error: error.message });
