@@ -172,6 +172,7 @@ const corrected: StudentPortalActivity = {
   title: 'Quiz — Organelas',
   subject: 'Biologia',
   question: 'Qual organela faz fotossíntese?',
+  questions: [],
   questionType: 'objetiva',
   options: [{ letra: 'A', texto: 'Cloroplasto' }, { letra: 'B', texto: 'Centríolo' }],
   dueDate: null,

@@ -271,3 +271,74 @@ describe('SetupActivity — Questão de múltipla escolha', () => {
     }));
   });
 });
+
+describe('SetupActivity — Várias perguntas dissertativas', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetClasses.mockResolvedValue([]);
+  });
+
+  it('adiciona perguntas extras, valida e envia extraQuestions', async () => {
+    const user = userEvent.setup();
+    mockCreateActivity.mockResolvedValue({ message: 'OK', id: 77 });
+    renderSetup();
+
+    await user.type(screen.getByLabelText(/Título da Atividade/i), 'Prova de Ecologia');
+    await user.type(screen.getByLabelText(/Pergunta feita aos alunos/i), 'O que é cadeia alimentar?');
+    await user.type(screen.getByLabelText(/Rubrica \/ Gabarito/i), 'Quem come quem.');
+
+    await user.click(screen.getByRole('button', { name: /Adicionar outra pergunta dissertativa/i }));
+    expect(screen.getByLabelText('Pergunta 1 *')).toHaveValue('O que é cadeia alimentar?');
+    await user.type(screen.getByLabelText('Pergunta 2 *'), 'Papel dos decompositores?');
+
+    // Rubrica da pergunta 2 vazia: não deixa criar
+    await user.click(screen.getByRole('button', { name: /Próximo → Enviar Respostas/i }));
+    expect(await screen.findByText(/Preencha a pergunta 2 e a rubrica dela/i)).toBeInTheDocument();
+    expect(mockCreateActivity).not.toHaveBeenCalled();
+
+    await user.type(screen.getByLabelText(/Rubrica \/ Gabarito da pergunta 2/i), 'Reciclam nutrientes.');
+    await user.click(screen.getByRole('button', { name: /Adicionar outra pergunta dissertativa/i }));
+    await user.click(screen.getByRole('button', { name: /Remover pergunta 3/i }));
+    await user.click(screen.getByRole('button', { name: /Próximo → Enviar Respostas/i }));
+
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/upload/77'));
+    expect(mockCreateActivity).toHaveBeenCalledWith(expect.objectContaining({
+      question: 'O que é cadeia alimentar?',
+      rubric: 'Quem come quem.',
+      extraQuestions: [{ question: 'Papel dos decompositores?', rubric: 'Reciclam nutrientes.' }],
+    }));
+  });
+
+  it('junta as questões dissertativas da prova importada numa atividade só', async () => {
+    const user = userEvent.setup();
+    mockImportExam.mockResolvedValue({
+      fileName: 'prova.pdf',
+      sourceType: 'pdf',
+      exam: { title: 'Prova de Ciências', subject: 'Ciências', educationLevel: 'fundamental', dueDate: null, classText: null },
+      suggestedClassId: null,
+      questions: [
+        { number: '1', title: 'Q1', question: 'Explique a fotossíntese.', rubric: 'Luz e CO2.', rubricFromDocument: true, criteria: [] },
+        { number: '2', title: 'Q2', question: 'Explique a respiração.', rubric: 'Glicose e O2.', rubricFromDocument: true, criteria: [] },
+      ],
+      ignoredObjectiveQuestions: 0,
+      warnings: [],
+    });
+    mockCreateActivity.mockResolvedValue({ message: 'OK', id: 88 });
+    renderSetup();
+    const file = new File(['%PDF-1.7'], 'prova.pdf', { type: 'application/pdf' });
+    await user.upload(screen.getByLabelText(/Arquivo da prova/i), file);
+    await screen.findByText(/2 questões encontradas/i);
+
+    await user.click(screen.getByLabelText(/Juntar as 2 questões dissertativas/i));
+    expect(screen.getByLabelText(/Título da prova/i)).toHaveValue('Prova de Ciências');
+    await user.click(screen.getByRole('button', { name: /Próximo → Enviar Respostas/i }));
+
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/upload/88'));
+    expect(mockCreateActivity).toHaveBeenCalledTimes(1);
+    expect(mockCreateActivity).toHaveBeenCalledWith(expect.objectContaining({
+      title: 'Prova de Ciências',
+      question: 'Explique a fotossíntese.',
+      extraQuestions: [{ question: 'Explique a respiração.', rubric: 'Glicose e O2.' }],
+    }));
+  });
+});

@@ -246,8 +246,9 @@ export function listStudentClasses(accountId) {
 export function listStudentActivities(accountId) {
   const rows = getDb().prepare(`
     SELECT a.id, a.title, a.subject, a.question, a.question_type, a.options, a.due_date, a.created_at,
+           a.questions,
            c.id AS class_id, c.name AS class_name, t.name AS teacher_name,
-           sr.id AS response_id, sr.original_response,
+           sr.id AS response_id, sr.original_response, sr.answers,
            f.status AS feedback_status,
            CASE WHEN f.status = 'aprovado' THEN f.teacher_feedback END AS feedback,
            CASE WHEN f.status = 'aprovado' THEN f.teacher_grade END AS grade,

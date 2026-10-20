@@ -166,6 +166,16 @@ const MIGRATIONS = [
       'ALTER TABLE teachers ADD COLUMN session_epoch INTEGER NOT NULL DEFAULT 0',
     ],
   },
+  // ── Várias questões dissertativas na mesma atividade ──────────────────────
+  {
+    name: '013_multi_question_activities',
+    sqls: [
+      // JSON: [{pergunta, rubrica}] — a pergunta 1 também fica em question/rubric
+      'ALTER TABLE activities ADD COLUMN questions TEXT',
+      // JSON: ["resposta da questão 1", "resposta da questão 2", ...]
+      'ALTER TABLE student_responses ADD COLUMN answers TEXT',
+    ],
+  },
 ];
 
 /**
@@ -379,14 +389,15 @@ export function createActivity({
   questionType = 'dissertativa',
   options = null,
   correctOption = null,
+  questions = null,
 }) {
   const db = getDb();
   const stmt = db.prepare(`
     INSERT INTO activities (
       title, question, rubric, education_level, subject, class_id, due_date, rubric_criteria, teacher_id,
-      question_type, options, correct_option
+      question_type, options, correct_option, questions
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   const result = stmt.run(
     title,
@@ -402,7 +413,8 @@ export function createActivity({
     teacherId || null,
     questionType === 'objetiva' ? 'objetiva' : 'dissertativa',
     options ? (typeof options === 'string' ? options : JSON.stringify(options)) : null,
-    correctOption || null
+    correctOption || null,
+    Array.isArray(questions) && questions.length > 1 ? JSON.stringify(questions) : null
   );
   return { id: result.lastInsertRowid };
 }
@@ -477,9 +489,9 @@ export function addResponses(activityId, responses, defaultMethod = 'manual') {
 
   const stmt = db.prepare(`
     INSERT INTO student_responses (
-      activity_id, student_name, original_response, student_id, email, submission_method, word_count
+      activity_id, student_name, original_response, student_id, email, submission_method, word_count, answers
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   const insertMany = db.transaction((items) => {
@@ -524,7 +536,8 @@ export function addResponses(activityId, responses, defaultMethod = 'manual') {
         matchedStudentId,
         studentEmail,
         method,
-        wordCount
+        wordCount,
+        Array.isArray(item.answers) ? JSON.stringify(item.answers) : null
       );
       ids.push(result.lastInsertRowid);
     }

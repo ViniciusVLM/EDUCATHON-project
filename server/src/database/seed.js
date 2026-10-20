@@ -50,6 +50,7 @@ export const DEMO_STUDENT = {
   password: 'Aluno@123456',
 };
 export const DEMO_QUIZ_TITLE = 'Quiz — Organelas da célula vegetal';
+export const DEMO_EXAM_TITLE = 'Prova — Ecologia (3 questões dissertativas)';
 export const DEMO_ACTIVITY_TITLE = 'Fotossíntese e Fluxos de Energia nos Ecossistemas';
 
 export const DEMO_RUBRIC_CRITERIA = [
@@ -292,7 +293,86 @@ async function seedInstitutionAndPortal({ teacherId, classId, activityId }) {
     console.log('✅ Quiz objetivo criado e corrigido (feedback da aluna aprovado com nota 10).');
   }
 
-  return { organizationId: orgId, studentAccountId: account.id, quizId: quiz.id, classCode: DEMO_CLASS_CODE };
+  // 5. Prova com várias questões dissertativas (uma atividade, três perguntas)
+  let exam = db.prepare('SELECT * FROM activities WHERE teacher_id = ? AND title = ?').get(teacherId, DEMO_EXAM_TITLE);
+  if (!exam) {
+    const { composeResponse } = await import('../services/multiQuestion.js');
+    const questions = [
+      {
+        pergunta: 'O que é uma cadeia alimentar? Dê um exemplo com pelo menos três níveis.',
+        rubrica: 'Define cadeia alimentar como a sequência de quem se alimenta de quem, com transferência de energia. Exemplo com produtor, consumidor primário e consumidor secundário (ex.: capim → gafanhoto → sapo).',
+      },
+      {
+        pergunta: 'Explique o papel dos decompositores no ecossistema.',
+        rubrica: 'Fungos e bactérias decompõem matéria orgânica morta e devolvem nutrientes ao solo, fechando o ciclo da matéria.',
+      },
+      {
+        pergunta: 'Por que a quantidade de energia diminui de um nível trófico para o seguinte?',
+        rubrica: 'Parte da energia é gasta na respiração/manutenção do organismo e perdida como calor; só cerca de 10% passa para o nível seguinte.',
+      },
+    ];
+    const { id } = createActivity({
+      title: DEMO_EXAM_TITLE,
+      question: questions[0].pergunta,
+      rubric: questions[0].rubrica,
+      educationLevel: 'medio',
+      subject: 'Biologia',
+      classId,
+      teacherId,
+      questions,
+    });
+    exam = db.prepare('SELECT * FROM activities WHERE id = ?').get(id);
+    const answersByStudent = [
+      {
+        student_name: DEMO_STUDENT.name,
+        student_id: studentId,
+        email: DEMO_STUDENT.email,
+        answers: [
+          'É a sequência de seres vivos em que um serve de alimento para o outro. Exemplo: capim → gafanhoto → sapo → cobra.',
+          'Os decompositores, como fungos e bactérias, quebram restos de seres mortos e devolvem os nutrientes para o solo.',
+          'Porque cada ser vivo gasta energia para viver e parte vira calor, então só uma parte passa para o próximo nível.',
+        ],
+      },
+      {
+        student_name: 'Lucas Silveira',
+        answers: [
+          'Cadeia alimentar é quando os animais comem uns aos outros. Ex: leão come zebra.',
+          'Eles limpam a natureza.',
+          '',
+        ],
+      },
+      {
+        student_name: 'Camila Duarte',
+        answers: [
+          'Mostra o caminho da energia: plantas (produtoras) → coelho (consumidor primário) → raposa (consumidor secundário).',
+          'Decompõem a matéria orgânica e reciclam os nutrientes.',
+          'Porque a energia se perde na respiração e como calor; cerca de 10% passa adiante.',
+        ],
+      },
+    ].map((r) => ({ ...r, original_response: composeResponse(r.answers) }));
+    addResponses(exam.id, answersByStudent, 'manual');
+
+    // Rascunhos gerados em modo de demonstração (sem chamar a API); só o da aluna fica aprovado
+    const { generateAndSave } = await import('../services/queue.js');
+    const previousMock = process.env.GEMINI_MOCK;
+    process.env.GEMINI_MOCK = 'true';
+    try {
+      for (const response of getResponsesByActivity(exam.id)) {
+        await generateAndSave(exam, response);
+      }
+    } finally {
+      if (previousMock === undefined) delete process.env.GEMINI_MOCK;
+      else process.env.GEMINI_MOCK = previousMock;
+    }
+    const marianaExam = getResponsesByActivity(exam.id).find((r) => r.student_name === DEMO_STUDENT.name);
+    db.prepare(`
+      UPDATE feedbacks SET teacher_feedback = ai_feedback_text, status = 'aprovado', approved_at = datetime('now'), teacher_grade = 9
+      WHERE id = ?
+    `).run(marianaExam.feedback_id);
+    console.log('✅ Prova com 3 questões dissertativas criada (feedback da aluna aprovado com nota 9).');
+  }
+
+  return { organizationId: orgId, studentAccountId: account.id, quizId: quiz.id, examId: exam.id, classCode: DEMO_CLASS_CODE };
 }
 
 // Execução direta via CLI (npm run seed)

@@ -7,6 +7,7 @@ import {
   getActivityStats,
   getClassById,
 } from '../database/db.js';
+import { validateExtraQuestions } from '../services/multiQuestion.js';
 
 const router = Router();
 
@@ -101,6 +102,16 @@ router.post('/', (req, res) => {
       });
     }
 
+    // Várias questões dissertativas: a pergunta 1 é question/rubric, as demais vêm em extraQuestions
+    let questions = null;
+    if (questionType === 'dissertativa') {
+      const parsedQuestions = validateExtraQuestions(req.body.extraQuestions, { question, rubric });
+      if (parsedQuestions.error) {
+        return res.status(400).json({ error: parsedQuestions.error });
+      }
+      questions = parsedQuestions.questions;
+    }
+
     // IDOR fix: se informado classId, valida se a turma pertence ao professor logado
     if (classId) {
       const cls = getClassById(Number(classId), req.teacher.id);
@@ -122,6 +133,7 @@ router.post('/', (req, res) => {
       questionType,
       options,
       correctOption,
+      questions,
     });
 
     res.status(201).json({

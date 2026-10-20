@@ -14,6 +14,7 @@ import {
 import { normalizeJoinCode } from '../services/secrets.js';
 import { parseOptions } from '../services/objective.js';
 import { studentAuthLimiter } from '../middleware/rateLimit.js';
+import { getQuestions, isMultiQuestion, getAnswers } from '../services/multiQuestion.js';
 import { getDb } from '../database/db.js';
 import { comparePassword, hashPassword, generateStudentToken } from '../services/auth.js';
 
@@ -34,12 +35,20 @@ function toPortalActivity(row) {
 
   const isObjective = row.question_type === 'objetiva';
   const criteria = parseJson(row.criteria_scores);
+  // Várias perguntas: o aluno vê cada pergunta com a própria resposta (a rubrica não é mostrada)
+  let questions = [];
+  if (isMultiQuestion(row)) {
+    const list = getQuestions(row);
+    const answers = row.response_id ? getAnswers(row, list.length) : [];
+    questions = list.map((q, i) => ({ numero: q.numero, pergunta: q.pergunta, resposta: answers[i] ?? null }));
+  }
   return {
     id: row.id,
     title: row.title,
     subject: row.subject || 'Sem disciplina',
     question: row.question,
     questionType: isObjective ? 'objetiva' : 'dissertativa',
+    questions,
     options: isObjective ? parseOptions(row.options) : [],
     dueDate: row.due_date,
     classId: row.class_id,

@@ -2,6 +2,13 @@ import { generateFeedback, formatErrorSummary } from './gemini.js';
 import { saveFeedback, getDb } from '../database/db.js';
 import { generateObjectiveFeedback } from './objective.js';
 import { recordUsage } from './plans.js';
+import {
+  getQuestions,
+  isMultiQuestion,
+  getAnswers,
+  blankQuestionFeedback,
+  combineFeedbacks,
+} from './multiQuestion.js';
 
 // Nos testes automatizados os logs de rotina ficam desligados: muita saída no stdout
 // atrapalha a comunicação do executor de testes do Node com cada arquivo.
@@ -43,6 +50,46 @@ export async function generateAndSave(activity, response, { teacherId = null, ap
     );
     if (result.usedAi && teacherId && !alreadyReserved) recordUsage(teacherId, 'feedback', 1);
     return { saved, parsed: result.parsed };
+  }
+
+  if (isMultiQuestion(activity)) {
+    // Uma chamada de IA por questão respondida, em sequência (evita estourar o limite da API).
+    // Se qualquer questão falhar, nada é salvo: a resposta fica para reprocessar.
+    const questions = getQuestions(activity);
+    const answers = getAnswers(response, questions.length);
+    const parts = [];
+    let modelUsed = null;
+    for (let i = 0; i < questions.length; i++) {
+      if (!answers[i].trim()) {
+        parts.push(blankQuestionFeedback());
+        continue;
+      }
+      const r = await generateFeedback({
+        studentName: response.student_name,
+        question: questions[i].pergunta,
+        rubric: questions[i].rubrica,
+        studentResponse: answers[i],
+        educationLevel: activity.education_level,
+        subject: activity.subject,
+        // Os critérios detalhados do formulário pertencem à pergunta 1
+        rubricCriteria: i === 0 ? parsedCriteria : null,
+        apiKey,
+      });
+      modelUsed = modelUsed || r.modelUsed;
+      parts.push(r.parsed);
+    }
+    const combined = combineFeedbacks(parts);
+    if (beforeSave) beforeSave();
+    const saved = saveFeedback(
+      response.id,
+      JSON.stringify(combined),
+      combined.feedback_completo,
+      modelUsed || process.env.GEMINI_MODEL || 'gemini-3.8-flash',
+      combined.criterios_avaliacao.length > 0 ? combined.criterios_avaliacao : null
+    );
+    // Uma correção por aluno, independente de quantas perguntas a prova tem
+    if (teacherId && !alreadyReserved) recordUsage(teacherId, 'feedback', 1);
+    return { saved, parsed: combined };
   }
 
   const result = await generateFeedback({

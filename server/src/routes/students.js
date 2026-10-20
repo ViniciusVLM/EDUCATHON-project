@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { parseCSV } from '../services/parser.js';
 import { addResponses, getActivityIfOwned } from '../database/db.js';
+import { getQuestions, isMultiQuestion, normalizeAnswers, composeResponse } from '../services/multiQuestion.js';
 
 const router = Router();
 
@@ -32,7 +33,9 @@ router.post('/:id/upload', (req, res) => {
       });
     }
 
-    const parsed = parseCSV(csvContent);
+    const parsed = parseCSV(csvContent, {
+      questionCount: isMultiQuestion(activity) ? getQuestions(activity).length : 1,
+    });
 
     if (parsed.length > 200) {
       return res.status(400).json({
@@ -79,6 +82,38 @@ router.post('/:id/manual', (req, res) => {
     if (responses.length > 100) {
       return res.status(400).json({
         error: 'Envie no máximo 100 respostas por lote.',
+      });
+    }
+
+    // Várias perguntas: cada aluno manda answers (uma resposta por questão)
+    if (isMultiQuestion(activity)) {
+      const count = getQuestions(activity).length;
+      const prepared = [];
+      for (const [i, r] of responses.entries()) {
+        if (!r || typeof r.student_name !== 'string' || !r.student_name.trim()) {
+          return res.status(400).json({ error: `Resposta ${i + 1} inválida: informe o nome do aluno.` });
+        }
+        if (r.student_name.trim().length > 100) {
+          return res.status(400).json({
+            error: `Resposta ${i + 1} inválida: o nome do aluno deve ter no máximo 100 caracteres.`,
+          });
+        }
+        const normalized = normalizeAnswers(r.answers, count);
+        if (normalized.error) {
+          return res.status(400).json({ error: `Aluno ${r.student_name.trim()}: ${normalized.error}` });
+        }
+        prepared.push({
+          student_name: r.student_name.trim(),
+          email: typeof r.email === 'string' ? r.email : undefined,
+          answers: normalized.answers,
+          original_response: composeResponse(normalized.answers),
+        });
+      }
+      const ids = addResponses(activityId, prepared, 'manual');
+      return res.status(201).json({
+        message: `${prepared.length} respostas adicionadas com sucesso!`,
+        count: prepared.length,
+        studentIds: ids.map(Number),
       });
     }
 

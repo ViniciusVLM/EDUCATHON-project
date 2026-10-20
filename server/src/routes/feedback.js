@@ -146,9 +146,9 @@ router.patch('/feedback/:feedbackId', (req, res) => {
       }
     }
 
-    if (teacherFeedback !== undefined && (typeof teacherFeedback !== 'string' || teacherFeedback.length > 10000)) {
+    if (teacherFeedback !== undefined && (typeof teacherFeedback !== 'string' || teacherFeedback.length > 40000)) {
       return res.status(400).json({
-        error: 'O feedback do professor deve ter no máximo 10.000 caracteres.',
+        error: 'O feedback do professor deve ter no máximo 40.000 caracteres.',
       });
     }
 
@@ -236,7 +236,7 @@ router.post('/feedback/:feedbackId/regenerate', aiGenerateLimiter, async (req, r
     const db = (await import('../database/db.js'));
     const response = db.getDb().prepare(`
       SELECT sr.*, a.id AS activity_id, a.question, a.rubric, a.education_level, a.subject, a.rubric_criteria,
-             a.question_type, a.options, a.correct_option
+             a.question_type, a.options, a.correct_option, a.questions
       FROM student_responses sr
       JOIN activities a ON a.id = sr.activity_id
       WHERE sr.id = ? AND a.teacher_id = ?
@@ -266,6 +266,7 @@ router.post('/feedback/:feedbackId/regenerate', aiGenerateLimiter, async (req, r
       question_type: response.question_type,
       options: response.options,
       correct_option: response.correct_option,
+      questions: response.questions,
     };
 
     const units = activity.question_type === 'objetiva' ? countAiNeeded(activity, [response]) : 1;

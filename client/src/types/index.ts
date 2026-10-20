@@ -23,6 +23,14 @@ export interface Activity {
   question_type?: 'dissertativa' | 'objetiva';
   options?: string | null; // JSON: [{letra, texto}]
   correct_option?: string | null;
+  // ── Várias questões dissertativas ──
+  questions?: string | null; // JSON: [{pergunta, rubrica}] (só quando há mais de uma)
+}
+
+/** Uma pergunta de uma atividade com várias questões dissertativas. */
+export interface ActivityQuestion {
+  pergunta: string;
+  rubrica: string;
 }
 
 export interface ObjectiveOption {
@@ -48,6 +56,7 @@ export interface StudentResponse {
   email?: string | null;
   submission_method?: 'csv' | 'manual' | null;
   word_count?: number | null;
+  answers?: string | null; // JSON: uma resposta por questão (atividades com várias perguntas)
   updated_at?: string | null;
   // Joined feedback fields
   feedback_id: number | null;
@@ -86,6 +95,8 @@ export interface FeedbackParsed {
   sugestao_melhoria: string;
   feedback_completo: string;
   criterios_avaliacao?: CriterionScore[];
+  /** Atividades com várias perguntas: o rascunho de cada questão */
+  questoes?: (Omit<FeedbackParsed, 'questoes'> & { numero: number; sem_resposta?: boolean })[];
 }
 
 export interface Progress {
@@ -350,6 +361,8 @@ export interface StudentPortalActivity {
   subject: string;
   question: string;
   questionType: 'dissertativa' | 'objetiva';
+  /** Várias perguntas: cada uma com a resposta do aluno (vazio quando é uma pergunta só) */
+  questions: { numero: number; pergunta: string; resposta: string | null }[];
   options: ObjectiveOption[];
   dueDate: string | null;
   classId: number;

@@ -116,6 +116,8 @@ export async function createActivity(data: {
   questionType?: 'dissertativa' | 'objetiva';
   options?: { texto: string }[];
   correctOption?: string;
+  /** Perguntas 2, 3... de uma atividade dissertativa com várias perguntas */
+  extraQuestions?: { question: string; rubric: string }[];
 }): Promise<{ message: string; id: number }> {
   return request('/activities', {
     method: 'POST',
@@ -146,13 +148,13 @@ export async function getActivity(id: number): Promise<ActivityWithResponses> {
 // CSV Preview
 // ──────────────────────────────────────────
 
-export async function previewCSV(csvContent: string): Promise<{
-  rows: { student_name: string; original_response: string }[];
+export async function previewCSV(csvContent: string, questionCount = 1): Promise<{
+  rows: { student_name: string; original_response: string; answers?: string[] }[];
   total: number;
 }> {
   return request('/csv/preview', {
     method: 'POST',
-    body: JSON.stringify({ csvContent }),
+    body: JSON.stringify({ csvContent, questionCount }),
   });
 }
 
@@ -173,7 +175,9 @@ export async function uploadCSV(activityId: number, csvContent: string): Promise
 
 export async function addManualResponses(activityId: number, responses: {
   student_name: string;
-  original_response: string;
+  original_response?: string;
+  /** Uma resposta por questão (atividades com várias perguntas) */
+  answers?: string[];
 }[]): Promise<{ message: string; count: number }> {
   return request(`/activities/${activityId}/manual`, {
     method: 'POST',

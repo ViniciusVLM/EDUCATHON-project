@@ -48,6 +48,7 @@ function ActivityCard({ activity }: { activity: StudentPortalActivity }) {
           <p className="portal-activity__meta">
             {activity.subject} · {activity.className} · {activity.teacherName}
             {activity.questionType === 'objetiva' ? ' · múltipla escolha' : ''}
+            {activity.questions.length > 1 ? ` · ${activity.questions.length} perguntas` : ''}
           </p>
         </div>
         {typeof activity.grade === 'number' && (
@@ -64,7 +65,26 @@ function ActivityCard({ activity }: { activity: StudentPortalActivity }) {
 
       {open && (
         <div className="portal-activity__body">
-          <p className="portal-activity__question"><strong>Pergunta:</strong> {activity.question}</p>
+          {activity.questions.length > 1 ? (
+            <ol className="review-multi">
+              {activity.questions.map((q) => (
+                <li key={q.numero} className="review-multi__item">
+                  <p className="review-multi__question">
+                    <span className="multi-answers__num">{q.numero}</span> {q.pergunta}
+                  </p>
+                  {activity.situation !== 'sem_entrega' && (
+                    q.resposta?.trim() ? (
+                      <p className="review-multi__answer"><strong>Sua resposta:</strong> {q.resposta}</p>
+                    ) : (
+                      <p className="review-multi__answer review-multi__answer--blank">Você deixou em branco.</p>
+                    )
+                  )}
+                </li>
+              ))}
+            </ol>
+          ) : (
+            <p className="portal-activity__question"><strong>Pergunta:</strong> {activity.question}</p>
+          )}
 
           {activity.questionType === 'objetiva' && activity.options.length > 0 && (
             <ul className="portal-options" aria-label="Alternativas">
@@ -88,7 +108,7 @@ function ActivityCard({ activity }: { activity: StudentPortalActivity }) {
             </ul>
           )}
 
-          {activity.myAnswer && activity.questionType !== 'objetiva' && (
+          {activity.myAnswer && activity.questionType !== 'objetiva' && activity.questions.length <= 1 && (
             <div className="portal-activity__answer">
               <strong>Sua resposta</strong>
               <p>{activity.myAnswer}</p>

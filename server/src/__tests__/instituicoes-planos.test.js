@@ -2,7 +2,7 @@
  * Instituições, planos/cota, chave própria do Gemini, portal do aluno, nota do professor,
  * questões objetivas e login com Google (Firebase).
  */
-import { test, describe, before, after } from 'node:test';
+import { test, describe, before } from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import request from 'supertest';

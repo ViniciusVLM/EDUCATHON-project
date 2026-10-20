@@ -25,6 +25,7 @@ import { ProgressBar } from '../components/ui/ProgressBar';
 import { Stamp } from '../components/ui/Stamp';
 import { Window, toFileSlug } from '../components/ui/Window';
 import { Mascot } from '../components/ui/Mascot';
+import { getActivityQuestions, getResponseAnswers } from '../services/questions';
 import {
   IconCheckCircle,
   IconAlertCircle,
@@ -491,6 +492,9 @@ export default function ReviewDashboard() {
   }
 
   const isObjective = activity.question_type === 'objetiva';
+  const questions = isObjective ? [] : getActivityQuestions(activity);
+  const isMulti = questions.length > 1;
+  const selectedAnswers = isMulti && selected ? getResponseAnswers(selected, questions.length) : [];
   const objectiveOptions: ObjectiveOption[] = isObjective ? parseJsonArray<ObjectiveOption>(activity.options) : [];
   const objectiveResult: ObjectiveResult | null = selected?.auto_result ? parseJsonObject<ObjectiveResult>(selected.auto_result) : null;
   const needsGeneration = activity.responses.some((r) => !r.feedback_id);
@@ -504,9 +508,20 @@ export default function ReviewDashboard() {
       <div className="page-header-row">
         <div className="page-header-row__text">
           <h2 className="page-title">{activity.title}</h2>
-          <p className="page-subtitle" style={{ marginBottom: 0 }}>
-            {activity.question}
-          </p>
+          {isMulti ? (
+            <details className="review-questions">
+              <summary>{questions.length} perguntas dissertativas — ver enunciados</summary>
+              <ol>
+                {questions.map((q, i) => (
+                  <li key={i}>{q.pergunta}</li>
+                ))}
+              </ol>
+            </details>
+          ) : (
+            <p className="page-subtitle" style={{ marginBottom: 0 }}>
+              {activity.question}
+            </p>
+          )}
           {isObjective && (
             <p className="review-objective-tag">
               Múltipla escolha · gabarito <strong>{activity.correct_option}</strong> · correção automática; a IA só explica os erros
@@ -699,7 +714,7 @@ export default function ReviewDashboard() {
                       <div className="review-analysis-col__title review-analysis-col__title--green">
                         Pontos fortes
                       </div>
-                      <p className="review-analysis-col__text">
+                      <p className="review-analysis-col__text" style={{ whiteSpace: 'pre-line' }}>
                         {getParsedFeedback()?.pontos_fortes}
                       </p>
                     </div>
@@ -707,7 +722,7 @@ export default function ReviewDashboard() {
                       <div className="review-analysis-col__title review-analysis-col__title--amber">
                         Lacunas
                       </div>
-                      <p className="review-analysis-col__text">
+                      <p className="review-analysis-col__text" style={{ whiteSpace: 'pre-line' }}>
                         {getParsedFeedback()?.lacunas}
                       </p>
                     </div>
@@ -715,7 +730,7 @@ export default function ReviewDashboard() {
                       <div className="review-analysis-col__title review-analysis-col__title--blue">
                         Sugestão
                       </div>
-                      <p className="review-analysis-col__text">
+                      <p className="review-analysis-col__text" style={{ whiteSpace: 'pre-line' }}>
                         {getParsedFeedback()?.sugestao_melhoria}
                       </p>
                     </div>
@@ -731,9 +746,26 @@ export default function ReviewDashboard() {
                     <span className="review-panel-title">Resposta do aluno</span>
                     <span className="review-win__who">{selected.student_name}</span>
                   </div>
-                  <div className="review-content" style={{ whiteSpace: 'pre-wrap' }}>
-                    {selected.original_response}
-                  </div>
+                  {isMulti ? (
+                    <ol className="review-multi">
+                      {questions.map((q, i) => (
+                        <li key={i} className="review-multi__item">
+                          <p className="review-multi__question">
+                            <span className="multi-answers__num">{i + 1}</span> {q.pergunta}
+                          </p>
+                          {selectedAnswers[i]?.trim() ? (
+                            <p className="review-multi__answer">{selectedAnswers[i]}</p>
+                          ) : (
+                            <p className="review-multi__answer review-multi__answer--blank">Sem resposta</p>
+                          )}
+                        </li>
+                      ))}
+                    </ol>
+                  ) : (
+                    <div className="review-content" style={{ whiteSpace: 'pre-wrap' }}>
+                      {selected.original_response}
+                    </div>
+                  )}
 
                   {/* Questão objetiva: alternativa marcada x gabarito */}
                   {isObjective && objectiveOptions.length > 0 && (
