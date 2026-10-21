@@ -106,6 +106,14 @@ describe('serviço de várias questões', () => {
     assert.match(rows[0].original_response, /Questão 2: \(sem resposta\)/);
   });
 
+  test('arquivo de várias perguntas numa atividade de uma pergunta explica o engano', () => {
+    assert.throws(
+      () => parseCSV('nome_aluno,resposta_1,resposta_2\nAna,a,b\n'),
+      /tem só 1 pergunta.*atividade certa/
+    );
+    assert.equal(parseCSV('nome_aluno,resposta_1\nAna,a\n')[0].original_response, 'a');
+  });
+
   test('CSV sem colunas de resposta numeradas nem "resposta" explica o formato', () => {
     assert.throws(() => parseCSV('nome_aluno,outra\nAna,x\n', { questionCount: 2 }), /resposta_1, resposta_2/);
   });

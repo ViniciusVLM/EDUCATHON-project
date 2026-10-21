@@ -35,7 +35,7 @@ export function parseCSV(csvContent, { questionCount = 1 } = {}) {
   const columns = Object.keys(firstRecord).map(k => k.toLowerCase().trim());
 
   const nameCol = findColumn(columns, nameAliases, Object.keys(firstRecord));
-  const responseCol = findColumn(columns, responseAliases, Object.keys(firstRecord));
+  let responseCol = findColumn(columns, responseAliases, Object.keys(firstRecord));
   const emailCol = findColumn(columns, emailAliases, Object.keys(firstRecord));
 
   if (!nameCol) {
@@ -61,6 +61,19 @@ export function parseCSV(csvContent, { questionCount = 1 } = {}) {
       `${Array.from({ length: Math.min(questionCount, 3) }, (_, i) => `resposta_${i + 1}`).join(', ')}` +
       `${questionCount > 3 ? ', ...' : ''}. Colunas encontradas: ${Object.keys(firstRecord).join(', ')}`
     );
+  }
+
+  // Atividade de uma pergunta só recebendo um arquivo com uma coluna por questão
+  const numberedInFile = Object.keys(firstRecord).filter((c) => NUMBERED_COLUMN.test(c.trim()));
+  if (questionCount <= 1 && !responseCol && numberedInFile.length > 1) {
+    throw new Error(
+      `Este arquivo tem uma coluna por pergunta (${numberedInFile.join(', ')}), mas esta atividade tem só 1 pergunta. ` +
+      'Confira se abriu a atividade certa: a prova com várias perguntas mostra "Esta atividade tem N perguntas" no topo desta página. ' +
+      'Para esta atividade, use um arquivo com as colunas nome_aluno e resposta.'
+    );
+  }
+  if (questionCount <= 1 && !responseCol && numberedInFile.length === 1) {
+    responseCol = numberedInFile[0];
   }
 
   if (!responseCol && numberedCols.size === 0) {
