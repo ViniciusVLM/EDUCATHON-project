@@ -16,6 +16,7 @@ vi.mock('../services/api', () => ({
   updateFeedback: vi.fn().mockResolvedValue({ message: 'OK', status: 'revisado' }),
   approveFeedback: vi.fn().mockResolvedValue({ message: 'OK', status: 'aprovado' }),
   regenerateFeedback: vi.fn().mockResolvedValue({ message: 'OK', feedbackId: 10 }),
+  setActivityAiGrade: vi.fn().mockResolvedValue({ message: 'Nota sugerida ligada.', aiGradeEnabled: true }),
 }));
 
 const mockGetActivity = vi.mocked(api.getActivity);
@@ -124,6 +125,7 @@ function renderDashboard() {
     <MemoryRouter initialEntries={['/review/1']}>
       <Routes>
         <Route path="/review/:activityId" element={<ReviewDashboard />} />
+        <Route path="/upload/:activityId" element={<p>upload aberto</p>} />
       </Routes>
     </MemoryRouter>
   );
@@ -203,7 +205,7 @@ describe('ReviewDashboard — Recursos da Fase 6D', () => {
     });
 
     // Edita o texto do feedback de Beatriz
-    const editor = screen.getByRole('textbox');
+    const editor = screen.getByRole('textbox', { name: /Texto do feedback/i });
     await user.type(editor, ' Nota adicional do professor.');
 
     // 1. Tenta trocar para Carlos, mas clica em Cancelar na confirmação
@@ -309,5 +311,118 @@ describe('ReviewDashboard — Recursos da Fase 6D', () => {
     await waitFor(() => {
       expect(screen.getByText('As plantas usam a luz do sol e água para crescer.')).toBeInTheDocument();
     });
+  });
+});
+
+describe('ReviewDashboard — Nota do professor e questão objetiva', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('salva só a nota sem mexer no texto (aceita vírgula)', async () => {
+    const user = userEvent.setup();
+    mockGetActivity.mockResolvedValue(sampleActivity);
+    renderDashboard();
+
+    const grade = await screen.findByLabelText(/Nota \(0 a 10\)/i);
+    await user.type(grade, '8,5');
+    await user.click(screen.getByRole('button', { name: /Salvar edição/i }));
+
+    await waitFor(() => expect(mockUpdateFeedback).toHaveBeenCalledWith(201, { teacherGrade: 8.5 }));
+  });
+
+  it('recusa nota fora de 0 a 10', async () => {
+    const user = userEvent.setup();
+    mockGetActivity.mockResolvedValue(sampleActivity);
+    renderDashboard();
+
+    const grade = await screen.findByLabelText(/Nota \(0 a 10\)/i);
+    await user.type(grade, '12');
+    await user.click(screen.getByRole('button', { name: /Salvar edição/i }));
+
+    expect(await screen.findByText(/A nota deve ser um número de 0 a 10/i)).toBeInTheDocument();
+    expect(mockUpdateFeedback).not.toHaveBeenCalled();
+  });
+
+  it('mostra alternativa marcada e gabarito em questão objetiva', async () => {
+    mockGetActivity.mockResolvedValue({
+      ...sampleActivity,
+      question_type: 'objetiva',
+      options: JSON.stringify([
+        { letra: 'A', texto: 'Cloroplasto' },
+        { letra: 'B', texto: 'Centríolo' },
+      ]),
+      correct_option: 'A',
+      responses: [
+        {
+          ...sampleActivity.responses[0],
+          original_response: 'B',
+          criteria_scores: null,
+          auto_result: JSON.stringify({ escolhida: 'B', correta: 'A', acertou: false }),
+        },
+      ],
+    });
+    renderDashboard();
+
+    expect(await screen.findByText(/✗ Marcou B/)).toBeInTheDocument();
+    expect(screen.getByText(/Múltipla escolha · gabarito/i)).toBeInTheDocument();
+    expect(screen.getByText('marcada')).toBeInTheDocument();
+    expect(screen.getByText('gabarito')).toBeInTheDocument();
+    expect(screen.queryByText(/Critérios da rubrica/i)).not.toBeInTheDocument();
+  });
+});
+
+describe('ReviewDashboard — Nota sugerida pela IA', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('mostra a sugestão só como sugestão e usa ao clicar, salvando como nota do professor', async () => {
+    const user = userEvent.setup();
+    mockGetActivity.mockResolvedValue({
+      ...sampleActivity,
+      ai_grade_enabled: 1,
+      responses: [{ ...sampleActivity.responses[0], ai_grade: 6.5, ai_grade_reason: 'Citou luz e água; faltou CO2.' }],
+    });
+    renderDashboard();
+
+    expect(await screen.findByText('Sugestão da IA')).toBeInTheDocument();
+    expect(screen.getByText('Citou luz e água; faltou CO2.')).toBeInTheDocument();
+    expect(screen.getByText(/Nota sugerida pela IA: ligada/i)).toBeInTheDocument();
+    const grade = screen.getByLabelText(/Nota \(0 a 10\)/i);
+    expect(grade).toHaveValue('');
+
+    await user.click(screen.getByRole('button', { name: /Usar sugestão/i }));
+    expect(grade).toHaveValue('6,5');
+    await user.click(screen.getByRole('button', { name: /Salvar edição/i }));
+    await waitFor(() => expect(mockUpdateFeedback).toHaveBeenCalledWith(201, { teacherGrade: 6.5 }));
+  });
+
+  it('liga a nota sugerida numa atividade que estava desligada', async () => {
+    const user = userEvent.setup();
+    mockGetActivity.mockResolvedValue(sampleActivity);
+    renderDashboard();
+
+    expect(await screen.findByText(/Nota sugerida pela IA: desligada/i)).toBeInTheDocument();
+    expect(screen.queryByText('Sugestão da IA')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Ligar' }));
+    await waitFor(() => expect(api.setActivityAiGrade).toHaveBeenCalledWith(1, true));
+    expect(await screen.findByText(/Nota sugerida pela IA: ligada/i)).toBeInTheDocument();
+    expect(screen.getByText(/Use "Regenerar"/)).toBeInTheDocument();
+  });
+});
+
+describe('ReviewDashboard — atividade sem respostas', () => {
+  it('explica e leva para o envio de respostas', async () => {
+    const user = userEvent.setup();
+    mockGetActivity.mockResolvedValue({
+      ...sampleActivity,
+      responses: [],
+      stats: { total_students: 0, total_feedbacks: 0, pending: 0, reviewed: 0, approved: 0 },
+    });
+    renderDashboard();
+    expect(await screen.findByText('Esta atividade ainda não tem respostas')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /Enviar respostas dos alunos/i }));
+    expect(await screen.findByText('upload aberto')).toBeInTheDocument();
   });
 });

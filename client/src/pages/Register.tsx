@@ -4,9 +4,10 @@ import { useAuth } from '../contexts/AuthContext';
 import { Button } from '../components/ui/Button';
 import { IconAlertCircle } from '../components/ui/Icons';
 import { Mascot } from '../components/ui/Mascot';
+import { GoogleSignInButton } from '../components/auth/GoogleSignInButton';
 
 export default function Register() {
-  const { register } = useAuth();
+  const { register, loginWithGoogle } = useAuth();
   const navigate = useNavigate();
 
   const [name, setName] = useState('');
@@ -72,7 +73,7 @@ export default function Register() {
           </div>
 
           <div className="auth-split__hero-footer">
-            <span>A IA nunca dá nota; o professor decide</span>
+            <span>Quem decide a nota é sempre o professor</span>
           </div>
         </div>
 
@@ -167,6 +168,16 @@ export default function Register() {
               {loading ? 'Cadastrando...' : 'Criar Conta de Professor'}
             </Button>
           </form>
+
+          <GoogleSignInButton
+            label="Cadastrar com Google"
+            onToken={async (idToken) => {
+              setError('');
+              await loginWithGoogle(idToken);
+              navigate('/painel', { replace: true });
+            }}
+            onError={setError}
+          />
 
           <div className="auth-split__footer-link">
             Já possui conta?{' '}

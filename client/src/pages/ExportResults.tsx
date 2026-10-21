@@ -136,6 +136,7 @@ export default function ExportResults() {
                 <tr>
                   <th>Aluno</th>
                   <th>Feedback Final</th>
+                  <th>Nota</th>
                   <th>Status</th>
                 </tr>
               </thead>
@@ -148,6 +149,9 @@ export default function ExportResults() {
                     <td style={{ maxWidth: 400 }}>
                       {(r.teacher_feedback || r.ai_feedback_text || '—').substring(0, 120)}
                       {(r.teacher_feedback || r.ai_feedback_text || '').length > 120 ? '...' : ''}
+                    </td>
+                    <td style={{ whiteSpace: 'nowrap', fontWeight: 800 }}>
+                      {typeof r.teacher_grade === 'number' ? String(r.teacher_grade).replace('.', ',') : '—'}
                     </td>
                     <td>
                       {r.status === 'aprovado' && <Stamp tone="approved">Aprovado</Stamp>}

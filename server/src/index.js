@@ -12,7 +12,11 @@ import authRouter from './routes/auth.js';
 import classesRouter from './routes/classes.js';
 import dashboardRouter from './routes/dashboard.js';
 import examImportRouter from './routes/examImport.js';
-import { requireAuth } from './middleware/auth.js';
+import orgRouter from './routes/org.js';
+import billingRouter from './routes/billing.js';
+import studentAuthRouter from './routes/studentAuth.js';
+import studentRouter from './routes/student.js';
+import { requireAuth, requireStudent } from './middleware/auth.js';
 import { checkGeminiApiKeyOnStartup } from './services/gemini.js';
 import { configureTrustProxy } from './services/config.js';
 
@@ -38,7 +42,7 @@ const corsOrigins = process.env.CORS_ORIGIN
 
 app.use(cors({
   origin: corsOrigins,
-  methods: ['GET', 'POST', 'PATCH', 'DELETE'],
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
   credentials: true,
 }));
 
@@ -72,8 +76,16 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// Rotas públicas de autenticação
+// Rotas públicas de autenticação (professor e aluno)
 app.use('/api/auth', authRouter);
+app.use('/api/student-auth', studentAuthRouter);
+
+// Portal do aluno (token de aluno)
+app.use('/api/student', requireStudent, studentRouter);
+
+// Instituição, planos e chave própria do Gemini
+app.use('/api/org', requireAuth, orgRouter);
+app.use('/api/billing', requireAuth, billingRouter);
 
 // Rotas operacionais protegidas por autenticação
 app.use('/api/dashboard', requireAuth, dashboardRouter);

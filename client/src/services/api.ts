@@ -14,6 +14,13 @@ import type {
   CriterionScore,
   DashboardSummary,
   ExamImportResult,
+  BillingInfo,
+  QuotaStatus,
+  OrgOverview,
+  StudentUser,
+  StudentClass,
+  StudentPortalActivity,
+  StudentSubjectSummary,
 } from '../types';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
@@ -60,8 +67,8 @@ export async function getHealth(): Promise<{
 /**
  * Helper para fazer requests com tratamento de erro padrão e injeção do token JWT.
  */
-async function request<T>(url: string, options?: RequestInit): Promise<T> {
-  const token = getAuthToken();
+async function request<T>(url: string, options?: RequestInit, tokenOverride?: string | null): Promise<T> {
+  const token = tokenOverride !== undefined ? tokenOverride : getAuthToken();
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -106,10 +113,25 @@ export async function createActivity(data: {
   classId?: number | null;
   dueDate?: string | null;
   rubricCriteria?: { criterio: string; peso: number }[];
+  questionType?: 'dissertativa' | 'objetiva';
+  options?: { texto: string }[];
+  correctOption?: string;
+  /** Perguntas 2, 3... de uma atividade dissertativa com várias perguntas */
+  extraQuestions?: { question: string; rubric: string }[];
+  /** A IA sugere uma nota de 0 a 10 que só o professor vê */
+  aiGradeEnabled?: boolean;
 }): Promise<{ message: string; id: number }> {
   return request('/activities', {
     method: 'POST',
     body: JSON.stringify(data),
+  });
+}
+
+/** Liga ou desliga a nota sugerida pela IA numa atividade já criada. */
+export async function setActivityAiGrade(activityId: number, enabled: boolean): Promise<{ message: string; aiGradeEnabled: boolean }> {
+  return request(`/activities/${activityId}/ai-grade`, {
+    method: 'PATCH',
+    body: JSON.stringify({ enabled }),
   });
 }
 
@@ -136,13 +158,13 @@ export async function getActivity(id: number): Promise<ActivityWithResponses> {
 // CSV Preview
 // ──────────────────────────────────────────
 
-export async function previewCSV(csvContent: string): Promise<{
-  rows: { student_name: string; original_response: string }[];
+export async function previewCSV(csvContent: string, questionCount = 1): Promise<{
+  rows: { student_name: string; original_response: string; answers?: string[] }[];
   total: number;
 }> {
   return request('/csv/preview', {
     method: 'POST',
-    body: JSON.stringify({ csvContent }),
+    body: JSON.stringify({ csvContent, questionCount }),
   });
 }
 
@@ -163,7 +185,9 @@ export async function uploadCSV(activityId: number, csvContent: string): Promise
 
 export async function addManualResponses(activityId: number, responses: {
   student_name: string;
-  original_response: string;
+  original_response?: string;
+  /** Uma resposta por questão (atividades com várias perguntas) */
+  answers?: string[];
 }[]): Promise<{ message: string; count: number }> {
   return request(`/activities/${activityId}/manual`, {
     method: 'POST',
@@ -195,11 +219,13 @@ export async function updateFeedback(
         teacherFeedback?: string;
         teacherRating?: -1 | 0 | 1 | null;
         criteriaScores?: CriterionScore[] | null;
+        teacherGrade?: number | string | null;
       }
     | string
 ): Promise<{
   message: string;
   status: string;
+  teacherGrade?: number | null;
 }> {
   const body = typeof data === 'string' ? { teacherFeedback: data } : data;
   return request(`/feedback/${feedbackId}`, {
@@ -366,3 +392,164 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
   return request<DashboardSummary>('/dashboard/summary');
 }
 
+
+// ──────────────────────────────────────────
+// Código da turma, login com Google
+// ──────────────────────────────────────────
+
+export async function generateJoinCode(classId: number): Promise<{ message: string; joinCode: string }> {
+  return request(`/classes/${classId}/join-code`, { method: 'POST' });
+}
+
+export async function loginTeacherWithGoogle(idToken: string): Promise<AuthResponse> {
+  const res = await request<AuthResponse>('/auth/google', {
+    method: 'POST',
+    body: JSON.stringify({ idToken }),
+  });
+  setAuthToken(res.token);
+  return res;
+}
+
+// ──────────────────────────────────────────
+// Planos, cota e chave própria (pagamento SIMULADO)
+// ──────────────────────────────────────────
+
+export async function getBilling(): Promise<BillingInfo> {
+  return request('/billing');
+}
+
+export async function simulateCheckout(plan: string, method: 'pix' | 'cartao'): Promise<{ message: string; status: QuotaStatus }> {
+  return request('/billing/checkout', { method: 'POST', body: JSON.stringify({ plan, method }) });
+}
+
+export async function cancelPlan(): Promise<{ message: string; status: QuotaStatus }> {
+  return request('/billing/cancel', { method: 'POST' });
+}
+
+export async function saveGeminiKey(apiKey: string): Promise<{ message: string; status: QuotaStatus }> {
+  return request('/billing/api-key', { method: 'PUT', body: JSON.stringify({ apiKey }) });
+}
+
+export async function removeGeminiKey(): Promise<{ message: string; status: QuotaStatus }> {
+  return request('/billing/api-key', { method: 'DELETE' });
+}
+
+// ──────────────────────────────────────────
+// Instituição
+// ──────────────────────────────────────────
+
+export async function createOrganization(name: string): Promise<{ message: string; organization: { id: number; name: string } }> {
+  return request('/org', { method: 'POST', body: JSON.stringify({ name }) });
+}
+
+export async function getOrganization(): Promise<OrgOverview> {
+  return request('/org');
+}
+
+export async function createOrgTeacher(data: { name: string; email: string }): Promise<{ message: string; tempPassword: string }> {
+  return request('/org/teachers', { method: 'POST', body: JSON.stringify(data) });
+}
+
+export async function removeOrgTeacher(teacherId: number): Promise<{ message: string }> {
+  return request(`/org/teachers/${teacherId}`, { method: 'DELETE' });
+}
+
+export async function createOrgStudent(data: { name: string; email: string; classId: number }): Promise<{ message: string; tempPassword: string | null }> {
+  return request('/org/students', { method: 'POST', body: JSON.stringify(data) });
+}
+
+export async function generateOrgJoinCode(classId: number): Promise<{ message: string; joinCode: string }> {
+  return request(`/org/classes/${classId}/join-code`, { method: 'POST' });
+}
+
+// ──────────────────────────────────────────
+// Portal do aluno (token separado do professor)
+// ──────────────────────────────────────────
+
+const STUDENT_TOKEN_KEY = 'educathon_student_token';
+
+export function getStudentToken(): string | null {
+  try {
+    return localStorage.getItem(STUDENT_TOKEN_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function setStudentToken(token: string | null) {
+  try {
+    if (token) localStorage.setItem(STUDENT_TOKEN_KEY, token);
+    else localStorage.removeItem(STUDENT_TOKEN_KEY);
+  } catch {
+    // Ignora ambientes sem localStorage
+  }
+}
+
+interface StudentAuthResponse {
+  message: string;
+  student: StudentUser;
+  token: string;
+  joinedClass: { id: number; name: string } | null;
+}
+
+export async function registerStudent(data: {
+  name: string;
+  email: string;
+  password: string;
+  classCode: string;
+}): Promise<StudentAuthResponse> {
+  const res = await request<StudentAuthResponse>('/student-auth/register', { method: 'POST', body: JSON.stringify(data) }, null);
+  setStudentToken(res.token);
+  return res;
+}
+
+export async function loginStudent(data: { email: string; password: string }): Promise<StudentAuthResponse> {
+  const res = await request<StudentAuthResponse>('/student-auth/login', { method: 'POST', body: JSON.stringify(data) }, null);
+  setStudentToken(res.token);
+  return res;
+}
+
+export async function loginStudentWithGoogle(idToken: string, classCode?: string): Promise<StudentAuthResponse> {
+  const res = await request<StudentAuthResponse>(
+    '/student-auth/google',
+    { method: 'POST', body: JSON.stringify({ idToken, classCode: classCode || undefined }) },
+    null
+  );
+  setStudentToken(res.token);
+  return res;
+}
+
+export async function getStudentMe(): Promise<{ student: StudentUser; classes: StudentClass[] }> {
+  return request('/student/me', undefined, getStudentToken());
+}
+
+export async function joinClassWithCode(classCode: string): Promise<{ message: string; class: StudentClass }> {
+  return request('/student/join', { method: 'POST', body: JSON.stringify({ classCode }) }, getStudentToken());
+}
+
+export async function getStudentActivities(): Promise<{ subjects: StudentSubjectSummary[]; activities: StudentPortalActivity[] }> {
+  return request('/student/activities', undefined, getStudentToken());
+}
+
+// ──────────────────────────────────────────
+// Troca de senha (a sessão atual recebe um token novo; as outras saem)
+// ──────────────────────────────────────────
+
+export async function changeTeacherPassword(currentPassword: string, newPassword: string): Promise<{ message: string }> {
+  const res = await request<{ message: string; token: string }>('/auth/password', {
+    method: 'POST',
+    body: JSON.stringify({ currentPassword, newPassword }),
+  });
+  setAuthToken(res.token);
+  return res;
+}
+
+export async function changeStudentPassword(currentPassword: string, newPassword: string): Promise<{ message: string }> {
+  const res = await request<{ message: string; token: string }>(
+    '/student/password',
+    { method: 'POST', body: JSON.stringify({ currentPassword, newPassword }) },
+    getStudentToken()
+  );
+  setStudentToken(res.token);
+  return res;
+}

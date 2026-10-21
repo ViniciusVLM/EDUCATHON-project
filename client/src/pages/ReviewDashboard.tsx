@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import {
   getActivity,
   generateFeedbacks,
@@ -7,6 +7,7 @@ import {
   updateFeedback,
   approveFeedback,
   regenerateFeedback,
+  setActivityAiGrade,
 } from '../services/api';
 import type {
   ActivityWithResponses,
@@ -15,6 +16,8 @@ import type {
   FilterType,
   FeedbackParsed,
   CriterionScore,
+  ObjectiveOption,
+  ObjectiveResult,
 } from '../types';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
@@ -23,6 +26,7 @@ import { ProgressBar } from '../components/ui/ProgressBar';
 import { Stamp } from '../components/ui/Stamp';
 import { Window, toFileSlug } from '../components/ui/Window';
 import { Mascot } from '../components/ui/Mascot';
+import { getActivityQuestions, getResponseAnswers } from '../services/questions';
 import {
   IconCheckCircle,
   IconAlertCircle,
@@ -41,9 +45,11 @@ export default function ReviewDashboard() {
   const [filter, setFilter] = useState<FilterType>('todos');
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState('');
+  const [aiGradeNotice, setAiGradeNotice] = useState('');
   const [error, setError] = useState('');
   const [progress, setProgress] = useState<Progress | null>(null);
   const [generating, setGenerating] = useState(false);
+  const [gradeText, setGradeText] = useState('');
 
   function filterResponses(responses: StudentResponse[], f: FilterType): StudentResponse[] {
     if (f === 'todos') return responses;
@@ -136,10 +142,13 @@ export default function ReviewDashboard() {
         }
       }
       setCurrentCriteriaScores(scores || []);
+      setGradeText(formatGradeInput(selected.teacher_grade));
     } else {
       setCurrentCriteriaScores([]);
+      setGradeText('');
     }
   }, [
+    selected?.teacher_grade,
     selected?.id,
     selected?.teacher_feedback,
     selected?.ai_feedback_text,
@@ -147,8 +156,12 @@ export default function ReviewDashboard() {
     selected?.ai_feedback_json,
   ]);
 
-  // Checa se há edições locais não salvas
-  const isDirty = useCallback((): boolean => {
+  const isGradeDirty = useCallback((): boolean => {
+    if (!selected) return false;
+    return gradeText.trim() !== formatGradeInput(selected.teacher_grade);
+  }, [selected, gradeText]);
+
+  const isTextOrCriteriaDirty = useCallback((): boolean => {
     if (!selected) return false;
     const initialText = selected.teacher_feedback || selected.ai_feedback_text || '';
     if (editText !== initialText) return true;
@@ -179,6 +192,23 @@ export default function ReviewDashboard() {
 
     return false;
   }, [selected, editText, currentCriteriaScores]);
+
+  // Checa se há edições locais não salvas (texto, critérios ou nota)
+  const isDirty = useCallback(
+    (): boolean => isTextOrCriteriaDirty() || isGradeDirty(),
+    [isTextOrCriteriaDirty, isGradeDirty]
+  );
+
+  /** Valida a nota digitada. Vazio = sem nota. */
+  function readGrade(): { value: number | null; error?: string } {
+    const raw = gradeText.trim().replace(',', '.');
+    if (!raw) return { value: null };
+    const num = Number(raw);
+    if (!Number.isFinite(num) || num < 0 || num > 10) {
+      return { value: null, error: 'A nota deve ser um número de 0 a 10.' };
+    }
+    return { value: Math.round(num * 10) / 10 };
+  }
 
   // Troca de aluno com proteção contra descarte acidental
   function handleSelectStudent(newIndex: number) {
@@ -243,13 +273,24 @@ export default function ReviewDashboard() {
 
   async function handleSave() {
     if (!selected?.feedback_id) return;
+    const grade = readGrade();
+    if (grade.error) {
+      setError(grade.error);
+      return;
+    }
     setActionLoading('save');
     setError('');
     try {
-      await updateFeedback(selected.feedback_id, {
-        teacherFeedback: editText,
-        criteriaScores: currentCriteriaScores,
-      });
+      if (isTextOrCriteriaDirty() || !isGradeDirty()) {
+        await updateFeedback(selected.feedback_id, {
+          teacherFeedback: editText,
+          criteriaScores: currentCriteriaScores,
+          ...(isGradeDirty() ? { teacherGrade: grade.value } : {}),
+        });
+      } else {
+        // Só a nota mudou: não altera o status (um feedback aprovado continua aprovado)
+        await updateFeedback(selected.feedback_id, { teacherGrade: grade.value });
+      }
       await loadActivity();
     } catch (err: unknown) {
       const msg =
@@ -264,12 +305,18 @@ export default function ReviewDashboard() {
 
   const handleApprove = useCallback(async () => {
     if (!selected?.feedback_id) return;
+    const grade = readGrade();
+    if (grade.error) {
+      setError(grade.error);
+      return;
+    }
     setActionLoading('approve');
     setError('');
     try {
       await updateFeedback(selected.feedback_id, {
         teacherFeedback: editText,
         criteriaScores: currentCriteriaScores,
+        ...(isGradeDirty() ? { teacherGrade: grade.value } : {}),
       });
       await approveFeedback(selected.feedback_id);
       await loadActivity();
@@ -295,7 +342,23 @@ export default function ReviewDashboard() {
     } finally {
       setActionLoading('');
     }
-  }, [selected?.feedback_id, editText, currentCriteriaScores, loadActivity, filteredResponses, selectedIndex]);
+  }, [selected?.feedback_id, editText, currentCriteriaScores, loadActivity, filteredResponses, selectedIndex, gradeText, isGradeDirty]);
+
+  async function handleToggleAiGrade() {
+    if (!activity) return;
+    const enable = !activity.ai_grade_enabled;
+    setActionLoading('ai-grade');
+    setAiGradeNotice('');
+    try {
+      const res = await setActivityAiGrade(activity.id, enable);
+      setActivity({ ...activity, ai_grade_enabled: enable ? 1 : 0 });
+      setAiGradeNotice(enable ? `${res.message} Use "Regenerar" para ver a sugestão nos feedbacks já gerados.` : res.message);
+    } catch (err: unknown) {
+      setAiGradeNotice(err instanceof Error ? err.message : 'Não foi possível alterar a configuração.');
+    } finally {
+      setActionLoading('');
+    }
+  }
 
   async function handleRegenerate() {
     if (!selected?.feedback_id) return;
@@ -322,7 +385,7 @@ export default function ReviewDashboard() {
     if (pendingWithFeedback.length === 0) return;
 
     const confirmed = window.confirm(
-      `Tem certeza de que deseja aprovar todos os ${pendingWithFeedback.length} feedbacks pendentes de uma vez?\n\nLembrete de produto: a IA nunca dá nota; o professor é o responsável pedagógico final.`
+      `Tem certeza de que deseja aprovar todos os ${pendingWithFeedback.length} feedbacks pendentes de uma vez?\n\nLembrete: aprovar não lança a nota sugerida pela IA. Só vale a nota que você digitou; o professor é o responsável pedagógico final.`
     );
     if (!confirmed) return;
 
@@ -446,6 +509,17 @@ export default function ReviewDashboard() {
     );
   }
 
+  const isObjective = activity.question_type === 'objetiva';
+  const questions = isObjective ? [] : getActivityQuestions(activity);
+  const isMulti = questions.length > 1;
+  const selectedAnswers = isMulti && selected ? getResponseAnswers(selected, questions.length) : [];
+  const aiGradeOn = !isObjective && Boolean(activity.ai_grade_enabled);
+  const suggestion = typeof selected?.ai_grade === 'number' ? selected.ai_grade : null;
+  const perQuestionSuggestions = isMulti
+    ? (getParsedFeedback()?.questoes || []).map((q) => (typeof q.nota_sugerida === 'number' ? q.nota_sugerida : null))
+    : [];
+  const objectiveOptions: ObjectiveOption[] = isObjective ? parseJsonArray<ObjectiveOption>(activity.options) : [];
+  const objectiveResult: ObjectiveResult | null = selected?.auto_result ? parseJsonObject<ObjectiveResult>(selected.auto_result) : null;
   const needsGeneration = activity.responses.some((r) => !r.feedback_id);
   const pendingFeedbacksCount = activity.responses.filter(
     (r) => r.feedback_id && r.status !== 'aprovado'
@@ -457,9 +531,41 @@ export default function ReviewDashboard() {
       <div className="page-header-row">
         <div className="page-header-row__text">
           <h2 className="page-title">{activity.title}</h2>
-          <p className="page-subtitle" style={{ marginBottom: 0 }}>
-            {activity.question}
-          </p>
+          {isMulti ? (
+            <details className="review-questions">
+              <summary>{questions.length} perguntas dissertativas — ver enunciados</summary>
+              <ol>
+                {questions.map((q, i) => (
+                  <li key={i}>{q.pergunta}</li>
+                ))}
+              </ol>
+            </details>
+          ) : (
+            <p className="page-subtitle" style={{ marginBottom: 0 }}>
+              {activity.question}
+            </p>
+          )}
+          {!isObjective && (
+            <div className="ai-grade-bar">
+              <span className={`ai-grade-bar__state${aiGradeOn ? ' ai-grade-bar__state--on' : ''}`}>
+                Nota sugerida pela IA: {aiGradeOn ? 'ligada' : 'desligada'}
+              </span>
+              <button
+                type="button"
+                className="ai-grade-bar__switch"
+                onClick={handleToggleAiGrade}
+                disabled={actionLoading === 'ai-grade'}
+              >
+                {aiGradeOn ? 'Desligar' : 'Ligar'}
+              </button>
+              {aiGradeNotice && <span className="ai-grade-bar__notice" role="status">{aiGradeNotice}</span>}
+            </div>
+          )}
+          {isObjective && (
+            <p className="review-objective-tag">
+              Múltipla escolha · gabarito <strong>{activity.correct_option}</strong> · correção automática; a IA só explica os erros
+            </p>
+          )}
         </div>
         <div className="table-actions">
           {pendingFeedbacksCount > 0 && (
@@ -647,7 +753,7 @@ export default function ReviewDashboard() {
                       <div className="review-analysis-col__title review-analysis-col__title--green">
                         Pontos fortes
                       </div>
-                      <p className="review-analysis-col__text">
+                      <p className="review-analysis-col__text" style={{ whiteSpace: 'pre-line' }}>
                         {getParsedFeedback()?.pontos_fortes}
                       </p>
                     </div>
@@ -655,7 +761,7 @@ export default function ReviewDashboard() {
                       <div className="review-analysis-col__title review-analysis-col__title--amber">
                         Lacunas
                       </div>
-                      <p className="review-analysis-col__text">
+                      <p className="review-analysis-col__text" style={{ whiteSpace: 'pre-line' }}>
                         {getParsedFeedback()?.lacunas}
                       </p>
                     </div>
@@ -663,7 +769,7 @@ export default function ReviewDashboard() {
                       <div className="review-analysis-col__title review-analysis-col__title--blue">
                         Sugestão
                       </div>
-                      <p className="review-analysis-col__text">
+                      <p className="review-analysis-col__text" style={{ whiteSpace: 'pre-line' }}>
                         {getParsedFeedback()?.sugestao_melhoria}
                       </p>
                     </div>
@@ -679,12 +785,63 @@ export default function ReviewDashboard() {
                     <span className="review-panel-title">Resposta do aluno</span>
                     <span className="review-win__who">{selected.student_name}</span>
                   </div>
-                  <div className="review-content" style={{ whiteSpace: 'pre-wrap' }}>
-                    {selected.original_response}
-                  </div>
+                  {isMulti ? (
+                    <ol className="review-multi">
+                      {questions.map((q, i) => (
+                        <li key={i} className="review-multi__item">
+                          <p className="review-multi__question">
+                            <span className="multi-answers__num">{i + 1}</span> {q.pergunta}
+                          </p>
+                          {selectedAnswers[i]?.trim() ? (
+                            <p className="review-multi__answer">{selectedAnswers[i]}</p>
+                          ) : (
+                            <p className="review-multi__answer review-multi__answer--blank">Sem resposta</p>
+                          )}
+                        </li>
+                      ))}
+                    </ol>
+                  ) : (
+                    <div className="review-content" style={{ whiteSpace: 'pre-wrap' }}>
+                      {selected.original_response}
+                    </div>
+                  )}
+
+                  {/* Questão objetiva: alternativa marcada x gabarito */}
+                  {isObjective && objectiveOptions.length > 0 && (
+                    <div className="review-objective">
+                      <p className="review-criteria-title">
+                        {objectiveResult
+                          ? objectiveResult.acertou
+                            ? '✓ Acertou'
+                            : objectiveResult.escolhida
+                              ? `✗ Marcou ${objectiveResult.escolhida}`
+                              : '? Alternativa não identificada'
+                          : 'Alternativas'}
+                      </p>
+                      <ul className="portal-options">
+                        {objectiveOptions.map((o) => {
+                          const isCorrect = o.letra === activity.correct_option;
+                          const isChosen = objectiveResult?.escolhida === o.letra;
+                          return (
+                            <li
+                              key={o.letra}
+                              className={`portal-options__item${isCorrect ? ' portal-options__item--correct' : ''}${isChosen && !isCorrect ? ' portal-options__item--wrong' : ''}`}
+                            >
+                              <span className="portal-options__letter">{o.letra}</span>
+                              <span>{o.texto}</span>
+                              <span className="portal-options__tags">
+                                {isChosen && <span className="portal-options__tag">marcada</span>}
+                                {isCorrect && <span className="portal-options__tag">gabarito</span>}
+                              </span>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </div>
+                  )}
 
                   {/* Avaliação por Critério da Rubrica */}
-                  {currentCriteriaScores.length > 0 && (
+                  {!isObjective && currentCriteriaScores.length > 0 && (
                     <div className="review-criteria-container">
                       <div className="review-criteria-header">
                         <span className="review-criteria-title">
@@ -750,6 +907,7 @@ export default function ReviewDashboard() {
                   </div>
                   {selected.ai_feedback_text ? (
                     <textarea
+                      aria-label="Texto do feedback para o aluno"
                       className="review-editor"
                       value={editText}
                       onChange={(e) => setEditText(e.target.value)}
@@ -767,6 +925,59 @@ export default function ReviewDashboard() {
                     >
                       <p style={{ color: 'var(--text-muted)' }}>
                         Clique em "Gerar Feedbacks com IA" para processar esta resposta.
+                      </p>
+                    </div>
+                  )}
+                  {selected.feedback_id && (
+                    <div className="review-grade">
+                      <label htmlFor="teacher-grade" className="review-grade__label">
+                        Nota (0 a 10)
+                      </label>
+                      <input
+                        id="teacher-grade"
+                        className="input review-grade__input"
+                        inputMode="decimal"
+                        placeholder="—"
+                        value={gradeText}
+                        onChange={(e) => setGradeText(e.target.value)}
+                      />
+                      <span className="review-grade__hint">
+                        Opcional. Quem lança a nota é você. O aluno só vê esta nota, depois da aprovação.
+                      </span>
+                    </div>
+                  )}
+                  {selected.feedback_id && suggestion === null && !isObjective && (
+                    <p className="ai-suggestion__off">
+                      {aiGradeOn
+                        ? 'Este feedback foi gerado antes de ligar a nota sugerida. Clique em "Regenerar" para a IA sugerir uma nota.'
+                        : 'Quer uma sugestão de nota da IA? Clique em "Ligar" no topo da página e depois em "Regenerar".'}
+                    </p>
+                  )}
+                  {selected.feedback_id && suggestion !== null && (
+                    <div className="ai-suggestion" aria-label="Sugestão de nota da IA">
+                      <div className="ai-suggestion__head">
+                        <span className="ai-suggestion__label">Sugestão da IA</span>
+                        <span className="ai-suggestion__value">{formatGradeInput(suggestion)}</span>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setGradeText(formatGradeInput(suggestion))}
+                          disabled={gradeText.trim() === formatGradeInput(suggestion)}
+                        >
+                          Usar sugestão
+                        </Button>
+                      </div>
+                      {isMulti && perQuestionSuggestions.some((n) => n !== null) && (
+                        <p className="ai-suggestion__parts">
+                          {perQuestionSuggestions.map((n, i) => `Q${i + 1}: ${n === null ? '—' : formatGradeInput(n)}`).join(' · ')}
+                        </p>
+                      )}
+                      {selected.ai_grade_reason && (
+                        <p className="ai-suggestion__reason">{selected.ai_grade_reason}</p>
+                      )}
+                      <p className="ai-suggestion__note">
+                        Só você vê. Confira a resposta: a sugestão pode errar. Depois de usar, salve ou aprove para valer.
                       </p>
                     </div>
                   )}
@@ -811,18 +1022,40 @@ export default function ReviewDashboard() {
           )}
         </div>
       ) : (
-        <Card className="empty-state">
-          <div className="empty-state-icon"><Mascot size={90} /></div>
-          <h3 className="empty-state-title">Nenhuma resposta neste filtro</h3>
-          <p className="empty-state-text">Altere o filtro ou envie mais respostas.</p>
-        </Card>
+        activity.responses.length === 0 ? (
+          <Card className="empty-state">
+            <div className="empty-state-icon"><Mascot size={90} /></div>
+            <h3 className="empty-state-title">Esta atividade ainda não tem respostas</h3>
+            <p className="empty-state-text">
+              A atividade foi criada. Agora envie as respostas dos alunos{isMulti ? ' (uma por pergunta)' : ''} para a IA
+              preparar os feedbacks.
+            </p>
+            <Button variant="primary" onClick={() => navigate(`/upload/${activity.id}`)} id="btn-empty-upload">
+              Enviar respostas dos alunos
+            </Button>
+          </Card>
+        ) : (
+          <Card className="empty-state">
+            <div className="empty-state-icon"><Mascot size={90} /></div>
+            <h3 className="empty-state-title">Nenhuma resposta neste filtro</h3>
+            <p className="empty-state-text">Altere o filtro ou envie mais respostas.</p>
+          </Card>
+        )
       )}
 
       {/* Alerta de Erro */}
       {error && (
         <div className="alert-box alert-box--error" role="alert" style={{ marginTop: 'var(--space-6)' }}>
           <IconAlertCircle size={18} />
-          <span style={{ flex: 1 }}>{error}</span>
+          <span style={{ flex: 1 }}>
+            {error}
+            {/cota/i.test(error) && (
+              <>
+                {' '}
+                <Link to="/planos">Ver planos e cota</Link>
+              </>
+            )}
+          </span>
           <Button
             type="button"
             variant="ghost"
@@ -835,4 +1068,26 @@ export default function ReviewDashboard() {
       )}
     </div>
   );
+}
+
+function formatGradeInput(grade: number | null | undefined): string {
+  return typeof grade === 'number' ? String(grade).replace('.', ',') : '';
+}
+
+function parseJsonArray<T>(value: string | null | undefined): T[] {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function parseJsonObject<T>(value: string): T | null {
+  try {
+    return JSON.parse(value) as T;
+  } catch {
+    return null;
+  }
 }

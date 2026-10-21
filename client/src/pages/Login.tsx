@@ -4,9 +4,10 @@ import { useAuth } from '../contexts/AuthContext';
 import { Button } from '../components/ui/Button';
 import { IconAlertCircle } from '../components/ui/Icons';
 import { Mascot } from '../components/ui/Mascot';
+import { GoogleSignInButton } from '../components/auth/GoogleSignInButton';
 
 export default function Login() {
-  const { login } = useAuth();
+  const { login, loginWithGoogle } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -54,7 +55,7 @@ export default function Login() {
             <Mascot size={150} className="auth-mascot" />
             <h1 className="auth-split__hero-tagline">Copiloto Pedagógico com IA</h1>
             <p className="auth-split__hero-desc">
-              A IA nunca dá nota; o professor decide. Feedbacks formativos com precisão, agilidade e empatia para potencializar a aprendizagem.
+              A IA pode sugerir, mas quem decide a nota é sempre o professor. Feedbacks formativos com precisão, agilidade e empatia para potencializar a aprendizagem.
             </p>
           </div>
 
@@ -123,11 +124,23 @@ export default function Login() {
             </Button>
           </form>
 
+          <GoogleSignInButton
+            onToken={async (idToken) => {
+              setError('');
+              await loginWithGoogle(idToken);
+              navigate(from, { replace: true });
+            }}
+            onError={setError}
+          />
+
           <div className="auth-split__footer-link">
             Novo por aqui?{' '}
             <Link to="/register">
               Cadastre-se como professor
             </Link>
+          </div>
+          <div className="auth-split__footer-link auth-split__footer-link--student">
+            É aluno? <Link to="/aluno/entrar">Entre no portal do aluno</Link>
           </div>
         </div>
       </div>

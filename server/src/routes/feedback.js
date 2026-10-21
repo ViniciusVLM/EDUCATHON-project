@@ -6,14 +6,29 @@ import {
   updateFeedback,
   approveFeedback,
   deleteFeedbackByResponseId,
-  saveFeedback,
   getExportData,
+  setFeedbackGrade,
 } from '../database/db.js';
-import { processResponses, getProgress, markJobError } from '../services/queue.js';
-import { generateFeedback } from '../services/gemini.js';
+import { processResponses, getProgress, markJobError, generateAndSave } from '../services/queue.js';
 import { aiGenerateLimiter } from '../middleware/rateLimit.js';
+import { reserveQuota, recordUsage, resolveGeminiKey, QuotaError } from '../services/plans.js';
+import { countAiNeeded } from '../services/objective.js';
 
 const router = Router();
+
+function sendQuotaError(res, error) {
+  return res.status(402).json({ error: error.message, quota: error.status, upgradeUrl: '/planos' });
+}
+
+/** Nota do professor: número de 0 a 10 com até uma casa decimal, ou null para apagar. */
+function parseGrade(value) {
+  if (value === null || value === '') return { grade: null };
+  const num = typeof value === 'string' ? Number(value.replace(',', '.')) : value;
+  if (typeof num !== 'number' || !Number.isFinite(num) || num < 0 || num > 10) {
+    return { error: 'A nota deve ser um número de 0 a 10.' };
+  }
+  return { grade: Math.round(num * 10) / 10 };
+}
 
 /**
  * POST /api/activities/:id/generate
@@ -58,8 +73,24 @@ router.post('/activities/:id/generate', aiGenerateLimiter, async (req, res) => {
       });
     }
 
-    // Inicia processamento em background
-    processResponses(activity, pendingResponses).catch((error) => {
+    // Cota de IA: questões objetivas só gastam cota nas respostas erradas (explicação do erro)
+    const unitsNeeded = activity.question_type === 'objetiva'
+      ? countAiNeeded(activity, pendingResponses)
+      : pendingResponses.length;
+    try {
+      reserveQuota(req.teacher.id, 'feedback', unitsNeeded);
+    } catch (quotaError) {
+      if (quotaError instanceof QuotaError) return sendQuotaError(res, quotaError);
+      throw quotaError;
+    }
+    const apiKey = resolveGeminiKey(req.teacher.id);
+
+    // Inicia processamento em background (a cota já foi reservada; falhas são devolvidas)
+    processResponses(activity, pendingResponses, {
+      teacherId: req.teacher.id,
+      apiKey,
+      reservedUnits: unitsNeeded,
+    }).catch((error) => {
       console.error('Erro no processamento em background:', error);
       markJobError(activityId);
     });
@@ -99,17 +130,25 @@ router.get('/activities/:id/progress', (req, res) => {
 router.patch('/feedback/:feedbackId', (req, res) => {
   try {
     const feedbackId = Number(req.params.feedbackId);
-    const { teacherFeedback, teacherRating, criteriaScores } = req.body;
+    const { teacherFeedback, teacherRating, criteriaScores, teacherGrade } = req.body;
 
-    if (teacherFeedback === undefined && teacherRating === undefined && criteriaScores === undefined) {
+    if (teacherFeedback === undefined && teacherRating === undefined && criteriaScores === undefined && teacherGrade === undefined) {
       return res.status(400).json({
-        error: 'Envie ao menos um campo para atualizar (teacherFeedback, teacherRating ou criteriaScores).',
+        error: 'Envie ao menos um campo para atualizar (teacherFeedback, teacherRating, criteriaScores ou teacherGrade).',
       });
     }
 
-    if (teacherFeedback !== undefined && (typeof teacherFeedback !== 'string' || teacherFeedback.length > 10000)) {
+    let gradeUpdate = null;
+    if (teacherGrade !== undefined) {
+      gradeUpdate = parseGrade(teacherGrade);
+      if (gradeUpdate.error) {
+        return res.status(400).json({ error: gradeUpdate.error });
+      }
+    }
+
+    if (teacherFeedback !== undefined && (typeof teacherFeedback !== 'string' || teacherFeedback.length > 40000)) {
       return res.status(400).json({
-        error: 'O feedback do professor deve ter no máximo 10.000 caracteres.',
+        error: 'O feedback do professor deve ter no máximo 40.000 caracteres.',
       });
     }
 
@@ -125,11 +164,26 @@ router.patch('/feedback/:feedbackId', (req, res) => {
       return res.status(404).json({ error: 'Feedback não encontrado.' });
     }
 
+    if (gradeUpdate) {
+      setFeedbackGrade(feedbackId, gradeUpdate.grade);
+    }
+
+    const onlyGrade = teacherFeedback === undefined && teacherRating === undefined && criteriaScores === undefined;
+    if (onlyGrade) {
+      // Lançar a nota não muda o status: um feedback aprovado continua aprovado
+      return res.json({
+        message: 'Nota salva.',
+        status: feedback.status,
+        teacherGrade: gradeUpdate.grade,
+      });
+    }
+
     updateFeedback(feedbackId, teacherFeedback, teacherRating, criteriaScores);
 
     res.json({
       message: 'Feedback atualizado com sucesso!',
       status: 'revisado',
+      ...(gradeUpdate ? { teacherGrade: gradeUpdate.grade } : {}),
     });
   } catch (error) {
     console.error('Erro ao atualizar feedback:', error);
@@ -181,7 +235,8 @@ router.post('/feedback/:feedbackId/regenerate', aiGenerateLimiter, async (req, r
     // Busca a atividade associada (teacher_id já validado acima)
     const db = (await import('../database/db.js'));
     const response = db.getDb().prepare(`
-      SELECT sr.*, a.question, a.rubric, a.education_level, a.subject, a.rubric_criteria
+      SELECT sr.*, a.id AS activity_id, a.question, a.rubric, a.education_level, a.subject, a.rubric_criteria,
+             a.question_type, a.options, a.correct_option, a.questions, a.ai_grade_enabled
       FROM student_responses sr
       JOIN activities a ON a.id = sr.activity_id
       WHERE sr.id = ? AND a.teacher_id = ?
@@ -202,28 +257,45 @@ router.post('/feedback/:feedbackId/regenerate', aiGenerateLimiter, async (req, r
       }
     }
 
-    // Regenera
-    const result = await generateFeedback({
-      studentName: response.student_name,
+    const activity = {
+      id: response.activity_id,
       question: response.question,
       rubric: response.rubric,
-      studentResponse: response.original_response,
-      educationLevel: response.education_level,
+      education_level: response.education_level,
       subject: response.subject,
-      rubricCriteria: parsedCriteria,
-    });
+      question_type: response.question_type,
+      options: response.options,
+      correct_option: response.correct_option,
+      questions: response.questions,
+      ai_grade_enabled: response.ai_grade_enabled,
+    };
 
-    const criteriaScores = result.parsed?.criterios_avaliacao || null;
+    const units = activity.question_type === 'objetiva' ? countAiNeeded(activity, [response]) : 1;
+    try {
+      reserveQuota(req.teacher.id, 'feedback', units);
+    } catch (quotaError) {
+      if (quotaError instanceof QuotaError) return sendQuotaError(res, quotaError);
+      throw quotaError;
+    }
 
-    // Remove feedback antigo e salva novo
-    deleteFeedbackByResponseId(feedback.student_response_id);
-    const newFeedback = saveFeedback(
-      feedback.student_response_id,
-      result.raw,
-      result.parsed.feedback_completo,
-      result.modelUsed || process.env.GEMINI_MODEL || 'gemini-3.8-flash',
-      criteriaScores
-    );
+    // Regenera e só troca o feedback antigo depois que o novo ficou pronto.
+    // A nota lançada pelo professor é mantida.
+    const previousGrade = feedback.teacher_grade ?? null;
+    let result;
+    try {
+      result = await generateAndSave(activity, response, {
+        teacherId: req.teacher.id,
+        apiKey: resolveGeminiKey(req.teacher.id),
+        parsedCriteria,
+        beforeSave: () => deleteFeedbackByResponseId(feedback.student_response_id),
+        alreadyReserved: true,
+      });
+    } catch (genError) {
+      recordUsage(req.teacher.id, 'feedback', -units);
+      throw genError;
+    }
+    const newFeedback = result.saved;
+    if (previousGrade !== null) setFeedbackGrade(newFeedback.id, previousGrade);
 
     res.json({
       message: 'Feedback regenerado com sucesso!',
@@ -266,12 +338,13 @@ router.get('/activities/:id/export', (req, res) => {
       return `"${val.replace(/"/g, '""')}"`;
     };
 
-    const header = 'nome_aluno,resposta_original,feedback_final,status';
+    const header = 'nome_aluno,resposta_original,feedback_final,nota,status';
     const rows = data.map((row) => {
       return [
         escapeCsvCell(row.student_name),
         escapeCsvCell(row.original_response),
         escapeCsvCell(row.feedback_final),
+        escapeCsvCell(row.nota === null || row.nota === undefined ? '' : String(row.nota).replace('.', ',')),
         escapeCsvCell(row.status),
       ].join(',');
     });

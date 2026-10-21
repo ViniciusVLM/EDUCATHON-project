@@ -8,6 +8,12 @@ import { IconPlus, IconAlertCircle, IconCheckCircle } from '../components/ui/Ico
 import { IconTrash } from '../components/ui/Icons';
 import { ExamImportPanel } from '../components/ExamImportPanel';
 
+interface ExtraQuestionInput {
+  id: string;
+  question: string;
+  rubric: string;
+}
+
 interface CriterionInput {
   id: string;
   criterio: string;
@@ -25,12 +31,25 @@ interface Draft {
   criteria: CriterionInput[];
   /** true = rubrica copiada do gabarito da prova; false = sugerida pela IA; undefined = manual */
   rubricFromDocument?: boolean;
+  /** Dissertativa (feedback da IA pela rubrica) ou objetiva (correção pelo gabarito) */
+  type: QuestionType;
+  options: string[];
+  correctOption: string;
+  /** Perguntas 2, 3... (só dissertativa). A pergunta 1 é question/rubric. */
+  extraQuestions: ExtraQuestionInput[];
 }
+
+type QuestionType = 'dissertativa' | 'objetiva';
+const LETTERS = ['A', 'B', 'C', 'D', 'E', 'F'];
+const MAX_QUESTIONS = 20;
 
 interface ImportSummary {
   fileName: string;
   count: number;
+  objective: number;
+  objectiveWithoutKey: number;
   ignored: number;
+  examTitle: string;
   classText: string | null;
   classMatched: boolean;
   warnings: string[];
@@ -44,7 +63,18 @@ function newId() {
 }
 
 function emptyDraft(): Draft {
-  return { key: newId(), include: true, title: '', question: '', rubric: '', criteria: [] };
+  return {
+    key: newId(),
+    include: true,
+    title: '',
+    question: '',
+    rubric: '',
+    criteria: [],
+    type: 'dissertativa',
+    options: ['', '', '', ''],
+    correctOption: '',
+    extraQuestions: [],
+  };
 }
 
 export default function SetupActivity() {
@@ -56,6 +86,9 @@ export default function SetupActivity() {
   const [active, setActive] = useState(0);
   const [summary, setSummary] = useState<ImportSummary | null>(null);
   const [creatingClass, setCreatingClass] = useState(false);
+  // Prova importada com várias dissertativas: criar como UMA atividade com várias perguntas
+  const [mergeExam, setMergeExam] = useState(false);
+  const [mergedTitle, setMergedTitle] = useState('');
 
   // Campos comuns a todas as atividades criadas de uma vez
   const [form, setForm] = useState({
@@ -64,6 +97,8 @@ export default function SetupActivity() {
     classId: '',
     dueDate: '',
   });
+  // Nota sugerida pela IA (vale para as dissertativas criadas agora). Desligada por padrão.
+  const [aiGrade, setAiGrade] = useState(false);
 
   useEffect(() => {
     getClasses()
@@ -75,6 +110,8 @@ export default function SetupActivity() {
   const criteria = draft.criteria;
   const isBatch = drafts.length > 1;
   const includedCount = drafts.filter((d) => d.include).length;
+  const mergeEligible = isBatch && drafts.filter((d) => d.include && d.type === 'dissertativa').length >= 2;
+  const hasExtra = draft.extraQuestions.length > 0;
 
   function updateDraft(patch: Partial<Draft>) {
     setDrafts((prev) => prev.map((d, i) => (i === active ? { ...d, ...patch } : d)));
@@ -105,6 +142,47 @@ export default function SetupActivity() {
     });
   }
 
+  function setType(type: QuestionType) {
+    updateDraft({ type });
+  }
+
+  function handleOptionChange(index: number, value: string) {
+    updateDraft({ options: draft.options.map((o, i) => (i === index ? value : o)) });
+  }
+
+  function handleAddOption() {
+    if (draft.options.length >= LETTERS.length) return;
+    updateDraft({ options: [...draft.options, ''] });
+  }
+
+  function handleRemoveOption(index: number) {
+    if (draft.options.length <= 2) return;
+    const removedLetter = LETTERS[index];
+    const options = draft.options.filter((_, i) => i !== index);
+    // Ajusta o gabarito: a letra removida some e as seguintes sobem uma posição
+    let correctOption = draft.correctOption;
+    if (correctOption === removedLetter) correctOption = '';
+    else if (correctOption && LETTERS.indexOf(correctOption) > index) {
+      correctOption = LETTERS[LETTERS.indexOf(correctOption) - 1];
+    }
+    updateDraft({ options, correctOption });
+  }
+
+  function handleAddQuestion() {
+    if (draft.extraQuestions.length + 1 >= MAX_QUESTIONS) return;
+    updateDraft({ extraQuestions: [...draft.extraQuestions, { id: newId(), question: '', rubric: '' }] });
+  }
+
+  function handleRemoveQuestion(id: string) {
+    updateDraft({ extraQuestions: draft.extraQuestions.filter((q) => q.id !== id) });
+  }
+
+  function handleExtraQuestionChange(id: string, field: 'question' | 'rubric', value: string) {
+    updateDraft({
+      extraQuestions: draft.extraQuestions.map((q) => (q.id === id ? { ...q, [field]: value } : q)),
+    });
+  }
+
   function toggleInclude(index: number) {
     setDrafts((prev) => prev.map((d, i) => (i === index ? { ...d, include: !d.include } : d)));
   }
@@ -122,22 +200,35 @@ export default function SetupActivity() {
     }));
 
     setDrafts(
-      result.questions.map((q) => ({
-        key: newId(),
-        number: q.number,
-        include: true,
-        title: q.title,
-        question: q.question,
-        rubric: q.rubric,
-        rubricFromDocument: q.rubricFromDocument,
-        criteria: q.criteria.map((c) => ({ id: newId(), criterio: c.criterio, peso: c.peso })),
-      }))
+      result.questions.map((q) => {
+        const type: QuestionType = q.type === 'objetiva' ? 'objetiva' : 'dissertativa';
+        return {
+          key: newId(),
+          number: q.number,
+          include: true,
+          title: q.title,
+          question: q.question,
+          rubric: q.rubric,
+          rubricFromDocument: q.rubricFromDocument,
+          criteria: q.criteria.map((c) => ({ id: newId(), criterio: c.criterio, peso: c.peso })),
+          type,
+          options: type === 'objetiva' && q.options?.length ? q.options.map((o) => o.texto) : ['', '', '', ''],
+          correctOption: q.correctOption || '',
+          extraQuestions: [],
+        };
+      })
     );
     setActive(0);
+    setMergeExam(false);
+    setMergedTitle(result.exam.title || result.fileName.replace(/\.[^.]+$/, ''));
+    const objectiveQuestions = result.questions.filter((q) => q.type === 'objetiva');
     setSummary({
       fileName: result.fileName,
       count: result.questions.length,
+      objective: objectiveQuestions.length,
+      objectiveWithoutKey: objectiveQuestions.filter((q) => !q.correctOption).length,
       ignored: result.ignoredObjectiveQuestions,
+      examTitle: result.exam.title || result.fileName.replace(/\.[^.]+$/, ''),
       classText: result.exam.classText,
       classMatched: Boolean(suggested),
       warnings: result.warnings || [],
@@ -161,8 +252,30 @@ export default function SetupActivity() {
   }
 
   function validateDraft(d: Draft): string | null {
+    if (d.type === 'objetiva') {
+      if (!d.title.trim() || !d.question.trim()) {
+        return 'Preencha todos os campos obrigatórios.';
+      }
+      const filled = d.options.filter((o) => o.trim());
+      if (filled.length !== d.options.length) {
+        return 'Preencha o texto de todas as alternativas (ou remova as que sobraram).';
+      }
+      if (filled.length < 2) {
+        return 'A questão de múltipla escolha precisa de pelo menos 2 alternativas.';
+      }
+      if (!d.correctOption) {
+        return 'Marque qual alternativa é a correta (gabarito).';
+      }
+      return null;
+    }
     if (!d.title.trim() || !d.question.trim() || !d.rubric.trim()) {
       return 'Preencha todos os campos obrigatórios.';
+    }
+    for (let i = 0; i < d.extraQuestions.length; i++) {
+      const q = d.extraQuestions[i];
+      if (!q.question.trim() || !q.rubric.trim()) {
+        return `Preencha a pergunta ${i + 2} e a rubrica dela (ou remova a pergunta).`;
+      }
     }
     for (let i = 0; i < d.criteria.length; i++) {
       const c = d.criteria[i];
@@ -181,7 +294,7 @@ export default function SetupActivity() {
     e.preventDefault();
     setError('');
 
-    const toCreate = drafts
+    let toCreate = drafts
       .map((d, index) => ({ d, index }))
       .filter(({ d }) => d.include);
 
@@ -199,13 +312,44 @@ export default function SetupActivity() {
       }
     }
 
+    // Junta as dissertativas marcadas numa atividade só (as objetivas continuam separadas)
+    const essays = toCreate.filter(({ d }) => d.type === 'dissertativa');
+    let mergedKey: string | null = null;
+    if (mergeEligible && mergeExam && essays.length >= 2) {
+      if (!mergedTitle.trim()) {
+        setError('Dê um título para a prova.');
+        return;
+      }
+      const [first, ...rest] = essays.map(({ d }) => d);
+      const merged: Draft = {
+        ...first,
+        key: newId(),
+        title: mergedTitle.trim(),
+        extraQuestions: rest.flatMap((d) => [
+          { id: newId(), question: d.question, rubric: d.rubric },
+          ...d.extraQuestions,
+        ]),
+      };
+      if (merged.extraQuestions.length + 1 > MAX_QUESTIONS) {
+        setError(`Uma atividade pode ter no máximo ${MAX_QUESTIONS} perguntas. Desmarque algumas questões.`);
+        return;
+      }
+      mergedKey = merged.key;
+      const essayKeys = new Set(essays.map(({ d }) => d.key));
+      toCreate = [
+        { d: merged, index: essays[0].index },
+        ...toCreate.filter(({ d }) => !essayKeys.has(d.key)),
+      ];
+    }
+
     setLoading(true);
     const createdIds: number[] = [];
     const createdKeys = new Set<string>();
     try {
       for (const { d } of toCreate) {
+        const isObjective = d.type === 'objetiva';
         const rubricCriteria =
-          d.criteria.length > 0
+          !isObjective && d.criteria.length > 0
             ? d.criteria.map((c) => ({ criterio: c.criterio.trim(), peso: Number(c.peso) || 1 }))
             : undefined;
 
@@ -218,9 +362,29 @@ export default function SetupActivity() {
           classId: form.classId ? Number(form.classId) : undefined,
           dueDate: form.dueDate ? form.dueDate : undefined,
           rubricCriteria,
+          ...(!isObjective && aiGrade ? { aiGradeEnabled: true } : {}),
+          ...(!isObjective && d.extraQuestions.length > 0
+            ? {
+                extraQuestions: d.extraQuestions.map((q) => ({
+                  question: q.question.trim(),
+                  rubric: q.rubric.trim(),
+                })),
+              }
+            : {}),
+          ...(isObjective
+            ? {
+                questionType: 'objetiva' as const,
+                options: d.options.map((texto) => ({ texto: texto.trim() })),
+                correctOption: d.correctOption,
+              }
+            : {}),
         });
         createdIds.push(result.id);
         createdKeys.add(d.key);
+        // Na prova juntada, as abas das dissertativas viraram uma atividade só
+        if (d.key === mergedKey) {
+          essays.forEach(({ d: e }) => createdKeys.add(e.key));
+        }
       }
 
       if (createdIds.length === 1) {
@@ -251,11 +415,14 @@ export default function SetupActivity() {
     }
   }
 
-  const submitLabel = isBatch
-    ? includedCount === 1
-      ? 'Criar 1 atividade'
-      : `Criar ${includedCount} atividades`
-    : 'Próximo → Enviar Respostas';
+  const includedEssays = drafts.filter((d) => d.include && d.type === 'dissertativa').length;
+  const willCreate = mergeEligible && mergeExam ? includedCount - includedEssays + 1 : includedCount;
+  const submitLabel =
+    !isBatch || (mergeEligible && mergeExam && willCreate === 1)
+      ? 'Próximo → Enviar Respostas'
+      : willCreate === 1
+        ? 'Criar 1 atividade'
+        : `Criar ${willCreate} atividades`;
 
   return (
     <div className="page-container page-container-narrow animate-fade-in">
@@ -279,14 +446,53 @@ export default function SetupActivity() {
                 {summary.count === 1 ? '1 questão encontrada' : `${summary.count} questões encontradas`}
               </strong>{' '}
               em “{summary.fileName}”.{' '}
-              {summary.count > 1 && 'Cada questão vira uma atividade. Revise uma por uma nas abas abaixo.'}
+              {summary.count > 1 &&
+                (mergeEligible && mergeExam
+                  ? 'As questões dissertativas viram uma atividade só, com várias perguntas. Revise cada uma nas abas abaixo.'
+                  : 'Cada questão vira uma atividade. Revise uma por uma nas abas abaixo.')}
             </p>
+            {mergeEligible && (
+              <div className="exam-merge">
+                <label className="exam-merge__toggle">
+                  <input
+                    type="checkbox"
+                    checked={mergeExam}
+                    onChange={(e) => setMergeExam(e.target.checked)}
+                    id="merge-exam"
+                  />
+                  <span>
+                    Juntar as {includedEssays} questões dissertativas em <strong>uma prova só</strong> (o aluno
+                    responde todas e recebe um feedback por questão)
+                  </span>
+                </label>
+                {mergeExam && (
+                  <div className="input-group">
+                    <label className="input-label" htmlFor="merged-title">Título da prova *</label>
+                    <input
+                      id="merged-title"
+                      className="input"
+                      value={mergedTitle}
+                      onChange={(e) => setMergedTitle(e.target.value)}
+                      placeholder="Ex: Prova bimestral de Biologia"
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+            {summary.objective > 0 && (
+              <p>
+                {summary.objective === 1
+                  ? '1 questão é de múltipla escolha: o Educathon corrige pelo gabarito e a IA explica os erros.'
+                  : `${summary.objective} questões são de múltipla escolha: o Educathon corrige pelo gabarito e a IA explica os erros.`}
+                {summary.objectiveWithoutKey > 0 && ' Marque o gabarito das que vieram sem resposta no arquivo.'}
+              </p>
+            )}
             {summary.ignored > 0 && (
               <p>
                 {summary.ignored === 1
-                  ? '1 questão de múltipla escolha foi ignorada'
-                  : `${summary.ignored} questões de múltipla escolha foram ignoradas`}{' '}
-                (o Educathon dá feedback só em questões dissertativas).
+                  ? '1 questão de verdadeiro/falso ou de ligar colunas foi ignorada'
+                  : `${summary.ignored} questões de verdadeiro/falso ou de ligar colunas foram ignoradas`}{' '}
+                (esses formatos ainda não são corrigidos).
               </p>
             )}
             {summary.classText && summary.classMatched && (
@@ -416,6 +622,55 @@ export default function SetupActivity() {
             <p className="input-hint">Esta questão está desmarcada e não será criada.</p>
           )}
 
+          <fieldset className="qtype" aria-describedby="qtype-hint">
+            <legend className="input-label">Tipo de questão</legend>
+            <div className="qtype__options" role="radiogroup">
+              <label className={`qtype__option${draft.type === 'dissertativa' ? ' qtype__option--on' : ''}`}>
+                <input
+                  type="radio"
+                  name={`qtype-${draft.key}`}
+                  checked={draft.type === 'dissertativa'}
+                  onChange={() => setType('dissertativa')}
+                />
+                <span>
+                  <strong>Dissertativa</strong>
+                  <small>A IA compara com a rubrica e escreve o rascunho do feedback.</small>
+                </span>
+              </label>
+              <label className={`qtype__option${draft.type === 'objetiva' ? ' qtype__option--on' : ''}`}>
+                <input
+                  type="radio"
+                  name={`qtype-${draft.key}`}
+                  checked={draft.type === 'objetiva'}
+                  onChange={() => setType('objetiva')}
+                />
+                <span>
+                  <strong>Múltipla escolha</strong>
+                  <small>Corrige pelo gabarito; a IA só explica as respostas erradas.</small>
+                </span>
+              </label>
+            </div>
+            <p className="input-hint" id="qtype-hint">Quem lança a nota é sempre você, na revisão.</p>
+          </fieldset>
+
+          {draft.type === 'dissertativa' && (
+            <label className={`ai-grade-toggle${aiGrade ? ' ai-grade-toggle--on' : ''}`}>
+              <input
+                type="checkbox"
+                checked={aiGrade}
+                onChange={(e) => setAiGrade(e.target.checked)}
+                id="ai-grade-enabled"
+              />
+              <span>
+                <strong>Deixar a IA sugerir uma nota (0 a 10)</strong>
+                <small>
+                  A sugestão vem com uma justificativa e aparece só para você na revisão. O aluno só vê a nota que você
+                  confirmar ou ajustar.
+                </small>
+              </span>
+            </label>
+          )}
+
           <div className="input-group">
             <label className="input-label" htmlFor="title">
               Título da Atividade *
@@ -434,7 +689,7 @@ export default function SetupActivity() {
 
           <div className="input-group">
             <label className="input-label" htmlFor="question">
-              Pergunta feita aos alunos *
+              {hasExtra ? 'Pergunta 1 *' : 'Pergunta feita aos alunos *'}
             </label>
             <p className="input-hint">
               Escreva exatamente a pergunta ou enunciado que os alunos responderam.
@@ -451,9 +706,77 @@ export default function SetupActivity() {
             />
           </div>
 
+          {draft.type === 'objetiva' ? (
+            <>
+              <fieldset className="options-editor">
+                <legend className="input-label">Alternativas e gabarito *</legend>
+                <p className="input-hint">Escreva as alternativas e marque a correta. O aluno pode responder só com a letra.</p>
+                {draft.rubricFromDocument === false && !draft.correctOption && (
+                  <p className="exam-import__notice">A prova não trazia o gabarito desta questão. Marque a alternativa correta.</p>
+                )}
+                {draft.options.map((opt, i) => (
+                  <div key={i} className="options-editor__row">
+                    <label className="options-editor__correct" title={`Alternativa ${LETTERS[i]} é a correta`}>
+                      <input
+                        type="radio"
+                        name={`correct-${draft.key}`}
+                        checked={draft.correctOption === LETTERS[i]}
+                        onChange={() => updateDraft({ correctOption: LETTERS[i] })}
+                        aria-label={`Alternativa ${LETTERS[i]} é a correta`}
+                      />
+                      <span aria-hidden="true">{LETTERS[i]}</span>
+                    </label>
+                    <input
+                      type="text"
+                      className="input"
+                      value={opt}
+                      placeholder={`Texto da alternativa ${LETTERS[i]}`}
+                      onChange={(e) => handleOptionChange(i, e.target.value)}
+                      aria-label={`Texto da alternativa ${LETTERS[i]}`}
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleRemoveOption(i)}
+                      disabled={draft.options.length <= 2}
+                      aria-label={`Remover alternativa ${LETTERS[i]}`}
+                      title="Remover alternativa"
+                    >
+                      <IconTrash size={16} />
+                    </Button>
+                  </div>
+                ))}
+                {draft.options.length < LETTERS.length && (
+                  <Button type="button" variant="ghost" size="sm" onClick={handleAddOption} icon={<IconPlus size={16} />}>
+                    Adicionar alternativa
+                  </Button>
+                )}
+              </fieldset>
+
+              <div className="input-group">
+                <label className="input-label" htmlFor="rubric">
+                  Justificativa do gabarito (opcional)
+                </label>
+                <p className="input-hint">
+                  Por que a alternativa correta está certa. A IA usa isso para explicar o erro a quem marcou outra.
+                </p>
+                <textarea
+                  id="rubric"
+                  name="rubric"
+                  className="textarea"
+                  placeholder="Ex: O cloroplasto contém clorofila e é onde a luz vira energia química."
+                  value={draft.rubric}
+                  onChange={handleChange}
+                  rows={3}
+                />
+              </div>
+            </>
+          ) : (
+            <>
           <div className="input-group">
             <label className="input-label" htmlFor="rubric">
-              Rubrica / Gabarito *
+              {hasExtra ? 'Rubrica / Gabarito da pergunta 1 *' : 'Rubrica / Gabarito *'}
             </label>
             <p className="input-hint">
               Descreva o que uma boa resposta deve conter. A IA usará isso para avaliar as respostas.
@@ -484,7 +807,7 @@ export default function SetupActivity() {
             <div className="page-header-row" style={{ marginBottom: 'var(--space-2)' }}>
               <div>
                 <label className="input-label">
-                  Critérios de avaliação da rubrica (opcional)
+                  {hasExtra ? 'Critérios da pergunta 1 (opcional)' : 'Critérios de avaliação da rubrica (opcional)'}
                 </label>
                 <p className="input-hint">
                   A IA avaliará individualmente cada critério (atendido/não atendido + evidência). O peso serve apenas para priorizar o feedback.
@@ -551,6 +874,71 @@ export default function SetupActivity() {
               </div>
             )}
           </div>
+
+          {draft.extraQuestions.map((q, idx) => {
+            const n = idx + 2;
+            return (
+              <fieldset key={q.id} className="extra-question">
+                <div className="extra-question__head">
+                  <legend className="extra-question__title">Pergunta {n}</legend>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleRemoveQuestion(q.id)}
+                    aria-label={`Remover pergunta ${n}`}
+                    title="Remover pergunta"
+                    style={{ color: 'var(--error-500)' }}
+                  >
+                    <IconTrash size={16} /> Remover
+                  </Button>
+                </div>
+                <div className="input-group">
+                  <label className="input-label" htmlFor={`extra-q-${q.id}`}>Pergunta {n} *</label>
+                  <textarea
+                    id={`extra-q-${q.id}`}
+                    className="textarea"
+                    rows={3}
+                    value={q.question}
+                    placeholder="Ex: Qual o papel dos decompositores no ecossistema?"
+                    onChange={(e) => handleExtraQuestionChange(q.id, 'question', e.target.value)}
+                  />
+                </div>
+                <div className="input-group">
+                  <label className="input-label" htmlFor={`extra-r-${q.id}`}>Rubrica / Gabarito da pergunta {n} *</label>
+                  <textarea
+                    id={`extra-r-${q.id}`}
+                    className="textarea"
+                    rows={3}
+                    value={q.rubric}
+                    placeholder="O que uma boa resposta para esta pergunta deve conter."
+                    onChange={(e) => handleExtraQuestionChange(q.id, 'rubric', e.target.value)}
+                  />
+                </div>
+              </fieldset>
+            );
+          })}
+
+          <div className="extra-question__add">
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={handleAddQuestion}
+              disabled={draft.extraQuestions.length + 1 >= MAX_QUESTIONS}
+              icon={<IconPlus size={16} />}
+              id="btn-add-question"
+            >
+              Adicionar outra pergunta dissertativa
+            </Button>
+            <p className="input-hint">
+              {hasExtra
+                ? `${draft.extraQuestions.length + 1} perguntas. A IA escreve um rascunho de feedback para cada uma; a nota final é sua.`
+                : 'Sua prova tem mais de uma pergunta? Adicione aqui e corrija tudo numa atividade só.'}
+            </p>
+          </div>
+
+            </>
+          )}
 
           {error && (
             <div className="alert-box alert-box--error" role="alert">

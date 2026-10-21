@@ -16,8 +16,8 @@ export default function Home() {
       </h1>
 
       <p className="hero-subtitle">
-        Automatize a correção de atividades dissertativas. A IA gera rascunhos de feedback
-        individualizado e encorajador — você revisa, edita e aprova com total controle.
+        Corrija atividades dissertativas e de múltipla escolha. A IA gera rascunhos de feedback
+        individualizado e encorajador — você revisa, edita, lança a nota e aprova com total controle.
       </p>
 
       <div className="hero-actions">
@@ -36,6 +36,9 @@ export default function Home() {
           Ver atividades
         </button>
       </div>
+      <p className="hero-student-link">
+        É aluno? <button type="button" className="link-btn" onClick={() => navigate('/aluno/entrar')} id="btn-student-portal">Entrar no portal do aluno</button>
+      </p>
 
       <div className="hero-features">
         <div className="card card-glow hero-feature-card stagger-1">

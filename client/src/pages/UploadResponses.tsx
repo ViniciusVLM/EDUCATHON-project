@@ -7,6 +7,17 @@ import { Button } from '../components/ui/Button';
 import { Chip } from '../components/ui/Chip';
 import { IconAlertCircle } from '../components/ui/Icons';
 import { Mascot } from '../components/ui/Mascot';
+import { getActivityQuestions } from '../services/questions';
+
+interface ManualEntry {
+  student_name: string;
+  original_response: string;
+  answers: string[];
+}
+
+function emptyEntry(count: number): ManualEntry {
+  return { student_name: '', original_response: '', answers: Array.from({ length: count }, () => '') };
+}
 
 export default function UploadResponses() {
   const { activityId } = useParams<{ activityId: string }>();
@@ -18,13 +29,26 @@ export default function UploadResponses() {
   const [dragging, setDragging] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [csvPreview, setCsvPreview] = useState<{ student_name: string; original_response: string }[]>([]);
+  const [csvPreview, setCsvPreview] = useState<{ student_name: string; original_response: string; answers?: string[] }[]>([]);
   const [csvRaw, setCsvRaw] = useState('');
 
   // Manual mode
-  const [manualEntries, setManualEntries] = useState([
-    { student_name: '', original_response: '' },
-  ]);
+  const [manualEntries, setManualEntries] = useState<ManualEntry[]>([emptyEntry(1)]);
+
+  // Várias perguntas: uma caixa de resposta por questão
+  const questions = activity && activity.question_type !== 'objetiva' ? getActivityQuestions(activity) : [];
+  const questionCount = Math.max(questions.length, 1);
+  const isMulti = questionCount > 1;
+
+  useEffect(() => {
+    // Ajusta as caixas quando a atividade carrega (preserva o que já foi digitado)
+    setManualEntries((prev) =>
+      prev.map((e) => ({
+        ...e,
+        answers: Array.from({ length: questionCount }, (_, i) => e.answers[i] ?? ''),
+      }))
+    );
+  }, [questionCount]);
 
   useEffect(() => {
     if (activityId) {
@@ -47,7 +71,7 @@ export default function UploadResponses() {
       setCsvRaw(content);
       setLoading(true);
       try {
-        const { rows } = await previewCSV(content);
+        const { rows } = await previewCSV(content, questionCount);
         setCsvPreview(rows);
       } catch (err: unknown) {
         const message =
@@ -79,7 +103,15 @@ export default function UploadResponses() {
   }
 
   function addManualRow() {
-    setManualEntries((prev) => [...prev, { student_name: '', original_response: '' }]);
+    setManualEntries((prev) => [...prev, emptyEntry(questionCount)]);
+  }
+
+  function updateManualAnswer(index: number, qIndex: number, value: string) {
+    setManualEntries((prev) =>
+      prev.map((entry, i) =>
+        i === index ? { ...entry, answers: entry.answers.map((a, j) => (j === qIndex ? value : a)) } : entry
+      )
+    );
   }
 
   function removeManualRow(index: number) {
@@ -107,13 +139,29 @@ export default function UploadResponses() {
         }
         await uploadCSV(id, csvRaw);
       } else {
-        const valid = manualEntries.filter((e) => e.student_name.trim() && e.original_response.trim());
-        if (valid.length === 0) {
-          setError('Adicione pelo menos uma resposta válida.');
-          setLoading(false);
-          return;
+        if (isMulti) {
+          const valid = manualEntries.filter((e) => e.student_name.trim() && e.answers.some((a) => a.trim()));
+          if (valid.length === 0) {
+            setError('Adicione pelo menos um aluno com nome e uma resposta.');
+            setLoading(false);
+            return;
+          }
+          await addManualResponses(
+            id,
+            valid.map((e) => ({ student_name: e.student_name.trim(), answers: e.answers.map((a) => a.trim()) }))
+          );
+        } else {
+          const valid = manualEntries.filter((e) => e.student_name.trim() && e.original_response.trim());
+          if (valid.length === 0) {
+            setError('Adicione pelo menos uma resposta válida.');
+            setLoading(false);
+            return;
+          }
+          await addManualResponses(
+            id,
+            valid.map((e) => ({ student_name: e.student_name, original_response: e.original_response }))
+          );
         }
-        await addManualResponses(id, valid);
       }
 
       navigate(`/review/${activityId}`);
@@ -136,6 +184,18 @@ export default function UploadResponses() {
           <p className="page-subtitle">
             Envie as respostas dos alunos via arquivo CSV ou digite manualmente.
           </p>
+          {activity?.question_type === 'objetiva' && (
+            <p className="exam-import__notice">
+              Questão de múltipla escolha: a resposta de cada aluno pode ser só a letra marcada (ex.: “B”).
+              A correção é feita pelo gabarito; a IA só escreve a explicação para quem errou.
+            </p>
+          )}
+          {isMulti && (
+            <p className="exam-import__notice">
+              Esta atividade tem {questionCount} perguntas. Envie a resposta de cada questão separada: a IA escreve
+              um rascunho de feedback por questão. Pergunta deixada em branco não gasta IA.
+            </p>
+          )}
         </div>
       </div>
 
@@ -198,7 +258,19 @@ export default function UploadResponses() {
                 : 'Arraste um arquivo CSV aqui ou clique para selecionar'}
             </div>
             <div className="dropzone-hint">
-              Colunas esperadas: <strong>nome_aluno</strong>, <strong>resposta</strong>
+              {isMulti ? (
+                <>
+                  Colunas esperadas: <strong>nome_aluno</strong>,{' '}
+                  {Array.from({ length: Math.min(questionCount, 3) }, (_, i) => (
+                    <strong key={i}>resposta_{i + 1}{i < Math.min(questionCount, 3) - 1 ? ', ' : ''}</strong>
+                  ))}
+                  {questionCount > 3 ? ` … resposta_${questionCount}` : ''}
+                </>
+              ) : (
+                <>
+                  Colunas esperadas: <strong>nome_aluno</strong>, <strong>resposta</strong>
+                </>
+              )}
             </div>
             <input
               ref={fileInputRef}
@@ -264,6 +336,32 @@ export default function UploadResponses() {
                     </Button>
                   )}
                 </div>
+                {isMulti ? (
+                  <div className="multi-answers">
+                    <input
+                      className="input"
+                      placeholder="Nome do aluno"
+                      aria-label={`Nome do aluno ${i + 1}`}
+                      value={entry.student_name}
+                      onChange={(e) => updateManualRow(i, 'student_name', e.target.value)}
+                    />
+                    {questions.map((q, qi) => (
+                      <div key={qi} className="multi-answers__item">
+                        <label className="multi-answers__question" htmlFor={`ans-${i}-${qi}`}>
+                          <span className="multi-answers__num">{qi + 1}</span> {q.pergunta}
+                        </label>
+                        <textarea
+                          id={`ans-${i}-${qi}`}
+                          className="textarea"
+                          placeholder={`Resposta da questão ${qi + 1} (deixe em branco se o aluno não respondeu)`}
+                          value={entry.answers[qi] ?? ''}
+                          onChange={(e) => updateManualAnswer(i, qi, e.target.value)}
+                          rows={2}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                ) : (
                 <div className="form-row">
                   <div className="input-group">
                     <input
@@ -283,6 +381,7 @@ export default function UploadResponses() {
                     />
                   </div>
                 </div>
+                )}
               </div>
             ))}
             <div>

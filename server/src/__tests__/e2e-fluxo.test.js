@@ -235,7 +235,7 @@ describe('E2E — Fluxo Pedagógico Completo (Modo Mock)', () => {
     const csvText = res.text;
 
     // Confere cabeçalho
-    assert.ok(csvText.includes('nome_aluno,resposta_original,feedback_final,status'), 'Deve conter cabeçalho padrão');
+    assert.ok(csvText.includes('nome_aluno,resposta_original,feedback_final,nota,status'), 'Deve conter cabeçalho padrão');
 
     // Confere aluno com feedback editado e aprovado
     assert.ok(csvText.includes('Ana Beatriz'), 'Deve conter Ana Beatriz');

@@ -1,8 +1,10 @@
+import { createHash } from 'node:crypto';
 import { GoogleGenAI } from '@google/genai';
 import { SYSTEM_INSTRUCTION, buildUserPrompt, getFeedbackSchema } from '../prompts/feedback.js';
 import { generateMockFeedback } from './mockAi.js';
 
 let genAI = null;
+const ownKeyClients = new Map();
 let customModel = null;
 let customFallbackModel = null;
 const modelCache = new Map();
@@ -31,8 +33,35 @@ export function resetModel() {
   customModel = null;
   customFallbackModel = null;
   genAI = null;
+  ownKeyClients.clear();
   modelCache.clear();
 }
+
+/**
+ * Cliente do Gemini para uma chave cadastrada por professor/instituição (pago por quem cadastrou).
+ * Sem chave própria, usa a GEMINI_API_KEY da plataforma.
+ */
+function getClientForKey(apiKey) {
+  if (!apiKey) {
+    const platformKey = process.env.GEMINI_API_KEY;
+    if (isGeminiApiKeyPlaceholder(platformKey)) {
+      throw new Error(
+        '❌ GEMINI_API_KEY não configurada ou inválida. ' +
+        'Crie um arquivo .env na raiz do /server com uma chave válida iniciando com "AIza" ou "AQ.".\n' +
+        'Obtenha em: https://aistudio.google.com/'
+      );
+    }
+    if (!genAI) genAI = new GoogleGenAI({ apiKey: platformKey });
+    return { client: genAI, cacheId: 'plataforma' };
+  }
+  const cacheId = createHash('sha256').update(apiKey).digest('hex').slice(0, 16);
+  if (!ownKeyClients.has(cacheId)) {
+    ownKeyClients.set(cacheId, new GoogleGenAI({ apiKey }));
+  }
+  return { client: ownKeyClients.get(cacheId), cacheId };
+}
+
+export { getClientForKey };
 
 /**
  * Formata o erro em uma linha curta e legível (status + mensagem, sem o JSON bruto do SDK).
@@ -275,27 +304,16 @@ export function checkGeminiApiKeyOnStartup() {
 /**
  * Obtém ou cria a instância de modelo do Gemini para um dado nome de modelo.
  */
-export function getModel(modelName = process.env.GEMINI_MODEL || 'gemini-3.8-flash') {
+export function getModel(modelName = process.env.GEMINI_MODEL || 'gemini-3.8-flash', apiKey = null) {
   if (customModel) {
     return customModel;
   }
 
-  if (!modelCache.has(modelName)) {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (isGeminiApiKeyPlaceholder(apiKey)) {
-      throw new Error(
-        '❌ GEMINI_API_KEY não configurada ou inválida. ' +
-        'Crie um arquivo .env na raiz do /server com uma chave válida iniciando com "AIza" ou "AQ.".\n' +
-        'Obtenha em: https://aistudio.google.com/'
-      );
-    }
+  const { client, cacheId } = getClientForKey(apiKey);
+  const cacheKey = `${cacheId}:${modelName}`;
 
-    if (!genAI) {
-      genAI = new GoogleGenAI({ apiKey });
-    }
-
-    const client = genAI;
-    modelCache.set(modelName, {
+  if (!modelCache.has(cacheKey)) {
+    modelCache.set(cacheKey, {
       async generateContent({ contents, generationConfig }) {
         const result = await client.models.generateContent({
           model: modelName,
@@ -305,10 +323,10 @@ export function getModel(modelName = process.env.GEMINI_MODEL || 'gemini-3.8-fla
         return { response: { text: () => result.text } };
       },
     });
-    console.log(`🤖 Inicializado modelo Gemini: ${modelName}`);
+    console.log(`🤖 Inicializado modelo Gemini: ${modelName}${apiKey ? ' (chave própria)' : ''}`);
   }
 
-  return modelCache.get(modelName);
+  return modelCache.get(cacheKey);
 }
 
 /**
@@ -341,6 +359,9 @@ export async function generateFeedback({
   educationLevel,
   subject,
   rubricCriteria,
+  apiKey = null,
+  prompt = null,
+  suggestGrade = false,
 }) {
   // Modo mock / demonstração sem chave (acionado estritamente por GEMINI_MOCK=true)
   if (!customModel && isMockEnabled()) {
@@ -352,15 +373,16 @@ export async function generateFeedback({
       educationLevel,
       subject,
       rubricCriteria,
+      suggestGrade,
     });
   }
 
   const mainModelName = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
   const fallbackModelName = process.env.GEMINI_FALLBACK_MODEL;
 
-  const geminiModel = customModel || getModel(mainModelName);
+  const geminiModel = customModel || getModel(mainModelName, apiKey);
 
-  const userPrompt = buildUserPrompt({
+  const userPrompt = prompt?.userPrompt || buildUserPrompt({
     studentName,
     question,
     rubric,
@@ -368,9 +390,10 @@ export async function generateFeedback({
     educationLevel,
     subject,
     rubricCriteria,
+    suggestGrade,
   });
 
-  const responseSchema = getFeedbackSchema(rubricCriteria);
+  const responseSchema = prompt?.responseSchema || getFeedbackSchema(rubricCriteria, { suggestGrade });
 
   const MAX_ATTEMPTS = 4;
   const isTest = process.env.NODE_ENV === 'test';
@@ -387,6 +410,7 @@ export async function generateFeedback({
           responseSchema,
           temperature: 0.3,
           maxOutputTokens: 4096,
+          ...(prompt?.systemInstruction ? { systemInstruction: prompt.systemInstruction } : {}),
         },
         model: mainModelName,
       });
@@ -440,7 +464,7 @@ export async function generateFeedback({
       `🔄 Modelo principal (${mainModelName}) esgotou tentativas com sobrecarga (${formatErrorSummary(lastError)}). Tentando modelo reserva (${effectiveFallbackName})...`
     );
 
-    const fallbackModel = customFallbackModel || (customModel || getModel(effectiveFallbackName));
+    const fallbackModel = customFallbackModel || (customModel || getModel(effectiveFallbackName, apiKey));
 
     try {
       const result = await fallbackModel.generateContent({
@@ -450,6 +474,7 @@ export async function generateFeedback({
           responseSchema,
           temperature: 0.3,
           maxOutputTokens: 4096,
+          ...(prompt?.systemInstruction ? { systemInstruction: prompt.systemInstruction } : {}),
         },
         model: effectiveFallbackName,
       });

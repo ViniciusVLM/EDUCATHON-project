@@ -9,11 +9,12 @@ export const EXAM_IMPORT_SYSTEM_INSTRUCTION = `Você é um assistente que organi
 Sua tarefa é ler o documento de uma prova e extrair as informações para preencher um formulário de atividade.
 
 REGRAS OBRIGATÓRIAS:
-1. Extraia SOMENTE questões dissertativas (abertas). Questões de múltipla escolha, verdadeiro/falso ou de ligar colunas não entram em "questoes": conte quantas foram ignoradas em "questoes_objetivas_ignoradas".
+1. Extraia questões dissertativas (abertas) com "tipo": "dissertativa" e questões de múltipla escolha com "tipo": "objetiva". Verdadeiro/falso, ligar colunas e outros formatos não entram em "questoes": conte quantas foram ignoradas em "questoes_objetivas_ignoradas".
+1b. Em questão objetiva, copie as alternativas em "alternativas" na ordem do documento (letra A, B, C...). Se o gabarito da questão estiver no documento, coloque a letra em "alternativa_correta"; se não estiver, use null. NUNCA resolva a questão nem adivinhe o gabarito. Em "rubrica", copie a justificativa do gabarito se houver; senão deixe vazio. Em "criterios", devolva lista vazia.
 2. Copie o enunciado de cada questão fielmente, sem resumir nem corrigir. Se a questão tiver um texto de apoio curto, inclua-o no enunciado.
-3. Se o documento trouxer gabarito, resposta esperada ou critérios de correção, use-os na rubrica e marque "gabarito_no_documento" como true.
-4. Se NÃO houver gabarito, escreva uma rubrica sugerida com os elementos que uma boa resposta deveria conter, e marque "gabarito_no_documento" como false. O professor vai revisar.
-5. Proponha de 2 a 4 critérios de avaliação curtos por questão, com peso inteiro de 1 a 5 (maior = mais importante). Se a prova indicar a pontuação da questão, use-a só para ordenar a importância dos critérios.
+3. (Dissertativas) Se o documento trouxer gabarito, resposta esperada ou critérios de correção, use-os na rubrica e marque "gabarito_no_documento" como true.
+4. (Dissertativas) Se NÃO houver gabarito, escreva uma rubrica sugerida com os elementos que uma boa resposta deveria conter, e marque "gabarito_no_documento" como false. O professor vai revisar.
+5. (Dissertativas) Proponha de 2 a 4 critérios de avaliação curtos por questão, com peso inteiro de 1 a 5 (maior = mais importante). Se a prova indicar a pontuação da questão, use-a só para ordenar a importância dos critérios.
 6. NUNCA atribua nota, conceito ou correção a respostas de alunos que apareçam no documento.
 7. Para "turma", copie como está escrito no cabeçalho (ex.: "8º ano B", "2ª série A", "Turma 301"). Se não houver, use null. Não invente.
 8. Para "data_entrega", use o formato AAAA-MM-DD somente se a data estiver escrita no documento; caso contrário, null.
@@ -43,6 +44,19 @@ export const EXAM_IMPORT_SCHEMA = {
         type: 'OBJECT',
         properties: {
           numero: { type: 'STRING', description: 'Número da questão no documento, ex.: "1" ou "3b".' },
+          tipo: { type: 'STRING', enum: ['dissertativa', 'objetiva'] },
+          alternativas: {
+            type: 'ARRAY',
+            items: {
+              type: 'OBJECT',
+              properties: {
+                letra: { type: 'STRING' },
+                texto: { type: 'STRING' },
+              },
+              required: ['letra', 'texto'],
+            },
+          },
+          alternativa_correta: { type: 'STRING', nullable: true, description: 'Letra do gabarito, só se estiver no documento.' },
           titulo: { type: 'STRING', description: 'Título curto (até 8 palavras) que resume o tema da questão.' },
           enunciado: { type: 'STRING' },
           gabarito_no_documento: { type: 'BOOLEAN' },
@@ -59,7 +73,7 @@ export const EXAM_IMPORT_SCHEMA = {
             },
           },
         },
-        required: ['numero', 'titulo', 'enunciado', 'gabarito_no_documento', 'rubrica', 'criterios'],
+        required: ['numero', 'tipo', 'titulo', 'enunciado', 'gabarito_no_documento', 'rubrica', 'criterios'],
       },
     },
   },

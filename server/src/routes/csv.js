@@ -17,6 +17,9 @@ const router = Router();
  */
 router.post('/csv/preview', (req, res) => {
   const { csvContent } = req.body;
+  // Atividades com várias perguntas mandam quantas são, para ler resposta_1, resposta_2...
+  const rawCount = Number(req.body.questionCount);
+  const questionCount = Number.isInteger(rawCount) && rawCount >= 1 && rawCount <= 20 ? rawCount : 1;
 
   if (!csvContent || typeof csvContent !== 'string') {
     return res.status(400).json({ error: 'csvContent é obrigatório.' });
@@ -29,7 +32,7 @@ router.post('/csv/preview', (req, res) => {
   }
 
   try {
-    const rows = parseCSV(csvContent);
+    const rows = parseCSV(csvContent, { questionCount });
     if (rows.length > 200) {
       return res.status(400).json({
         error: 'Quantidade de respostas excede o limite permitido (máximo 200 alunos por upload).',

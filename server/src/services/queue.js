@@ -1,5 +1,151 @@
 import { generateFeedback, formatErrorSummary } from './gemini.js';
 import { saveFeedback, getDb } from '../database/db.js';
+import { generateObjectiveFeedback } from './objective.js';
+import { recordUsage } from './plans.js';
+import { normalizeSuggestedGrade } from '../prompts/feedback.js';
+import {
+  getQuestions,
+  isMultiQuestion,
+  getAnswers,
+  blankQuestionFeedback,
+  combineFeedbacks,
+} from './multiQuestion.js';
+
+// Nos testes automatizados os logs de rotina ficam desligados: muita saída no stdout
+// atrapalha a comunicação do executor de testes do Node com cada arquivo.
+const log = process.env.NODE_TEST_CONTEXT ? () => {} : console.log;
+
+/**
+ * Quando a cota foi reservada antes de começar, devolve as unidades que não viraram feedback.
+ * Em questões objetivas, só as respostas que precisam de IA falham, então o número de erros
+ * (ou o que sobrou, se o processamento foi abortado) é o que volta para a cota.
+ */
+function refundFailures(activityId, teacherId, reservedUnits, aborted = false) {
+  if (!reservedUnits || !teacherId) return;
+  const progress = getProgress(activityId);
+  const unused = aborted ? progress.total - progress.processed + progress.errors : progress.errors;
+  const refund = Math.min(reservedUnits, Math.max(0, unused));
+  if (refund > 0) recordUsage(teacherId, 'feedback', -refund);
+}
+
+/**
+ * Junta as notas sugeridas de cada questão: média simples (questão em branco conta 0),
+ * arredondada para meio ponto. Retorna null se alguma questão respondida veio sem nota.
+ */
+export function combineSuggestedGrades(parts) {
+  const notas = [];
+  const motivos = [];
+  for (let i = 0; i < parts.length; i++) {
+    const p = parts[i];
+    const nota = p?.sem_resposta ? 0 : normalizeSuggestedGrade(p?.nota_sugerida);
+    if (nota === null) return null;
+    p.nota_sugerida = nota;
+    notas.push(nota);
+    const motivo = p?.sem_resposta ? 'em branco' : String(p?.justificativa_nota || '').trim();
+    motivos.push(`Q${i + 1} (${String(nota).replace('.', ',')}): ${motivo || '—'}`);
+  }
+  if (notas.length === 0) return null;
+  const media = notas.reduce((s, n) => s + n, 0) / notas.length;
+  return { nota: Math.round(media * 2) / 2, justificativa: `Média das questões. ${motivos.join(' ')}` };
+}
+
+/**
+ * Gera o feedback de UMA resposta, dissertativa ou objetiva, e salva no banco.
+ * Registra o uso de IA na cota de quem paga (professor ou instituição) quando a IA foi chamada.
+ */
+export async function generateAndSave(activity, response, { teacherId = null, apiKey = null, parsedCriteria = null, beforeSave = null, alreadyReserved = false } = {}) {
+  if (activity.question_type === 'objetiva') {
+    const result = await generateObjectiveFeedback({
+      activity,
+      studentName: response.student_name,
+      studentResponse: response.original_response,
+      apiKey,
+    });
+    if (beforeSave) beforeSave();
+    const saved = saveFeedback(
+      response.id,
+      result.raw,
+      result.parsed.feedback_completo,
+      result.modelUsed,
+      result.parsed.criterios_avaliacao,
+      result.autoResult
+    );
+    if (result.usedAi && teacherId && !alreadyReserved) recordUsage(teacherId, 'feedback', 1);
+    return { saved, parsed: result.parsed };
+  }
+
+  const suggestGrade = Boolean(activity.ai_grade_enabled);
+
+  if (isMultiQuestion(activity)) {
+    // Uma chamada de IA por questão respondida, em sequência (evita estourar o limite da API).
+    // Se qualquer questão falhar, nada é salvo: a resposta fica para reprocessar.
+    const questions = getQuestions(activity);
+    const answers = getAnswers(response, questions.length);
+    const parts = [];
+    let modelUsed = null;
+    for (let i = 0; i < questions.length; i++) {
+      if (!answers[i].trim()) {
+        parts.push(blankQuestionFeedback());
+        continue;
+      }
+      const r = await generateFeedback({
+        studentName: response.student_name,
+        question: questions[i].pergunta,
+        rubric: questions[i].rubrica,
+        studentResponse: answers[i],
+        educationLevel: activity.education_level,
+        subject: activity.subject,
+        // Os critérios detalhados do formulário pertencem à pergunta 1
+        rubricCriteria: i === 0 ? parsedCriteria : null,
+        apiKey,
+        suggestGrade,
+      });
+      modelUsed = modelUsed || r.modelUsed;
+      parts.push(r.parsed);
+    }
+    // A nota de cada questão é normalizada antes de juntar, para o rascunho guardar o valor final
+    const grade = suggestGrade ? combineSuggestedGrades(parts) : null;
+    const combined = combineFeedbacks(parts);
+    if (beforeSave) beforeSave();
+    const saved = saveFeedback(
+      response.id,
+      JSON.stringify(combined),
+      combined.feedback_completo,
+      modelUsed || process.env.GEMINI_MODEL || 'gemini-3.8-flash',
+      combined.criterios_avaliacao.length > 0 ? combined.criterios_avaliacao : null,
+      null,
+      grade ? { aiGrade: grade.nota, aiGradeReason: grade.justificativa } : {}
+    );
+    // Uma correção por aluno, independente de quantas perguntas a prova tem
+    if (teacherId && !alreadyReserved) recordUsage(teacherId, 'feedback', 1);
+    return { saved, parsed: combined };
+  }
+
+  const result = await generateFeedback({
+    studentName: response.student_name,
+    question: activity.question,
+    rubric: activity.rubric,
+    studentResponse: response.original_response,
+    educationLevel: activity.education_level,
+    subject: activity.subject,
+    rubricCriteria: parsedCriteria,
+    apiKey,
+    suggestGrade,
+  });
+  const aiGrade = suggestGrade ? normalizeSuggestedGrade(result.parsed?.nota_sugerida) : null;
+  if (beforeSave) beforeSave();
+  const saved = saveFeedback(
+    response.id,
+    result.raw,
+    result.parsed.feedback_completo,
+    result.modelUsed || process.env.GEMINI_MODEL || 'gemini-3.8-flash',
+    result.parsed?.criterios_avaliacao || null,
+    null,
+    aiGrade !== null ? { aiGrade, aiGradeReason: result.parsed?.justificativa_nota || null } : {}
+  );
+  if (teacherId && !alreadyReserved) recordUsage(teacherId, 'feedback', 1);
+  return { saved, parsed: result.parsed };
+}
 
 // ──────────────────────────────────────────
 // Helpers: processing_jobs (SQLite)
@@ -92,7 +238,11 @@ export function getProgress(activityId) {
  * @param {Object} activity - Dados da atividade
  * @param {Array}  responses - Lista de respostas dos alunos com seus IDs
  */
-export async function processResponses(activity, responses) {
+export async function processResponses(
+  activity,
+  responses,
+  { teacherId = activity.teacher_id ?? null, apiKey = null, reservedUnits = 0 } = {}
+) {
   const activityId = activity.id;
   const rawConcurrency = process.env.GEMINI_CONCURRENCY;
   const parsedConcurrency = rawConcurrency ? parseInt(rawConcurrency, 10) : NaN;
@@ -121,26 +271,13 @@ export async function processResponses(activity, responses) {
       const results = await Promise.allSettled(
         batch.map(async (response) => {
           try {
-            const result = await generateFeedback({
-              studentName: response.student_name,
-              question: activity.question,
-              rubric: activity.rubric,
-              studentResponse: response.original_response,
-              educationLevel: activity.education_level,
-              subject: activity.subject,
-              rubricCriteria: parsedCriteria,
-            });
-
-            const criteriaScores = result.parsed?.criterios_avaliacao || null;
-
             // Salva no banco com registro do modelo utilizado e critérios avaliados
-            saveFeedback(
-              response.id,
-              result.raw,
-              result.parsed.feedback_completo,
-              result.modelUsed || process.env.GEMINI_MODEL || 'gemini-3.8-flash',
-              criteriaScores
-            );
+            await generateAndSave(activity, response, {
+              teacherId,
+              apiKey,
+              parsedCriteria,
+              alreadyReserved: reservedUnits > 0,
+            });
 
             return { success: true, studentName: response.student_name, responseId: response.id };
           } catch (error) {
@@ -163,7 +300,7 @@ export async function processResponses(activity, responses) {
       }
 
       const progress = getProgress(activityId);
-      console.log(`📊 Progresso: ${progress.processed}/${progress.total} (erros: ${progress.errors})`);
+      log(`📊 Progresso: ${progress.processed}/${progress.total} (erros: ${progress.errors})`);
 
       // Delay entre lotes (exceto no último)
       if (i + BATCH_SIZE < responses.length) {
@@ -171,11 +308,15 @@ export async function processResponses(activity, responses) {
       }
     }
 
+    // Devolve à cota as gerações reservadas que falharam
+    refundFailures(activityId, teacherId, reservedUnits);
+
     // Marca como completo
     markJobComplete(activityId);
-    console.log(`✅ Processamento da atividade ${activityId} finalizado.`);
+    log(`✅ Processamento da atividade ${activityId} finalizado.`);
   } catch (criticalError) {
     console.error(`❌ Processamento abortado para atividade ${activityId}:`, criticalError);
+    refundFailures(activityId, teacherId, reservedUnits, true);
     markJobError(activityId);
     throw criticalError;
   }

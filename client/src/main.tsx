@@ -9,6 +9,7 @@ import '@fontsource/nunito/latin-700.css';
 import '@fontsource/nunito/latin-800.css';
 import './styles/index.css';
 import './styles/redesign.css';
+import './styles/features.css';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

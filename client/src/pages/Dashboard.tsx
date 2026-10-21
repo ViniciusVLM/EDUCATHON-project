@@ -160,7 +160,7 @@ export default function Dashboard() {
                 <IconPlus size={20} /> Criar primeira atividade
               </Link>
             </div>
-            <span className="painel-hero__note">A IA nunca dá nota; o professor decide</span>
+            <span className="painel-hero__note">Quem decide a nota é sempre o professor</span>
           </div>
           <div className="painel-hero__art">
             <Mascot size={230} />
@@ -222,7 +222,7 @@ export default function Dashboard() {
               <IconPlus size={18} /> Nova atividade
             </Link>
           </div>
-          <span className="painel-hero__note">A IA nunca dá nota; o professor decide</span>
+          <span className="painel-hero__note">Quem decide a nota é sempre o professor</span>
         </div>
         <div className="painel-hero__art">
           <Mascot size={240} />

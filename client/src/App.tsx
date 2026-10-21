@@ -9,6 +9,11 @@ import ActivitiesList from './pages/ActivitiesList';
 import ClassesManagement from './pages/ClassesManagement';
 import Login from './pages/Login';
 import Register from './pages/Register';
+import Plans from './pages/Plans';
+import Institution from './pages/Institution';
+import Account from './pages/Account';
+import { StudentLogin, StudentRegister } from './pages/student/StudentAuth';
+import StudentPortal from './pages/student/StudentPortal';
 import ProtectedRoute from './components/ProtectedRoute';
 import { AppLayout } from './components/layout/AppLayout';
 import { AuthProvider } from './contexts/AuthContext';
@@ -36,6 +41,11 @@ export default function App() {
             <Route path="/" element={<Home />} />
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
+
+            {/* ── Portal do aluno (sessão própria, sem AppLayout do professor) ── */}
+            <Route path="/aluno" element={<StudentPortal />} />
+            <Route path="/aluno/entrar" element={<StudentLogin />} />
+            <Route path="/aluno/cadastro" element={<StudentRegister />} />
 
             {/* ── Rotas Protegidas (com AppLayout) ── */}
             <Route
@@ -83,6 +93,30 @@ export default function App() {
               element={
                 <ProtectedLayout>
                   <ReviewDashboard />
+                </ProtectedLayout>
+              }
+            />
+            <Route
+              path="/planos"
+              element={
+                <ProtectedLayout>
+                  <Plans />
+                </ProtectedLayout>
+              }
+            />
+            <Route
+              path="/conta"
+              element={
+                <ProtectedLayout>
+                  <Account />
+                </ProtectedLayout>
+              }
+            />
+            <Route
+              path="/instituicao"
+              element={
+                <ProtectedLayout>
+                  <Institution />
                 </ProtectedLayout>
               }
             />

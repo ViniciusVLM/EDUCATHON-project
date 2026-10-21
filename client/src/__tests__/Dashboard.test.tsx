@@ -143,7 +143,7 @@ describe('Dashboard Component (/painel)', () => {
 
     expect(screen.getByText(/Bem-vindo\(a\) ao seu novo painel!/i)).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Criar primeira atividade/i })).toBeInTheDocument();
-    expect(screen.getByText(/A IA nunca dá nota; o professor decide/i)).toBeInTheDocument();
+    expect(screen.getByText(/Quem decide a nota é sempre o professor/i)).toBeInTheDocument();
   });
 
   it('exibe o painel populado com saudação, atalhos, pendências, prazos e anéis', async () => {
