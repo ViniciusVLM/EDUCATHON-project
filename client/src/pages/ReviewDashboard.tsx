@@ -7,6 +7,7 @@ import {
   updateFeedback,
   approveFeedback,
   regenerateFeedback,
+  setActivityAiGrade,
 } from '../services/api';
 import type {
   ActivityWithResponses,
@@ -44,6 +45,7 @@ export default function ReviewDashboard() {
   const [filter, setFilter] = useState<FilterType>('todos');
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState('');
+  const [aiGradeNotice, setAiGradeNotice] = useState('');
   const [error, setError] = useState('');
   const [progress, setProgress] = useState<Progress | null>(null);
   const [generating, setGenerating] = useState(false);
@@ -342,6 +344,22 @@ export default function ReviewDashboard() {
     }
   }, [selected?.feedback_id, editText, currentCriteriaScores, loadActivity, filteredResponses, selectedIndex, gradeText, isGradeDirty]);
 
+  async function handleToggleAiGrade() {
+    if (!activity) return;
+    const enable = !activity.ai_grade_enabled;
+    setActionLoading('ai-grade');
+    setAiGradeNotice('');
+    try {
+      const res = await setActivityAiGrade(activity.id, enable);
+      setActivity({ ...activity, ai_grade_enabled: enable ? 1 : 0 });
+      setAiGradeNotice(enable ? `${res.message} Use "Regenerar" para ver a sugestão nos feedbacks já gerados.` : res.message);
+    } catch (err: unknown) {
+      setAiGradeNotice(err instanceof Error ? err.message : 'Não foi possível alterar a configuração.');
+    } finally {
+      setActionLoading('');
+    }
+  }
+
   async function handleRegenerate() {
     if (!selected?.feedback_id) return;
     setActionLoading('regenerate');
@@ -367,7 +385,7 @@ export default function ReviewDashboard() {
     if (pendingWithFeedback.length === 0) return;
 
     const confirmed = window.confirm(
-      `Tem certeza de que deseja aprovar todos os ${pendingWithFeedback.length} feedbacks pendentes de uma vez?\n\nLembrete de produto: a IA nunca dá nota; o professor é o responsável pedagógico final.`
+      `Tem certeza de que deseja aprovar todos os ${pendingWithFeedback.length} feedbacks pendentes de uma vez?\n\nLembrete: aprovar não lança a nota sugerida pela IA. Só vale a nota que você digitou; o professor é o responsável pedagógico final.`
     );
     if (!confirmed) return;
 
@@ -495,6 +513,11 @@ export default function ReviewDashboard() {
   const questions = isObjective ? [] : getActivityQuestions(activity);
   const isMulti = questions.length > 1;
   const selectedAnswers = isMulti && selected ? getResponseAnswers(selected, questions.length) : [];
+  const aiGradeOn = !isObjective && Boolean(activity.ai_grade_enabled);
+  const suggestion = typeof selected?.ai_grade === 'number' ? selected.ai_grade : null;
+  const perQuestionSuggestions = isMulti
+    ? (getParsedFeedback()?.questoes || []).map((q) => (typeof q.nota_sugerida === 'number' ? q.nota_sugerida : null))
+    : [];
   const objectiveOptions: ObjectiveOption[] = isObjective ? parseJsonArray<ObjectiveOption>(activity.options) : [];
   const objectiveResult: ObjectiveResult | null = selected?.auto_result ? parseJsonObject<ObjectiveResult>(selected.auto_result) : null;
   const needsGeneration = activity.responses.some((r) => !r.feedback_id);
@@ -521,6 +544,22 @@ export default function ReviewDashboard() {
             <p className="page-subtitle" style={{ marginBottom: 0 }}>
               {activity.question}
             </p>
+          )}
+          {!isObjective && (
+            <div className="ai-grade-bar">
+              <span className={`ai-grade-bar__state${aiGradeOn ? ' ai-grade-bar__state--on' : ''}`}>
+                Nota sugerida pela IA: {aiGradeOn ? 'ligada' : 'desligada'}
+              </span>
+              <button
+                type="button"
+                className="ai-grade-bar__switch"
+                onClick={handleToggleAiGrade}
+                disabled={actionLoading === 'ai-grade'}
+              >
+                {aiGradeOn ? 'Desligar' : 'Ligar'}
+              </button>
+              {aiGradeNotice && <span className="ai-grade-bar__notice" role="status">{aiGradeNotice}</span>}
+            </div>
           )}
           {isObjective && (
             <p className="review-objective-tag">
@@ -903,8 +942,36 @@ export default function ReviewDashboard() {
                         onChange={(e) => setGradeText(e.target.value)}
                       />
                       <span className="review-grade__hint">
-                        Opcional. Quem lança a nota é você; a IA não sugere nota. O aluno vê depois da aprovação.
+                        Opcional. Quem lança a nota é você. O aluno só vê esta nota, depois da aprovação.
                       </span>
+                    </div>
+                  )}
+                  {selected.feedback_id && suggestion !== null && (
+                    <div className="ai-suggestion" aria-label="Sugestão de nota da IA">
+                      <div className="ai-suggestion__head">
+                        <span className="ai-suggestion__label">Sugestão da IA</span>
+                        <span className="ai-suggestion__value">{formatGradeInput(suggestion)}</span>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setGradeText(formatGradeInput(suggestion))}
+                          disabled={gradeText.trim() === formatGradeInput(suggestion)}
+                        >
+                          Usar sugestão
+                        </Button>
+                      </div>
+                      {isMulti && perQuestionSuggestions.some((n) => n !== null) && (
+                        <p className="ai-suggestion__parts">
+                          {perQuestionSuggestions.map((n, i) => `Q${i + 1}: ${n === null ? '—' : formatGradeInput(n)}`).join(' · ')}
+                        </p>
+                      )}
+                      {selected.ai_grade_reason && (
+                        <p className="ai-suggestion__reason">{selected.ai_grade_reason}</p>
+                      )}
+                      <p className="ai-suggestion__note">
+                        Só você vê. Confira a resposta: a sugestão pode errar. Depois de usar, salve ou aprove para valer.
+                      </p>
                     </div>
                   )}
                 </Window>

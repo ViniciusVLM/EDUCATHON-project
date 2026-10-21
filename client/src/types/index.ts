@@ -25,6 +25,7 @@ export interface Activity {
   correct_option?: string | null;
   // ── Várias questões dissertativas ──
   questions?: string | null; // JSON: [{pergunta, rubrica}] (só quando há mais de uma)
+  ai_grade_enabled?: number; // 1 = a IA sugere uma nota (só o professor vê)
 }
 
 /** Uma pergunta de uma atividade com várias questões dissertativas. */
@@ -57,6 +58,8 @@ export interface StudentResponse {
   submission_method?: 'csv' | 'manual' | null;
   word_count?: number | null;
   answers?: string | null; // JSON: uma resposta por questão (atividades com várias perguntas)
+  ai_grade?: number | null; // nota sugerida pela IA (só o professor vê)
+  ai_grade_reason?: string | null;
   updated_at?: string | null;
   // Joined feedback fields
   feedback_id: number | null;
@@ -95,6 +98,8 @@ export interface FeedbackParsed {
   sugestao_melhoria: string;
   feedback_completo: string;
   criterios_avaliacao?: CriterionScore[];
+  nota_sugerida?: number;
+  justificativa_nota?: string;
   /** Atividades com várias perguntas: o rascunho de cada questão */
   questoes?: (Omit<FeedbackParsed, 'questoes'> & { numero: number; sem_resposta?: boolean })[];
 }

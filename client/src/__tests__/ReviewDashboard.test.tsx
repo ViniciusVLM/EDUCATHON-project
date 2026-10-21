@@ -16,6 +16,7 @@ vi.mock('../services/api', () => ({
   updateFeedback: vi.fn().mockResolvedValue({ message: 'OK', status: 'revisado' }),
   approveFeedback: vi.fn().mockResolvedValue({ message: 'OK', status: 'aprovado' }),
   regenerateFeedback: vi.fn().mockResolvedValue({ message: 'OK', feedbackId: 10 }),
+  setActivityAiGrade: vi.fn().mockResolvedValue({ message: 'Nota sugerida ligada.', aiGradeEnabled: true }),
 }));
 
 const mockGetActivity = vi.mocked(api.getActivity);
@@ -367,5 +368,45 @@ describe('ReviewDashboard — Nota do professor e questão objetiva', () => {
     expect(screen.getByText('marcada')).toBeInTheDocument();
     expect(screen.getByText('gabarito')).toBeInTheDocument();
     expect(screen.queryByText(/Critérios da rubrica/i)).not.toBeInTheDocument();
+  });
+});
+
+describe('ReviewDashboard — Nota sugerida pela IA', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('mostra a sugestão só como sugestão e usa ao clicar, salvando como nota do professor', async () => {
+    const user = userEvent.setup();
+    mockGetActivity.mockResolvedValue({
+      ...sampleActivity,
+      ai_grade_enabled: 1,
+      responses: [{ ...sampleActivity.responses[0], ai_grade: 6.5, ai_grade_reason: 'Citou luz e água; faltou CO2.' }],
+    });
+    renderDashboard();
+
+    expect(await screen.findByText('Sugestão da IA')).toBeInTheDocument();
+    expect(screen.getByText('Citou luz e água; faltou CO2.')).toBeInTheDocument();
+    expect(screen.getByText(/Nota sugerida pela IA: ligada/i)).toBeInTheDocument();
+    const grade = screen.getByLabelText(/Nota \(0 a 10\)/i);
+    expect(grade).toHaveValue('');
+
+    await user.click(screen.getByRole('button', { name: /Usar sugestão/i }));
+    expect(grade).toHaveValue('6,5');
+    await user.click(screen.getByRole('button', { name: /Salvar edição/i }));
+    await waitFor(() => expect(mockUpdateFeedback).toHaveBeenCalledWith(201, { teacherGrade: 6.5 }));
+  });
+
+  it('liga a nota sugerida numa atividade que estava desligada', async () => {
+    const user = userEvent.setup();
+    mockGetActivity.mockResolvedValue(sampleActivity);
+    renderDashboard();
+
+    expect(await screen.findByText(/Nota sugerida pela IA: desligada/i)).toBeInTheDocument();
+    expect(screen.queryByText('Sugestão da IA')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Ligar' }));
+    await waitFor(() => expect(api.setActivityAiGrade).toHaveBeenCalledWith(1, true));
+    expect(await screen.findByText(/Nota sugerida pela IA: ligada/i)).toBeInTheDocument();
+    expect(screen.getByText(/Use "Regenerar"/)).toBeInTheDocument();
   });
 });

@@ -66,7 +66,9 @@ Faça login com a conta de demonstração pré-populada:
 | **Planos e cota de IA** | Menu do avatar → *Planos e uso de IA* (`/planos`) | Plano **Gratuito** com cota mensal (50 gerações por professor, 200 por instituição). Ao acabar, a geração é bloqueada com aviso. **Professor Premium** e **Instituição** são ativados por um **checkout simulado** (Pix/cartão de mentira): nenhuma cobrança real e nenhum dado de cartão sai do navegador. |
 | **Chave própria do Gemini** | `/planos` → *Usar a sua própria chave paga* | O professor (ou o administrador da instituição) cadastra uma chave paga do Google AI Studio. Ela é guardada **criptografada (AES-256-GCM)** e nunca volta ao navegador — só os 4 últimos caracteres. Com chave própria, a plataforma não limita o uso. |
 | **Portal do aluno** | `/aluno` | O aluno cria a conta com o **código da turma** (ou recebe acesso da instituição) e vê suas matérias, as atividades, a **nota lançada pelo professor** e o **feedback aprovado**. Nada aparece antes da aprovação. |
-| **Nota do professor** | Tela de revisão, abaixo do feedback | Campo opcional de 0 a 10 (aceita vírgula). A IA nunca sugere nota. A nota vai para o CSV exportado e para o portal do aluno. |
+| **Nota do professor** | Tela de revisão, abaixo do feedback | Campo opcional de 0 a 10 (aceita vírgula). A nota vai para o CSV exportado e para o portal do aluno. |
+| **Nota sugerida pela IA (opcional)** | Nova Atividade (caixa "Deixar a IA sugerir uma nota") ou na revisão (Ligar/Desligar) | Desligada por padrão, só em dissertativas. A IA propõe uma nota de 0 a 10 com justificativa; em provas com várias perguntas, a média das questões (em branco conta 0). Só o professor vê. O botão "Usar sugestão" preenche o campo, e só vale depois de salvar ou aprovar. O aluno e o CSV recebem apenas a nota do professor. |
+| **Várias questões dissertativas** | Nova Atividade → "Adicionar outra pergunta dissertativa" | Até 20 perguntas por atividade, cada uma com rubrica. Respostas por questão (manual ou CSV com `resposta_1`, `resposta_2`...). A IA escreve um feedback por questão. |
 | **Múltipla escolha** | Nova atividade → *Tipo de questão* | Alternativas + gabarito. A correção é automática pelo gabarito (sem IA e sem gastar cota); a IA só escreve a explicação para quem errou. A leitura de provas também reconhece questões objetivas. |
 | **Login com Google** | Telas de login do professor e do aluno | Firebase Authentication. O servidor confere o token com os certificados públicos do Google (sem `firebase-admin`). Os usuários aparecem no console do Firebase. |
 
@@ -139,8 +141,9 @@ graph TD
 
 ## 💡 Decisões de Design (Pedagogia & Segurança)
 
-1. **A IA NUNCA atribui nota numérica nem conceitos**:
-   - O papel da inteligência artificial no Educathon é estritamente **formativo e encorajador**. A IA destaca o que o aluno compreendeu, aponta lacunas objetivas em relação aos critérios da rubrica e orienta os próximos passos de estudo. A atribuição de nota cabe à soberania pedagógica do educador.
+1. **Quem decide a nota é sempre o professor**:
+   - O papel da inteligência artificial no Educathon é **formativo e encorajador**. A IA destaca o que o aluno compreendeu, aponta lacunas objetivas em relação aos critérios da rubrica e orienta os próximos passos de estudo. O texto do feedback nunca traz nota.
+   - Se o professor ligar a opção na atividade, a IA também **sugere** uma nota com justificativa, visível só para ele. A sugestão nunca é publicada sozinha: o aluno só vê a nota que o professor confirmar ou ajustar. Isso vai na linha do direito de revisão de decisões automatizadas (LGPD, art. 20); antes de virar produto, vale validar com o jurídico.
 2. **O professor no controle absoluto (*Human-in-the-Loop*)**:
    - Nenhum feedback gerado pela IA é publicado automaticamente. Todo feedback nasce no estado `pendente` e exige que o professor revise, edite com sua própria voz e aprove expressamente antes de qualquer exportação ou devolução.
 3. **Proteção contra *Prompt Injection***:

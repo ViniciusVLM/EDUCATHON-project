@@ -97,6 +97,8 @@ export default function SetupActivity() {
     classId: '',
     dueDate: '',
   });
+  // Nota sugerida pela IA (vale para as dissertativas criadas agora). Desligada por padrão.
+  const [aiGrade, setAiGrade] = useState(false);
 
   useEffect(() => {
     getClasses()
@@ -360,6 +362,7 @@ export default function SetupActivity() {
           classId: form.classId ? Number(form.classId) : undefined,
           dueDate: form.dueDate ? form.dueDate : undefined,
           rubricCriteria,
+          ...(!isObjective && aiGrade ? { aiGradeEnabled: true } : {}),
           ...(!isObjective && d.extraQuestions.length > 0
             ? {
                 extraQuestions: d.extraQuestions.map((q) => ({
@@ -647,8 +650,26 @@ export default function SetupActivity() {
                 </span>
               </label>
             </div>
-            <p className="input-hint" id="qtype-hint">Em nenhum dos dois a IA dá nota: quem lança a nota é você, na revisão.</p>
+            <p className="input-hint" id="qtype-hint">Quem lança a nota é sempre você, na revisão.</p>
           </fieldset>
+
+          {draft.type === 'dissertativa' && (
+            <label className={`ai-grade-toggle${aiGrade ? ' ai-grade-toggle--on' : ''}`}>
+              <input
+                type="checkbox"
+                checked={aiGrade}
+                onChange={(e) => setAiGrade(e.target.checked)}
+                id="ai-grade-enabled"
+              />
+              <span>
+                <strong>Deixar a IA sugerir uma nota (0 a 10)</strong>
+                <small>
+                  A sugestão vem com uma justificativa e aparece só para você na revisão. O aluno só vê a nota que você
+                  confirmar ou ajustar.
+                </small>
+              </span>
+            </label>
+          )}
 
           <div className="input-group">
             <label className="input-label" htmlFor="title">

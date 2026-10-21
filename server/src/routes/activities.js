@@ -6,6 +6,7 @@ import {
   getResponsesByActivity,
   getActivityStats,
   getClassById,
+  setActivityAiGrade,
 } from '../database/db.js';
 import { validateExtraQuestions } from '../services/multiQuestion.js';
 
@@ -134,6 +135,8 @@ router.post('/', (req, res) => {
       options,
       correctOption,
       questions,
+      // Nota sugerida pela IA: só em dissertativas e só se o professor pedir
+      aiGradeEnabled: questionType === 'dissertativa' && req.body.aiGradeEnabled === true,
     });
 
     res.status(201).json({
@@ -143,6 +146,36 @@ router.post('/', (req, res) => {
   } catch (error) {
     console.error('Erro ao criar atividade:', error);
     res.status(500).json({ error: 'Erro interno ao criar atividade.' });
+  }
+});
+
+/**
+ * PATCH /api/activities/:id/ai-grade
+ * Liga ou desliga a nota sugerida pela IA numa atividade dissertativa já criada.
+ * Vale para os próximos feedbacks gerados (ou regenerados). Body: { enabled: boolean }
+ */
+router.patch('/:id/ai-grade', (req, res) => {
+  try {
+    const activity = getActivityIfOwned(Number(req.params.id), req.teacher.id);
+    if (!activity) {
+      return res.status(404).json({ error: 'Atividade não encontrada.' });
+    }
+    if (typeof req.body?.enabled !== 'boolean') {
+      return res.status(400).json({ error: 'Envie "enabled" como true ou false.' });
+    }
+    if (activity.question_type === 'objetiva' && req.body.enabled) {
+      return res.status(400).json({ error: 'Em múltipla escolha a correção já é feita pelo gabarito.' });
+    }
+    setActivityAiGrade(activity.id, req.body.enabled);
+    res.json({
+      message: req.body.enabled
+        ? 'Nota sugerida ligada. Ela aparece nos próximos feedbacks gerados ou regenerados.'
+        : 'Nota sugerida desligada.',
+      aiGradeEnabled: req.body.enabled,
+    });
+  } catch (error) {
+    console.error('Erro ao alterar nota sugerida:', error);
+    res.status(500).json({ error: 'Erro interno ao alterar a configuração.' });
   }
 });
 

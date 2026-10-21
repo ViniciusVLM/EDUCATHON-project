@@ -312,7 +312,7 @@ export default function StudentPortal() {
                 <ChangePasswordForm idPrefix="student-pass" onSubmit={changeStudentPassword} />
               </details>
               <p className="portal-footnote">
-                <IconCheckCircle size={14} /> A nota é sempre lançada pelo seu professor. A IA ajuda a escrever o feedback, mas não dá nota.
+                <IconCheckCircle size={14} /> A nota é sempre decidida pelo seu professor. A IA só ajuda a preparar a correção.
               </p>
             </section>
           </>

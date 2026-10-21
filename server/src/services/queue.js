@@ -2,6 +2,7 @@ import { generateFeedback, formatErrorSummary } from './gemini.js';
 import { saveFeedback, getDb } from '../database/db.js';
 import { generateObjectiveFeedback } from './objective.js';
 import { recordUsage } from './plans.js';
+import { normalizeSuggestedGrade } from '../prompts/feedback.js';
 import {
   getQuestions,
   isMultiQuestion,
@@ -25,6 +26,27 @@ function refundFailures(activityId, teacherId, reservedUnits, aborted = false) {
   const unused = aborted ? progress.total - progress.processed + progress.errors : progress.errors;
   const refund = Math.min(reservedUnits, Math.max(0, unused));
   if (refund > 0) recordUsage(teacherId, 'feedback', -refund);
+}
+
+/**
+ * Junta as notas sugeridas de cada questão: média simples (questão em branco conta 0),
+ * arredondada para meio ponto. Retorna null se alguma questão respondida veio sem nota.
+ */
+export function combineSuggestedGrades(parts) {
+  const notas = [];
+  const motivos = [];
+  for (let i = 0; i < parts.length; i++) {
+    const p = parts[i];
+    const nota = p?.sem_resposta ? 0 : normalizeSuggestedGrade(p?.nota_sugerida);
+    if (nota === null) return null;
+    p.nota_sugerida = nota;
+    notas.push(nota);
+    const motivo = p?.sem_resposta ? 'em branco' : String(p?.justificativa_nota || '').trim();
+    motivos.push(`Q${i + 1} (${String(nota).replace('.', ',')}): ${motivo || '—'}`);
+  }
+  if (notas.length === 0) return null;
+  const media = notas.reduce((s, n) => s + n, 0) / notas.length;
+  return { nota: Math.round(media * 2) / 2, justificativa: `Média das questões. ${motivos.join(' ')}` };
 }
 
 /**
@@ -52,6 +74,8 @@ export async function generateAndSave(activity, response, { teacherId = null, ap
     return { saved, parsed: result.parsed };
   }
 
+  const suggestGrade = Boolean(activity.ai_grade_enabled);
+
   if (isMultiQuestion(activity)) {
     // Uma chamada de IA por questão respondida, em sequência (evita estourar o limite da API).
     // Se qualquer questão falhar, nada é salvo: a resposta fica para reprocessar.
@@ -74,10 +98,13 @@ export async function generateAndSave(activity, response, { teacherId = null, ap
         // Os critérios detalhados do formulário pertencem à pergunta 1
         rubricCriteria: i === 0 ? parsedCriteria : null,
         apiKey,
+        suggestGrade,
       });
       modelUsed = modelUsed || r.modelUsed;
       parts.push(r.parsed);
     }
+    // A nota de cada questão é normalizada antes de juntar, para o rascunho guardar o valor final
+    const grade = suggestGrade ? combineSuggestedGrades(parts) : null;
     const combined = combineFeedbacks(parts);
     if (beforeSave) beforeSave();
     const saved = saveFeedback(
@@ -85,7 +112,9 @@ export async function generateAndSave(activity, response, { teacherId = null, ap
       JSON.stringify(combined),
       combined.feedback_completo,
       modelUsed || process.env.GEMINI_MODEL || 'gemini-3.8-flash',
-      combined.criterios_avaliacao.length > 0 ? combined.criterios_avaliacao : null
+      combined.criterios_avaliacao.length > 0 ? combined.criterios_avaliacao : null,
+      null,
+      grade ? { aiGrade: grade.nota, aiGradeReason: grade.justificativa } : {}
     );
     // Uma correção por aluno, independente de quantas perguntas a prova tem
     if (teacherId && !alreadyReserved) recordUsage(teacherId, 'feedback', 1);
@@ -101,14 +130,18 @@ export async function generateAndSave(activity, response, { teacherId = null, ap
     subject: activity.subject,
     rubricCriteria: parsedCriteria,
     apiKey,
+    suggestGrade,
   });
+  const aiGrade = suggestGrade ? normalizeSuggestedGrade(result.parsed?.nota_sugerida) : null;
   if (beforeSave) beforeSave();
   const saved = saveFeedback(
     response.id,
     result.raw,
     result.parsed.feedback_completo,
     result.modelUsed || process.env.GEMINI_MODEL || 'gemini-3.8-flash',
-    result.parsed?.criterios_avaliacao || null
+    result.parsed?.criterios_avaliacao || null,
+    null,
+    aiGrade !== null ? { aiGrade, aiGradeReason: result.parsed?.justificativa_nota || null } : {}
   );
   if (teacherId && !alreadyReserved) recordUsage(teacherId, 'feedback', 1);
   return { saved, parsed: result.parsed };

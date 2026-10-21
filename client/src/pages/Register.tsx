@@ -73,7 +73,7 @@ export default function Register() {
           </div>
 
           <div className="auth-split__hero-footer">
-            <span>A IA nunca dá nota; o professor decide</span>
+            <span>Quem decide a nota é sempre o professor</span>
           </div>
         </div>
 

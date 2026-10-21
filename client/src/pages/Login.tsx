@@ -55,7 +55,7 @@ export default function Login() {
             <Mascot size={150} className="auth-mascot" />
             <h1 className="auth-split__hero-tagline">Copiloto Pedagógico com IA</h1>
             <p className="auth-split__hero-desc">
-              A IA nunca dá nota; o professor decide. Feedbacks formativos com precisão, agilidade e empatia para potencializar a aprendizagem.
+              A IA pode sugerir, mas quem decide a nota é sempre o professor. Feedbacks formativos com precisão, agilidade e empatia para potencializar a aprendizagem.
             </p>
           </div>
 

@@ -320,6 +320,8 @@ async function seedInstitutionAndPortal({ teacherId, classId, activityId }) {
       classId,
       teacherId,
       questions,
+      // Mostra a nota sugerida pela IA na revisão (o professor confirma ou ajusta)
+      aiGradeEnabled: true,
     });
     exam = db.prepare('SELECT * FROM activities WHERE id = ?').get(id);
     const answersByStudent = [

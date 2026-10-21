@@ -236,7 +236,7 @@ router.post('/feedback/:feedbackId/regenerate', aiGenerateLimiter, async (req, r
     const db = (await import('../database/db.js'));
     const response = db.getDb().prepare(`
       SELECT sr.*, a.id AS activity_id, a.question, a.rubric, a.education_level, a.subject, a.rubric_criteria,
-             a.question_type, a.options, a.correct_option, a.questions
+             a.question_type, a.options, a.correct_option, a.questions, a.ai_grade_enabled
       FROM student_responses sr
       JOIN activities a ON a.id = sr.activity_id
       WHERE sr.id = ? AND a.teacher_id = ?
@@ -267,6 +267,7 @@ router.post('/feedback/:feedbackId/regenerate', aiGenerateLimiter, async (req, r
       options: response.options,
       correct_option: response.correct_option,
       questions: response.questions,
+      ai_grade_enabled: response.ai_grade_enabled,
     };
 
     const units = activity.question_type === 'objetiva' ? countAiNeeded(activity, [response]) : 1;

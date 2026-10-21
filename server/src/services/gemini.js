@@ -361,6 +361,7 @@ export async function generateFeedback({
   rubricCriteria,
   apiKey = null,
   prompt = null,
+  suggestGrade = false,
 }) {
   // Modo mock / demonstração sem chave (acionado estritamente por GEMINI_MOCK=true)
   if (!customModel && isMockEnabled()) {
@@ -372,6 +373,7 @@ export async function generateFeedback({
       educationLevel,
       subject,
       rubricCriteria,
+      suggestGrade,
     });
   }
 
@@ -388,9 +390,10 @@ export async function generateFeedback({
     educationLevel,
     subject,
     rubricCriteria,
+    suggestGrade,
   });
 
-  const responseSchema = prompt?.responseSchema || getFeedbackSchema(rubricCriteria);
+  const responseSchema = prompt?.responseSchema || getFeedbackSchema(rubricCriteria, { suggestGrade });
 
   const MAX_ATTEMPTS = 4;
   const isTest = process.env.NODE_ENV === 'test';

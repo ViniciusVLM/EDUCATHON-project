@@ -627,3 +627,55 @@ a.edu-user__item:hover { background: var(--surface-hover); }
 .review-multi__question { font-weight: 800; margin: 0 0 var(--space-2); }
 .review-multi__answer { margin: 0; white-space: pre-wrap; font-weight: 500; }
 .review-multi__answer--blank { color: var(--text-muted); font-style: italic; }
+
+/* ── Nota sugerida pela IA ───────────────────────────────────────────────── */
+.ai-grade-toggle {
+  display: flex;
+  gap: var(--space-3);
+  align-items: flex-start;
+  padding: var(--space-3) var(--space-4);
+  border: 2px dashed var(--surface-border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+.ai-grade-toggle--on { border-style: solid; background: var(--chip-amber-bg); }
+.ai-grade-toggle input { margin-top: 4px; flex: none; }
+.ai-grade-toggle span { display: flex; flex-direction: column; gap: 2px; }
+.ai-grade-toggle small { color: var(--text-secondary); font-weight: 600; }
+
+.ai-grade-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin-top: var(--space-2); }
+.ai-grade-bar__state {
+  padding: 3px 10px;
+  border: 2px solid var(--surface-border);
+  border-radius: var(--radius-full);
+  font-size: var(--text-xs);
+  font-weight: 800;
+  color: var(--text-secondary);
+}
+.ai-grade-bar__state--on { background: var(--chip-amber-bg); color: var(--chip-amber-fg); }
+.ai-grade-bar__switch {
+  border: 0;
+  background: none;
+  padding: 0;
+  font-weight: 800;
+  font-size: var(--text-sm);
+  color: var(--primary-500);
+  text-decoration: underline;
+  cursor: pointer;
+}
+.ai-grade-bar__notice { width: 100%; font-size: var(--text-xs); font-weight: 600; color: var(--text-secondary); }
+
+.ai-suggestion {
+  margin-top: var(--space-3);
+  padding: var(--space-3);
+  border: 2px dashed var(--chip-amber-fg);
+  border-radius: var(--radius-md);
+  background: var(--chip-amber-bg);
+  color: var(--chip-amber-fg);
+}
+.ai-suggestion__head { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+.ai-suggestion__label { font-weight: 800; text-transform: uppercase; font-size: var(--text-xs); letter-spacing: 0.04em; }
+.ai-suggestion__value { font-family: var(--font-heading); font-weight: 800; font-size: 1.5rem; }
+.ai-suggestion__parts { margin: var(--space-2) 0 0; font-weight: 800; font-size: var(--text-sm); }
+.ai-suggestion__reason { margin: var(--space-2) 0 0; font-weight: 600; font-size: var(--text-sm); white-space: pre-line; }
+.ai-suggestion__note { margin: var(--space-2) 0 0; font-size: var(--text-xs); font-weight: 600; opacity: 0.85; }

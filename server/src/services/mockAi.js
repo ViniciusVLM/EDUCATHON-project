@@ -250,11 +250,12 @@ function evaluateMockCriteria(rubricCriteria, studentResponse, category) {
 export async function generateMockFeedback({
   studentName,
   question,
-  _rubric,
+  rubric: _rubric,
   studentResponse,
   _educationLevel,
   subject,
   rubricCriteria,
+  suggestGrade = false,
 }) {
   // Atraso artificial de 300 a 800 ms (fora de testes) para visualização da barra de progresso
   if (process.env.NODE_ENV !== 'test') {
@@ -283,7 +284,7 @@ export async function generateMockFeedback({
     .map((c) => (typeof c === 'string' ? c : c.criterio || ''))
     .filter(Boolean);
 
-  const category = detectCategory(rawResponse, question, criteriaTitles);
+  const category = detectCategory(rawResponse, question, _rubric ? [...criteriaTitles, _rubric] : criteriaTitles);
 
   const primaryCrit = criteriaTitles[0] || 'os conceitos centrais solicitados';
   const secondaryCrit =
@@ -359,6 +360,34 @@ export async function generateMockFeedback({
 
   if (criteriosAvaliacao.length > 0) {
     parsed.criterios_avaliacao = criteriosAvaliacao;
+  }
+
+  if (suggestGrade) {
+    // Modo de demonstração: nota pela cobertura da rubrica (radicais em comum), com tetos por categoria
+    const rubricStems = extractStems(_rubric);
+    const respStems = extractStems(rawResponse);
+    let coverage = 0.6;
+    if (rubricStems.size > 0) {
+      let shared = 0;
+      for (const stem of rubricStems) if (respStems.has(stem)) shared++;
+      coverage = Math.min(1, (shared / rubricStems.size) * 1.6);
+    }
+    let nota = 1 + 9 * coverage;
+    if (category === 'prompt_injection') nota = Math.min(nota, 4);
+    // A detecção de "fora do tema" do modo de demonstração olha só a pergunta; a rubrica desempata
+    if (category === 'fora_de_topico' && coverage < 0.3) nota = Math.min(nota, 3);
+    if (category === 'muito_curta') nota = Math.min(nota, 6);
+    if (criteriosAvaliacao.length > 0) {
+      const ratio = criteriosAvaliacao.filter((c) => c.atendido).length / criteriosAvaliacao.length;
+      nota = (nota + ratio * 10) / 2;
+    }
+    parsed.nota_sugerida = Math.round(nota * 2) / 2;
+    parsed.justificativa_nota =
+      parsed.nota_sugerida >= 8.5
+        ? 'Atende aos pontos principais da rubrica com clareza.'
+        : parsed.nota_sugerida >= 5
+          ? 'Atende parte da rubrica, mas deixou pontos importantes de fora.'
+          : 'Cobre pouco do que a rubrica pede.';
   }
 
   return {

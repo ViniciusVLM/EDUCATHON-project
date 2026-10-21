@@ -176,6 +176,17 @@ const MIGRATIONS = [
       'ALTER TABLE student_responses ADD COLUMN answers TEXT',
     ],
   },
+  // ── Nota sugerida pela IA (opcional, só o professor vê) ───────────────────
+  {
+    name: '014_ai_suggested_grade',
+    sqls: [
+      // 1 = o professor pediu que a IA sugira uma nota nesta atividade
+      'ALTER TABLE activities ADD COLUMN ai_grade_enabled INTEGER NOT NULL DEFAULT 0',
+      // Sugestão da IA (0 a 10) e a justificativa. A nota oficial continua em teacher_grade.
+      'ALTER TABLE feedbacks ADD COLUMN ai_grade REAL',
+      'ALTER TABLE feedbacks ADD COLUMN ai_grade_reason TEXT',
+    ],
+  },
 ];
 
 /**
@@ -390,14 +401,15 @@ export function createActivity({
   options = null,
   correctOption = null,
   questions = null,
+  aiGradeEnabled = false,
 }) {
   const db = getDb();
   const stmt = db.prepare(`
     INSERT INTO activities (
       title, question, rubric, education_level, subject, class_id, due_date, rubric_criteria, teacher_id,
-      question_type, options, correct_option, questions
+      question_type, options, correct_option, questions, ai_grade_enabled
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   const result = stmt.run(
     title,
@@ -414,9 +426,14 @@ export function createActivity({
     questionType === 'objetiva' ? 'objetiva' : 'dissertativa',
     options ? (typeof options === 'string' ? options : JSON.stringify(options)) : null,
     correctOption || null,
-    Array.isArray(questions) && questions.length > 1 ? JSON.stringify(questions) : null
+    Array.isArray(questions) && questions.length > 1 ? JSON.stringify(questions) : null,
+    aiGradeEnabled && questionType !== 'objetiva' ? 1 : 0
   );
   return { id: result.lastInsertRowid };
+}
+
+export function setActivityAiGrade(activityId, enabled) {
+  return getDb().prepare('UPDATE activities SET ai_grade_enabled = ? WHERE id = ?').run(enabled ? 1 : 0, activityId);
 }
 
 export function getActivity(id) {
@@ -553,7 +570,7 @@ export function getResponsesByActivity(activityId) {
     SELECT sr.*, f.id as feedback_id, f.ai_feedback_json, f.ai_feedback_text,
            f.teacher_feedback, f.status, f.generated_at, f.approved_at,
            f.ai_model, f.teacher_rating, f.criteria_scores, f.sent_to_student_at,
-           f.teacher_grade, f.auto_result
+           f.teacher_grade, f.auto_result, f.ai_grade, f.ai_grade_reason
     FROM student_responses sr
     LEFT JOIN feedbacks f ON f.student_response_id = sr.id
     WHERE sr.activity_id = ?
@@ -577,18 +594,29 @@ export function saveFeedback(
   aiFeedbackText,
   aiModel = null,
   criteriaScores = null,
-  autoResult = null
+  autoResult = null,
+  { aiGrade = null, aiGradeReason = null } = {}
 ) {
   const db = getDb();
   const stmt = db.prepare(`
-    INSERT INTO feedbacks (student_response_id, ai_feedback_json, ai_feedback_text, ai_model, criteria_scores, auto_result, status, generated_at)
-    VALUES (?, ?, ?, ?, ?, ?, 'pendente', datetime('now'))
+    INSERT INTO feedbacks (student_response_id, ai_feedback_json, ai_feedback_text, ai_model, criteria_scores, auto_result,
+                           ai_grade, ai_grade_reason, status, generated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pendente', datetime('now'))
   `);
   const formattedCriteria = criteriaScores !== null && criteriaScores !== undefined
     ? (typeof criteriaScores === 'string' ? criteriaScores : JSON.stringify(criteriaScores))
     : null;
   const formattedAuto = autoResult ? (typeof autoResult === 'string' ? autoResult : JSON.stringify(autoResult)) : null;
-  const result = stmt.run(studentResponseId, aiFeedbackJson, aiFeedbackText, aiModel, formattedCriteria, formattedAuto);
+  const result = stmt.run(
+    studentResponseId,
+    aiFeedbackJson,
+    aiFeedbackText,
+    aiModel,
+    formattedCriteria,
+    formattedAuto,
+    typeof aiGrade === 'number' && Number.isFinite(aiGrade) ? aiGrade : null,
+    aiGradeReason ? String(aiGradeReason).slice(0, 2000) : null
+  );
   return { id: result.lastInsertRowid };
 }
 

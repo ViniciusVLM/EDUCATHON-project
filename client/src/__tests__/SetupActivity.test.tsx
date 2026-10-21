@@ -342,3 +342,33 @@ describe('SetupActivity — Várias perguntas dissertativas', () => {
     }));
   });
 });
+
+describe('SetupActivity — Nota sugerida pela IA', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetClasses.mockResolvedValue([]);
+  });
+
+  it('vem desligada e envia aiGradeEnabled só quando o professor marca', async () => {
+    const user = userEvent.setup();
+    mockCreateActivity.mockResolvedValue({ message: 'OK', id: 5 });
+    renderSetup();
+
+    const toggle = screen.getByLabelText(/Deixar a IA sugerir uma nota/i);
+    expect(toggle).not.toBeChecked();
+    await user.click(toggle);
+    await user.type(screen.getByLabelText(/Título da Atividade/i), 'Genética');
+    await user.type(screen.getByLabelText(/Pergunta feita aos alunos/i), 'O que é DNA?');
+    await user.type(screen.getByLabelText(/Rubrica \/ Gabarito/i), 'Dupla hélice.');
+    await user.click(screen.getByRole('button', { name: /Próximo → Enviar Respostas/i }));
+
+    await waitFor(() => expect(mockCreateActivity).toHaveBeenCalledWith(expect.objectContaining({ aiGradeEnabled: true })));
+  });
+
+  it('não aparece em múltipla escolha', async () => {
+    const user = userEvent.setup();
+    renderSetup();
+    await user.click(screen.getByRole('radio', { name: /Múltipla escolha/i }));
+    expect(screen.queryByLabelText(/Deixar a IA sugerir uma nota/i)).not.toBeInTheDocument();
+  });
+});

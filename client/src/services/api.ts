@@ -118,10 +118,20 @@ export async function createActivity(data: {
   correctOption?: string;
   /** Perguntas 2, 3... de uma atividade dissertativa com várias perguntas */
   extraQuestions?: { question: string; rubric: string }[];
+  /** A IA sugere uma nota de 0 a 10 que só o professor vê */
+  aiGradeEnabled?: boolean;
 }): Promise<{ message: string; id: number }> {
   return request('/activities', {
     method: 'POST',
     body: JSON.stringify(data),
+  });
+}
+
+/** Liga ou desliga a nota sugerida pela IA numa atividade já criada. */
+export async function setActivityAiGrade(activityId: number, enabled: boolean): Promise<{ message: string; aiGradeEnabled: boolean }> {
+  return request(`/activities/${activityId}/ai-grade`, {
+    method: 'PATCH',
+    body: JSON.stringify({ enabled }),
   });
 }
 
