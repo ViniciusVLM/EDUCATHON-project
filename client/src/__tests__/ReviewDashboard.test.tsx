@@ -125,6 +125,7 @@ function renderDashboard() {
     <MemoryRouter initialEntries={['/review/1']}>
       <Routes>
         <Route path="/review/:activityId" element={<ReviewDashboard />} />
+        <Route path="/upload/:activityId" element={<p>upload aberto</p>} />
       </Routes>
     </MemoryRouter>
   );
@@ -408,5 +409,20 @@ describe('ReviewDashboard — Nota sugerida pela IA', () => {
     await waitFor(() => expect(api.setActivityAiGrade).toHaveBeenCalledWith(1, true));
     expect(await screen.findByText(/Nota sugerida pela IA: ligada/i)).toBeInTheDocument();
     expect(screen.getByText(/Use "Regenerar"/)).toBeInTheDocument();
+  });
+});
+
+describe('ReviewDashboard — atividade sem respostas', () => {
+  it('explica e leva para o envio de respostas', async () => {
+    const user = userEvent.setup();
+    mockGetActivity.mockResolvedValue({
+      ...sampleActivity,
+      responses: [],
+      stats: { total_students: 0, total_feedbacks: 0, pending: 0, reviewed: 0, approved: 0 },
+    });
+    renderDashboard();
+    expect(await screen.findByText('Esta atividade ainda não tem respostas')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /Enviar respostas dos alunos/i }));
+    expect(await screen.findByText('upload aberto')).toBeInTheDocument();
   });
 });

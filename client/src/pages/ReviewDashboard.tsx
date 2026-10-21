@@ -1022,11 +1022,25 @@ export default function ReviewDashboard() {
           )}
         </div>
       ) : (
-        <Card className="empty-state">
-          <div className="empty-state-icon"><Mascot size={90} /></div>
-          <h3 className="empty-state-title">Nenhuma resposta neste filtro</h3>
-          <p className="empty-state-text">Altere o filtro ou envie mais respostas.</p>
-        </Card>
+        activity.responses.length === 0 ? (
+          <Card className="empty-state">
+            <div className="empty-state-icon"><Mascot size={90} /></div>
+            <h3 className="empty-state-title">Esta atividade ainda não tem respostas</h3>
+            <p className="empty-state-text">
+              A atividade foi criada. Agora envie as respostas dos alunos{isMulti ? ' (uma por pergunta)' : ''} para a IA
+              preparar os feedbacks.
+            </p>
+            <Button variant="primary" onClick={() => navigate(`/upload/${activity.id}`)} id="btn-empty-upload">
+              Enviar respostas dos alunos
+            </Button>
+          </Card>
+        ) : (
+          <Card className="empty-state">
+            <div className="empty-state-icon"><Mascot size={90} /></div>
+            <h3 className="empty-state-title">Nenhuma resposta neste filtro</h3>
+            <p className="empty-state-text">Altere o filtro ou envie mais respostas.</p>
+          </Card>
+        )
       )}
 
       {/* Alerta de Erro */}

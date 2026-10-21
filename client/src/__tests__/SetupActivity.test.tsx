@@ -330,6 +330,7 @@ describe('SetupActivity — Várias perguntas dissertativas', () => {
     await screen.findByText(/2 questões encontradas/i);
 
     await user.click(screen.getByLabelText(/Juntar as 2 questões dissertativas/i));
+    await user.click(screen.getByLabelText(/Deixar a IA sugerir uma nota/i));
     expect(screen.getByLabelText(/Título da prova/i)).toHaveValue('Prova de Ciências');
     await user.click(screen.getByRole('button', { name: /Próximo → Enviar Respostas/i }));
 
@@ -338,6 +339,7 @@ describe('SetupActivity — Várias perguntas dissertativas', () => {
     expect(mockCreateActivity).toHaveBeenCalledWith(expect.objectContaining({
       title: 'Prova de Ciências',
       question: 'Explique a fotossíntese.',
+      aiGradeEnabled: true,
       extraQuestions: [{ question: 'Explique a respiração.', rubric: 'Glicose e O2.' }],
     }));
   });
