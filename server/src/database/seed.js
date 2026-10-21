@@ -162,11 +162,15 @@ export async function seedDemoData() {
       dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
       rubricCriteria: DEMO_RUBRIC_CRITERIA,
       teacherId: teacher.id,
+      // Demonstração: ao gerar os feedbacks, a IA também sugere a nota (o professor confirma)
+      aiGradeEnabled: true,
     });
     activity = { id: actResult.id };
     console.log(`✅ Atividade criada com 3 critérios de rubrica (ID ${activity.id})`);
   } else {
     console.log(`ℹ️  Atividade já existe (ID ${activity.id})`);
+    // Bancos criados antes da nota sugerida: liga a opção na atividade de demonstração
+    db.prepare('UPDATE activities SET ai_grade_enabled = 1 WHERE id = ? AND ai_grade_enabled = 0').run(activity.id);
   }
 
   // 4. Respostas dos alunos

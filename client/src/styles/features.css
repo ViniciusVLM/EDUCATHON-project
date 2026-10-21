@@ -679,3 +679,4 @@ a.edu-user__item:hover { background: var(--surface-hover); }
 .ai-suggestion__parts { margin: var(--space-2) 0 0; font-weight: 800; font-size: var(--text-sm); }
 .ai-suggestion__reason { margin: var(--space-2) 0 0; font-weight: 600; font-size: var(--text-sm); white-space: pre-line; }
 .ai-suggestion__note { margin: var(--space-2) 0 0; font-size: var(--text-xs); font-weight: 600; opacity: 0.85; }
+.ai-suggestion__off { margin: var(--space-3) 0 0; font-size: var(--text-xs); font-weight: 600; color: var(--text-secondary); }

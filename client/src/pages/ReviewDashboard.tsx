@@ -946,6 +946,13 @@ export default function ReviewDashboard() {
                       </span>
                     </div>
                   )}
+                  {selected.feedback_id && suggestion === null && !isObjective && (
+                    <p className="ai-suggestion__off">
+                      {aiGradeOn
+                        ? 'Este feedback foi gerado antes de ligar a nota sugerida. Clique em "Regenerar" para a IA sugerir uma nota.'
+                        : 'Quer uma sugestão de nota da IA? Clique em "Ligar" no topo da página e depois em "Regenerar".'}
+                    </p>
+                  )}
                   {selected.feedback_id && suggestion !== null && (
                     <div className="ai-suggestion" aria-label="Sugestão de nota da IA">
                       <div className="ai-suggestion__head">
