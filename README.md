@@ -153,7 +153,7 @@ graph TD
 5. **Privacidade e Integridade dos Dados dos Alunos**:
    - Apenas dados pertinentes à atividade são armazenados. O módulo de exportação CSV aplica escape rigoroso contra *Formula / CSV Injection* (DDE), prefixando com apóstrofo qualquer célula iniciada por `=`, `+`, `-`, `@`, `\t` ou `\r`.
 6. **Atividades a partir do arquivo da prova**:
-   - Em *Configurar atividade*, o professor envia a prova em PDF, Word (.docx), foto ou .txt (até 8 MB). A IA extrai as questões dissertativas, o gabarito (ou sugere uma rubrica, sinalizada como sugestão), critérios, disciplina, nível, prazo e a turma escrita no cabeçalho. Cada questão vira um rascunho de atividade, e nada é criado sem a revisão do professor.
+   - Em *Configurar atividade*, o professor envia a prova em PDF, Word (.docx), foto ou .txt (até 14 MB). A IA extrai as questões dissertativas, o gabarito (ou sugere uma rubrica, sinalizada como sugestão), critérios, disciplina, nível, prazo e a turma escrita no cabeçalho. Cada questão vira um rascunho de atividade, e nada é criado sem a revisão do professor.
    - O tipo do arquivo é conferido pelos bytes (não pela extensão), o `.docx` é lido no próprio servidor com limite de descompactação, o conteúdo do documento é tratado como dado (proteção contra *prompt injection*) e o arquivo não é gravado em disco. A turma só é sugerida entre as turmas do próprio professor. No modo demonstração (`GEMINI_MOCK=true`), a leitura funciona com `.docx` e `.txt`; PDF e fotos precisam da chave do Gemini.
 
 ---

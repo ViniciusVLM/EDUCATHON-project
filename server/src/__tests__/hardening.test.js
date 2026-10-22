@@ -444,7 +444,7 @@ describe('Fase 5 — 6. Validação de Limites de Entrada (400 e 413)', () => {
     assert.match(res.body.error, /Envie no máximo 100 respostas por lote/i);
   });
 
-  test('rejeita upload de CSV com mais de 200 respostas', async () => {
+  test('rejeita upload de CSV com mais de 500 respostas', async () => {
     const act = createActivity({
       title: 'Atividade CSV Grande',
       question: 'Pergunta?',
@@ -452,9 +452,9 @@ describe('Fase 5 — 6. Validação de Limites de Entrada (400 e 413)', () => {
       teacherId: teacher.id,
     });
 
-    // Gera CSV com 205 linhas
+    // Gera CSV com 505 linhas
     let bigCsv = 'nome_aluno,resposta\n';
-    for (let i = 1; i <= 205; i++) {
+    for (let i = 1; i <= 505; i++) {
       bigCsv += `Aluno ${i},Resposta ${i}\n`;
     }
 
@@ -464,7 +464,7 @@ describe('Fase 5 — 6. Validação de Limites de Entrada (400 e 413)', () => {
       .send({ csvContent: bigCsv });
 
     assert.equal(res.status, 400);
-    assert.match(res.body.error, /máximo 200 alunos por upload/i);
+    assert.match(res.body.error, /máximo 500 alunos por upload/i);
   });
 });
 

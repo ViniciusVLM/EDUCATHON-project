@@ -9,7 +9,7 @@ import type { ExamImportResult } from '../types';
 import { Button } from './ui/Button';
 import { IconAlertCircle, IconDocument, IconSparkles } from './ui/Icons';
 
-export const MAX_IMPORT_BYTES = 8 * 1024 * 1024;
+export const MAX_IMPORT_BYTES = 14 * 1024 * 1024;
 const ACCEPT = '.pdf,.docx,.txt,image/*,application/pdf,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 const RESIZABLE_IMAGES = ['image/jpeg', 'image/png', 'image/webp'];
 
@@ -67,7 +67,7 @@ export function ExamImportPanel({ onImported }: ExamImportPanelProps) {
     try {
       const blob = await shrinkImage(file);
       if (blob.size > MAX_IMPORT_BYTES) {
-        throw new Error('O arquivo é maior que o limite de 8 MB.');
+        throw new Error('O arquivo é maior que o limite de 14 MB.');
       }
       const base64 = await readAsBase64(blob);
       const result = await importExam(file.name, base64);
@@ -104,7 +104,7 @@ export function ExamImportPanel({ onImported }: ExamImportPanelProps) {
           <h3 id="exam-import-title" className="exam-import__title">Preencher a partir da prova</h3>
           <p className="input-hint">
             Envie o arquivo da prova e a IA preenche as perguntas, a rubrica, os critérios e a turma.
-            Você revisa tudo antes de criar. Aceita PDF, Word (.docx), foto ou texto, até 8 MB.
+            Você revisa tudo antes de criar. Aceita PDF, Word (.docx), foto ou texto, até 14 MB.
           </p>
         </div>
         <input

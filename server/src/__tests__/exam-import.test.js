@@ -128,8 +128,8 @@ describe('Leitura de arquivos', () => {
     assert.throws(() => extractDocxText(zip), (err) => err.status === 415);
   });
 
-  test('arquivo acima de 8 MB é recusado com 413', () => {
-    const big = Buffer.alloc(8 * 1024 * 1024 + 1, 0x61);
+  test('arquivo acima de 14 MB é recusado com 413', () => {
+    const big = Buffer.alloc(14 * 1024 * 1024 + 1, 0x61);
     assert.throws(() => readExamDocument(big), (err) => err.status === 413);
   });
 });
@@ -393,7 +393,7 @@ describe('POST /api/activities/import', () => {
   });
 
   test('arquivo grande demais devolve 413', async () => {
-    const big = Buffer.alloc(8 * 1024 * 1024 + 10, 0x61);
+    const big = Buffer.alloc(14 * 1024 * 1024 + 10, 0x61);
     const res = await send(tokenA, big);
     assert.equal(res.status, 413);
   });
