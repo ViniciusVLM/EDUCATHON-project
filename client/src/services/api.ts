@@ -21,6 +21,7 @@ import type {
   StudentClass,
   StudentPortalActivity,
   StudentSubjectSummary,
+  AnswerSheetsResult,
 } from '../types';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
@@ -124,6 +125,17 @@ export async function createActivity(data: {
   return request('/activities', {
     method: 'POST',
     body: JSON.stringify(data),
+  });
+}
+
+/**
+ * Lê um arquivo com provas respondidas (PDF, foto, Word ou texto) e devolve as respostas de cada
+ * aluno para o professor conferir. Nada é salvo até o professor enviar.
+ */
+export async function readAnswerSheets(activityId: number, fileName: string, dataBase64: string): Promise<AnswerSheetsResult> {
+  return request(`/activities/${activityId}/read-answers`, {
+    method: 'POST',
+    body: JSON.stringify({ fileName, dataBase64 }),
   });
 }
 

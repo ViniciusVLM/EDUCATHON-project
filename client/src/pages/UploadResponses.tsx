@@ -8,6 +8,7 @@ import { Chip } from '../components/ui/Chip';
 import { IconAlertCircle } from '../components/ui/Icons';
 import { Mascot } from '../components/ui/Mascot';
 import { getActivityQuestions } from '../services/questions';
+import { AnswerSheetReader, type ScannedStudent } from '../components/AnswerSheetReader';
 
 interface ManualEntry {
   student_name: string;
@@ -25,7 +26,8 @@ export default function UploadResponses() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [activity, setActivity] = useState<ActivityWithResponses | null>(null);
-  const [mode, setMode] = useState<'csv' | 'manual'>('csv');
+  const [mode, setMode] = useState<'csv' | 'manual' | 'scan'>('csv');
+  const [scanned, setScanned] = useState<ScannedStudent[]>([]);
   const [dragging, setDragging] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -138,6 +140,22 @@ export default function UploadResponses() {
           return;
         }
         await uploadCSV(id, csvRaw);
+      } else if (mode === 'scan') {
+        const valid = scanned.filter((s) => s.name.trim() && s.answers.some((a) => a.trim()));
+        if (valid.length === 0) {
+          setError('Leia ao menos um arquivo com provas respondidas (ou confira se os nomes estão preenchidos).');
+          setLoading(false);
+          return;
+        }
+        const payload = valid.map((s) =>
+          isMulti
+            ? { student_name: s.name.trim().slice(0, 100), answers: s.answers.map((a) => a.trim()) }
+            : { student_name: s.name.trim().slice(0, 100), original_response: s.answers[0].trim() }
+        );
+        // A rota aceita até 100 respostas por envio
+        for (let i = 0; i < payload.length; i += 100) {
+          await addManualResponses(id, payload.slice(i, i + 100));
+        }
       } else {
         if (isMulti) {
           const valid = manualEntries.filter((e) => e.student_name.trim() && e.answers.some((a) => a.trim()));
@@ -182,7 +200,7 @@ export default function UploadResponses() {
         <div className="page-header-row__text">
           <h2 className="page-title">Enviar respostas</h2>
           <p className="page-subtitle">
-            Envie as respostas dos alunos via arquivo CSV ou digite manualmente.
+            Envie as respostas dos alunos por planilha (CSV), digitando ou lendo o PDF e as fotos das provas respondidas.
           </p>
           {activity?.question_type === 'objetiva' && (
             <p className="exam-import__notice">
@@ -239,9 +257,30 @@ export default function UploadResponses() {
         >
           Digitar manualmente
         </button>
+        <button
+          className={`filter-tab ${mode === 'scan' ? 'active' : ''}`}
+          onClick={() => setMode('scan')}
+          type="button"
+        >
+          Ler PDF ou fotos
+        </button>
       </div>
 
-      {mode === 'csv' ? (
+      {mode === 'scan' ? (
+        <Card>
+          {activity ? (
+            <AnswerSheetReader
+              activityId={activity.id}
+              questions={activity.question_type === 'objetiva' ? [activity.question] : questions.map((q) => q.pergunta)}
+              isObjective={activity.question_type === 'objetiva'}
+              students={scanned}
+              onChange={setScanned}
+            />
+          ) : (
+            <p className="input-hint">Carregando a atividade...</p>
+          )}
+        </Card>
+      ) : mode === 'csv' ? (
         <Card>
           {/* Drop Zone */}
           <div

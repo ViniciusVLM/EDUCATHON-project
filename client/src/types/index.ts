@@ -389,3 +389,19 @@ export interface StudentSubjectSummary {
   gradesCount: number;
   average: number | null;
 }
+
+// ── Leitura de provas respondidas (PDF/fotos) ───────────────────────────
+export interface AnswerSheetStudent {
+  name: string;
+  page: number | null;
+  answers: string[];
+  note: string | null;
+}
+
+export interface AnswerSheetsResult {
+  fileName: string;
+  questionCount: number;
+  questions: string[];
+  students: AnswerSheetStudent[];
+  warnings: string[];
+}

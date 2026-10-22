@@ -50,6 +50,10 @@ export function setExamModel(model) {
   customExamModel = model;
 }
 
+export function hasCustomExamModel() {
+  return customExamModel !== null;
+}
+
 export function resetExamModel() {
   customExamModel = null;
   genAI = null;
@@ -348,7 +352,7 @@ export function mockExtractExam(text) {
 // Chamada ao Gemini
 // ──────────────────────────────────────────
 
-function getExamModel(ownKey = null) {
+export function getExamModel(ownKey = null) {
   if (customExamModel) return customExamModel;
 
   let client;
