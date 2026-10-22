@@ -109,6 +109,8 @@ export interface Progress {
   total: number;
   processed: number;
   errors: number;
+  /** Motivo da última falha (ex.: 'gemini_daily_quota' quando a cota do Gemini acabou) */
+  last_error?: string | null;
 }
 
 // ── Fase 4.4: novas entidades ─────────────────────────────────────────────
@@ -335,6 +337,24 @@ export interface OrgStudentAccount {
   email: string;
   class_id: number;
   class_name: string;
+  disabled_at?: string | null;
+}
+
+/** Atividade da escola vista pelo administrador: só andamento, sem dados de alunos. */
+export interface OrgActivity {
+  id: number;
+  title: string;
+  subject: string | null;
+  question_type: 'dissertativa' | 'objetiva';
+  question_count: number;
+  created_at: string;
+  due_date: string | null;
+  teacher_id: number;
+  teacher_name: string;
+  class_name: string | null;
+  responses: number;
+  with_feedback: number;
+  approved: number;
 }
 
 export interface OrgOverview {
@@ -388,4 +408,20 @@ export interface StudentSubjectSummary {
   corrected: number;
   gradesCount: number;
   average: number | null;
+}
+
+// ── Leitura de provas respondidas (PDF/fotos) ───────────────────────────
+export interface AnswerSheetStudent {
+  name: string;
+  page: number | null;
+  answers: string[];
+  note: string | null;
+}
+
+export interface AnswerSheetsResult {
+  fileName: string;
+  questionCount: number;
+  questions: string[];
+  students: AnswerSheetStudent[];
+  warnings: string[];
 }

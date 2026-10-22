@@ -30,6 +30,12 @@ vi.mock('../services/api', () => ({
   removeOrgTeacher: vi.fn(),
   createOrgStudent: vi.fn(),
   generateOrgJoinCode: vi.fn(),
+  resetOrgTeacherPassword: vi.fn(),
+  setOrgTeacherRole: vi.fn(),
+  getOrgActivities: vi.fn(),
+  resetOrgStudentPassword: vi.fn(),
+  setOrgStudentDisabled: vi.fn(),
+  removeOrgStudentFromClass: vi.fn(),
   getStudentMe: vi.fn(),
   getStudentActivities: vi.fn(),
   joinClassWithCode: vi.fn(),
@@ -164,6 +170,66 @@ describe('Área da instituição', () => {
 
     await user.click(screen.getByRole('tab', { name: /Turmas/i }));
     expect(screen.getByText('ADM-2345')).toBeInTheDocument();
+  });
+});
+
+describe('Administrador geral', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    authState.teacher = { id: 1, name: 'Marta', email: 'm@x.org', role: 'org_admin', organization: { id: 3, name: 'Escola Técnica Modelo' } };
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    vi.mocked(api.getOrganization).mockResolvedValue({
+      ...overview,
+      students: [
+        { id: 7, name: 'Lia Souza', email: 'lia@a.org', class_id: 9, class_name: 'ADM T1', disabled_at: null },
+        { id: 7, name: 'Lia Souza', email: 'lia@a.org', class_id: 10, class_name: 'ADM T2', disabled_at: null },
+      ],
+    });
+  });
+
+  it('redefine a senha e promove um professor', async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.resetOrgTeacherPassword).mockResolvedValue({ message: 'Nova senha provisória criada para Prof. Davi.', tempPassword: 'Nov4Senha99' });
+    vi.mocked(api.setOrgTeacherRole).mockResolvedValue({ message: 'Prof. Davi agora é administrador(a) da instituição.', role: 'org_admin' });
+    render(<MemoryRouter><Institution /></MemoryRouter>);
+    await screen.findByText('Prof. Davi');
+
+    await user.click(screen.getByRole('button', { name: 'Nova senha' }));
+    expect(await screen.findByText('Nov4Senha99')).toBeInTheDocument();
+    expect(api.resetOrgTeacherPassword).toHaveBeenCalledWith(2);
+
+    await user.click(screen.getByRole('button', { name: 'Tornar admin' }));
+    await waitFor(() => expect(api.setOrgTeacherRole).toHaveBeenCalledWith(2, 'org_admin'));
+    expect(await screen.findByText(/agora é administrador/i)).toBeInTheDocument();
+  });
+
+  it('gerencia alunos: um por linha com as turmas, desativar e tirar da turma', async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.setOrgStudentDisabled).mockResolvedValue({ message: 'Acesso de Lia Souza desativado.', disabled: true });
+    vi.mocked(api.removeOrgStudentFromClass).mockResolvedValue({ message: 'Lia Souza saiu da turma.' });
+    render(<MemoryRouter><Institution /></MemoryRouter>);
+    await screen.findByText('Prof. Davi');
+    await user.click(screen.getByRole('tab', { name: /Alunos com conta/i }));
+    expect(screen.getAllByText('Lia Souza')).toHaveLength(1);
+    await user.click(screen.getByRole('button', { name: 'Desativar' }));
+    await waitFor(() => expect(api.setOrgStudentDisabled).toHaveBeenCalledWith(7, true));
+    await user.click(screen.getByRole('button', { name: /Tirar Lia Souza da turma ADM T2/i }));
+    await waitFor(() => expect(api.removeOrgStudentFromClass).toHaveBeenCalledWith(7, 10));
+  });
+
+  it('mostra as atividades da escola só com o andamento', async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.getOrgActivities).mockResolvedValue({ activities: [{
+      id: 1, title: 'Prova de Ecologia', subject: 'Biologia', question_type: 'dissertativa', question_count: 3,
+      created_at: '', due_date: null, teacher_id: 2, teacher_name: 'Prof. Davi', class_name: 'ADM T1',
+      responses: 10, with_feedback: 8, approved: 5,
+    }] });
+    render(<MemoryRouter><Institution /></MemoryRouter>);
+    await screen.findByText('Prof. Davi');
+    await user.click(screen.getByRole('tab', { name: /Atividades da escola/i }));
+    expect(await screen.findByText('Prova de Ecologia')).toBeInTheDocument();
+    expect(screen.getByText(/3 perguntas/)).toBeInTheDocument();
+    expect(screen.getByText(/não aparecem nomes, respostas/i)).toBeInTheDocument();
   });
 });
 

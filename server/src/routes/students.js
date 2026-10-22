@@ -27,9 +27,9 @@ router.post('/:id/upload', (req, res) => {
       });
     }
 
-    if (csvContent.length > 2 * 1024 * 1024) {
+    if (csvContent.length > 5 * 1024 * 1024) {
       return res.status(413).json({
-        error: 'Arquivo CSV excede o limite permitido de 2MB.',
+        error: 'Arquivo CSV excede o limite permitido de 5 MB.',
       });
     }
 
@@ -37,9 +37,9 @@ router.post('/:id/upload', (req, res) => {
       questionCount: isMultiQuestion(activity) ? getQuestions(activity).length : 1,
     });
 
-    if (parsed.length > 200) {
+    if (parsed.length > 500) {
       return res.status(400).json({
-        error: 'Quantidade de respostas excede o limite permitido (máximo 200 alunos por upload).',
+        error: 'Quantidade de respostas excede o limite permitido (máximo 500 alunos por upload).',
       });
     }
 

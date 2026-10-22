@@ -236,3 +236,70 @@ export function getFeedbackSchema(rubricCriteria, { suggestGrade = false } = {})
     required: ['pontos_fortes', 'lacunas', 'sugestao_melhoria', 'feedback_completo', 'criterios_avaliacao'],
   }, suggestGrade);
 }
+
+/**
+ * Prova com várias perguntas: UMA chamada por aluno com todas as questões respondidas.
+ * Economiza a cota do Gemini (antes era uma chamada por questão).
+ * @param {{studentName, educationLevel, subject, suggestGrade, items: Array<{numero, pergunta, rubrica, resposta, criterios?}>}} p
+ */
+export function buildMultiQuestionPrompt({ studentName, educationLevel, subject, suggestGrade = false, items }) {
+  const levelLabels = { fundamental: 'Ensino Fundamental', medio: 'Ensino Médio', superior: 'Ensino Superior' };
+  const levelLabel = levelLabels[educationLevel] || 'Ensino Médio';
+  const subjectLine = subject ? `\n- Disciplina: ${sanitizePromptInput(subject)}` : '';
+  const blocks = items.map((it) => {
+    const criterios = Array.isArray(it.criterios) && it.criterios.length > 0
+      ? `\nCRITÉRIOS DA RUBRICA DESTA QUESTÃO (avalie cada um em criterios_avaliacao):\n${it.criterios
+        .map((c) => `- Critério: "${sanitizePromptInput(c.criterio)}" (peso ${c.peso || 1})`).join('\n')}`
+      : '';
+    return `### QUESTÃO ${it.numero}
+<pergunta_atividade>
+${sanitizePromptInput(it.pergunta)}
+</pergunta_atividade>
+<rubrica_professor>
+${sanitizePromptInput(it.rubrica)}
+</rubrica_professor>${criterios}
+<resposta_aluno>
+${sanitizePromptInput(it.resposta)}
+</resposta_aluno>`;
+  }).join('\n\n');
+
+  return `Analise as respostas do aluno abaixo, UMA QUESTÃO DE CADA VEZ, e gere um feedback pedagógico separado para cada questão.
+Cada questão deve ser avaliada só pela própria rubrica. Devolva em "questoes" exatamente ${items.length} item(ns), um por questão, com o campo "numero" igual ao número da questão.
+
+CONTEXTO DA ATIVIDADE:
+- Nível de ensino: ${levelLabel}${subjectLine}
+- Nome do aluno: ${sanitizePromptInput(studentName)}
+
+${blocks}
+${suggestGrade ? GRADE_SECTION.replace('Preencha nota_sugerida', 'Em cada questão, preencha nota_sugerida') : ''}
+Gere o feedback no formato JSON especificado.`;
+}
+
+export function getMultiFeedbackSchema({ suggestGrade = false } = {}) {
+  const item = withGrade({
+    type: 'OBJECT',
+    properties: {
+      numero: { type: 'INTEGER', description: 'Número da questão avaliada.' },
+      ...FEEDBACK_SCHEMA.properties,
+      criterios_avaliacao: {
+        type: 'ARRAY',
+        description: 'Só quando a questão trouxer critérios da rubrica; senão, lista vazia.',
+        items: {
+          type: 'OBJECT',
+          properties: {
+            criterio: { type: 'STRING' },
+            atendido: { type: 'BOOLEAN' },
+            evidencia: { type: 'STRING' },
+          },
+          required: ['criterio', 'atendido', 'evidencia'],
+        },
+      },
+    },
+    required: ['numero', ...FEEDBACK_SCHEMA.required],
+  }, suggestGrade);
+  return {
+    type: 'OBJECT',
+    properties: { questoes: { type: 'ARRAY', items: item } },
+    required: ['questoes'],
+  };
+}

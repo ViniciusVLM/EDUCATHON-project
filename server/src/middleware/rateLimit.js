@@ -67,3 +67,15 @@ export const studentAuthLimiter = rateLimit({
   },
   skip: () => isTest && !process.env.TEST_RATE_LIMIT,
 });
+
+/** Leitura de provas respondidas: o professor pode mandar uma foto por aluno, então o limite é maior. */
+export const answerSheetsLimiter = rateLimit({
+  windowMs: Number(process.env.SHEETS_RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,
+  max: Number(process.env.SHEETS_RATE_LIMIT_MAX) || 80,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    error: 'Limite de leitura de provas respondidas atingido temporariamente. Tente novamente em alguns minutos.',
+  },
+  skip: () => isTest && !process.env.TEST_RATE_LIMIT,
+});

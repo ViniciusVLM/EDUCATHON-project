@@ -651,10 +651,19 @@ export default function ReviewDashboard() {
               {progress && (progress.errors > 0 || progress.status === 'error') ? (
                 <div>
                   <div style={{ color: 'var(--error-500)', fontWeight: 600, marginBottom: 'var(--space-2)' }}>
-                    {progress.errors > 0
-                      ? `${progress.errors} resposta(s) falharam na geração.`
-                      : 'O processamento anterior foi interrompido ou falhou.'}
+                    {progress.last_error === 'gemini_daily_quota'
+                      ? 'A cota gratuita do Gemini acabou por hoje.'
+                      : progress.errors > 0
+                        ? `${progress.errors} resposta(s) falharam na geração.`
+                        : 'O processamento anterior foi interrompido ou falhou.'}
                   </div>
+                  {progress.last_error === 'gemini_daily_quota' && (
+                    <p className="exam-import__notice" style={{ maxWidth: 560, margin: '0 auto var(--space-3)' }}>
+                      O processamento parou para não gastar tentativas à toa. Os feedbacks já gerados estão salvos. Tente
+                      de novo quando a cota do Google renovar, use uma chave com faturamento ativado ou rode em modo
+                      demonstração.
+                    </p>
+                  )}
                   <p style={{ color: 'var(--text-secondary)', marginBottom: 'var(--space-4)' }}>
                     {activity.responses.filter((r) => !r.feedback_id).length} aluno(s) ainda sem feedback.
                   </p>

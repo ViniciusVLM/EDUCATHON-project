@@ -5,48 +5,13 @@
  */
 import { useRef, useState, DragEvent } from 'react';
 import { importExam } from '../services/api';
+import { readAsBase64, shrinkImage } from '../services/files';
 import type { ExamImportResult } from '../types';
 import { Button } from './ui/Button';
 import { IconAlertCircle, IconDocument, IconSparkles } from './ui/Icons';
 
-export const MAX_IMPORT_BYTES = 8 * 1024 * 1024;
+export const MAX_IMPORT_BYTES = 14 * 1024 * 1024;
 const ACCEPT = '.pdf,.docx,.txt,image/*,application/pdf,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-const RESIZABLE_IMAGES = ['image/jpeg', 'image/png', 'image/webp'];
-
-function readAsBase64(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = String(reader.result || '');
-      resolve(result.slice(result.indexOf(',') + 1));
-    };
-    reader.onerror = () => reject(new Error('Não foi possível abrir o arquivo.'));
-    reader.readAsDataURL(blob);
-  });
-}
-
-/**
- * Fotos de celular costumam passar de 5 MB. Reduz para no máximo 2200 px no lado maior
- * (texto continua legível para a IA) e só usa a versão reduzida se ela ficar menor.
- */
-async function shrinkImage(file: File): Promise<Blob> {
-  if (!RESIZABLE_IMAGES.includes(file.type) || file.size < 1.5 * 1024 * 1024) return file;
-  if (typeof createImageBitmap !== 'function') return file;
-  try {
-    const bitmap = await createImageBitmap(file);
-    const scale = Math.min(1, 2200 / Math.max(bitmap.width, bitmap.height));
-    const canvas = document.createElement('canvas');
-    canvas.width = Math.round(bitmap.width * scale);
-    canvas.height = Math.round(bitmap.height * scale);
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return file;
-    ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.85));
-    return blob && blob.size < file.size ? blob : file;
-  } catch {
-    return file;
-  }
-}
 
 interface ExamImportPanelProps {
   onImported: (result: ExamImportResult) => void;
@@ -67,7 +32,7 @@ export function ExamImportPanel({ onImported }: ExamImportPanelProps) {
     try {
       const blob = await shrinkImage(file);
       if (blob.size > MAX_IMPORT_BYTES) {
-        throw new Error('O arquivo é maior que o limite de 8 MB.');
+        throw new Error('O arquivo é maior que o limite de 14 MB.');
       }
       const base64 = await readAsBase64(blob);
       const result = await importExam(file.name, base64);
@@ -104,7 +69,7 @@ export function ExamImportPanel({ onImported }: ExamImportPanelProps) {
           <h3 id="exam-import-title" className="exam-import__title">Preencher a partir da prova</h3>
           <p className="input-hint">
             Envie o arquivo da prova e a IA preenche as perguntas, a rubrica, os critérios e a turma.
-            Você revisa tudo antes de criar. Aceita PDF, Word (.docx), foto ou texto, até 8 MB.
+            Você revisa tudo antes de criar. Aceita PDF, Word (.docx), foto ou texto, até 14 MB.
           </p>
         </div>
         <input

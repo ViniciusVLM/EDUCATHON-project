@@ -351,6 +351,45 @@ export function isMockEnabled() {
   return process.env.GEMINI_MOCK === 'true';
 }
 
+/** true quando as chamadas vão para um modelo de verdade (ou um modelo injetado nos testes). */
+export function usesRealModel() {
+  return Boolean(customModel) || !isMockEnabled();
+}
+
+export const DAILY_QUOTA_MESSAGE =
+  'A cota gratuita do Gemini acabou por hoje (o plano gratuito do Google permite poucas chamadas por dia). ' +
+  'Os alunos que faltaram continuam sem feedback: tente de novo quando a cota renovar, use uma chave com ' +
+  'faturamento ativado ou rode em modo demonstração (npm run demo).';
+
+/** Lê "Please retry in 4h18m31.2s" da mensagem do Google. */
+function parseRetryFromMessage(msg) {
+  const m = msg.match(/retry in\s+(?:(\d+)h)?\s*(?:(\d+)m(?!s))?\s*(?:([\d.]+)s)?/i);
+  if (!m || (!m[1] && !m[2] && !m[3])) return null;
+  return ((Number(m[1]) || 0) * 3600 + (Number(m[2]) || 0) * 60 + (Number(m[3]) || 0)) * 1000;
+}
+
+/**
+ * Cota diária esgotada (ex.: plano gratuito): não adianta tentar de novo agora.
+ * Reconhece "PerDay" no erro ou um pedido de espera maior que 5 minutos.
+ */
+export function isDailyQuotaError(error) {
+  if (!error) return false;
+  if (error.geminiDailyQuota) return true;
+  const msg = String(error.message || '');
+  const lower = msg.toLowerCase();
+  const isQuota = (error.status || error.statusCode) === 429 || lower.includes('429') ||
+    lower.includes('resource_exhausted') || lower.includes('quota');
+  if (!isQuota) return false;
+  if (lower.includes('perday') || lower.includes('per_day') || lower.includes('per day')) return true;
+  const delay = parseRetryDelay(error) ?? parseRetryFromMessage(msg);
+  return delay !== null && delay > 5 * 60 * 1000;
+}
+
+function markDaily(error) {
+  if (error && typeof error === 'object') error.geminiDailyQuota = true;
+  return error;
+}
+
 export async function generateFeedback({
   studentName,
   question,
@@ -436,6 +475,12 @@ export async function generateFeedback({
         throw error;
       }
 
+      // Cota do dia esgotada: esperar alguns segundos não resolve; vai direto para o modelo reserva
+      if (isDailyQuotaError(error)) {
+        markDaily(error);
+        break;
+      }
+
       // Esgotou as 4 tentativas do modelo principal
       if (attempt >= MAX_ATTEMPTS) {
         break;
@@ -488,6 +533,7 @@ export async function generateFeedback({
         modelUsed: fallbackModelName || effectiveFallbackName,
       };
     } catch (fallbackError) {
+      if (isDailyQuotaError(fallbackError)) markDaily(fallbackError);
       console.error(
         `❌ Tentativa com modelo reserva (${effectiveFallbackName}) falhou para ${studentName}: ${formatErrorSummary(fallbackError)}`
       );

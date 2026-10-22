@@ -13,6 +13,7 @@ import { processResponses, getProgress, markJobError, generateAndSave } from '..
 import { aiGenerateLimiter } from '../middleware/rateLimit.js';
 import { reserveQuota, recordUsage, resolveGeminiKey, QuotaError } from '../services/plans.js';
 import { countAiNeeded } from '../services/objective.js';
+import { isDailyQuotaError, DAILY_QUOTA_MESSAGE } from '../services/gemini.js';
 
 const router = Router();
 
@@ -303,6 +304,9 @@ router.post('/feedback/:feedbackId/regenerate', aiGenerateLimiter, async (req, r
       feedback: result.parsed,
     });
   } catch (error) {
+    if (isDailyQuotaError(error)) {
+      return res.status(429).json({ error: DAILY_QUOTA_MESSAGE, reason: 'gemini_daily_quota' });
+    }
     console.error('Erro ao regenerar feedback:', error);
     res.status(500).json({ error: 'Erro interno ao regenerar feedback.' });
   }

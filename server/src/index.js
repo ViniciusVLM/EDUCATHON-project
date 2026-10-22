@@ -12,6 +12,7 @@ import authRouter from './routes/auth.js';
 import classesRouter from './routes/classes.js';
 import dashboardRouter from './routes/dashboard.js';
 import examImportRouter from './routes/examImport.js';
+import answerSheetsRouter from './routes/answerSheets.js';
 import orgRouter from './routes/org.js';
 import billingRouter from './routes/billing.js';
 import studentAuthRouter from './routes/studentAuth.js';
@@ -46,12 +47,15 @@ app.use(cors({
   credentials: true,
 }));
 
-// Leitura de provas: recebe arquivos de até 8 MB, por isso é montada antes do limite global de 2 MB
+// Leitura de provas: recebe arquivos de até 14 MB, por isso é montada antes do limite global de 6 MB
 // e usa um leitor de JSON próprio (ver routes/examImport.js).
 app.use('/api/activities/import', requireAuth, examImportRouter);
+// Leitura de provas respondidas (PDF/fotos): mesmo limite de 14 MB, antes do JSON global
+app.use('/api/activities/:id/read-answers', requireAuth, answerSheetsRouter);
 
-app.use(express.json({ limit: '2mb' }));
-app.use(express.urlencoded({ extended: true, limit: '2mb' }));
+// 6 MB cabe um CSV de respostas de até 5 MB dentro do JSON
+app.use(express.json({ limit: '6mb' }));
+app.use(express.urlencoded({ extended: true, limit: '6mb' }));
 
 // ──────────────────────────────────────────
 // Inicializa banco de dados e recupera jobs órfãos
@@ -101,7 +105,7 @@ app.use('/api', requireAuth, csvRouter);
 app.use((err, req, res, _next) => {
   if (err.type === 'entity.too.large' || err.status === 413) {
     return res.status(413).json({
-      error: 'Tamanho da requisição excede o limite permitido (máximo 2MB).',
+      error: 'Tamanho da requisição excede o limite permitido (máximo 6 MB).',
     });
   }
 

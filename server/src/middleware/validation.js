@@ -124,7 +124,7 @@ export const csvContentSchema = z.object({
   csvContent: z
     .string({ required_error: 'Envie o campo "csvContent" com o conteúdo do CSV.' })
     .min(1, 'O conteúdo do arquivo CSV não pode estar vazio.')
-    .max(2 * 1024 * 1024, 'O arquivo CSV não pode exceder 2MB.'),
+    .max(5 * 1024 * 1024, 'O arquivo CSV não pode exceder 5 MB.'),
 });
 
 export const updateFeedbackSchema = z

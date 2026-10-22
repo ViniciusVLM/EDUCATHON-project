@@ -10,7 +10,8 @@
  */
 import { inflateRawSync } from 'node:zlib';
 
-export const MAX_IMPORT_FILE_BYTES = 8 * 1024 * 1024; // 8 MB
+// 14 MB: em base64 vira ~19 MB, perto do limite de 20 MB por pedido do Gemini (envio direto)
+export const MAX_IMPORT_FILE_BYTES = 14 * 1024 * 1024; // 14 MB
 export const MAX_EXTRACTED_TEXT_CHARS = 60000;
 const MAX_DOCX_XML_BYTES = 20 * 1024 * 1024; // 20 MB descompactado
 
@@ -209,7 +210,7 @@ export function extractDocxText(buffer) {
  */
 export function readExamDocument(buffer) {
   if (buffer.length > MAX_IMPORT_FILE_BYTES) {
-    throw new DocumentError('O arquivo é maior que o limite de 8 MB.', 413);
+    throw new DocumentError('O arquivo é maior que o limite de 14 MB.', 413);
   }
 
   const { kind, mimeType } = detectFileType(buffer);

@@ -1,8 +1,13 @@
-import { generateFeedback, formatErrorSummary } from './gemini.js';
+import {
+  generateFeedback,
+  formatErrorSummary,
+  isDailyQuotaError,
+  usesRealModel,
+} from './gemini.js';
 import { saveFeedback, getDb } from '../database/db.js';
 import { generateObjectiveFeedback } from './objective.js';
 import { recordUsage } from './plans.js';
-import { normalizeSuggestedGrade } from '../prompts/feedback.js';
+import { normalizeSuggestedGrade, buildMultiQuestionPrompt, getMultiFeedbackSchema } from '../prompts/feedback.js';
 import {
   getQuestions,
   isMultiQuestion,
@@ -83,7 +88,49 @@ export async function generateAndSave(activity, response, { teacherId = null, ap
     const answers = getAnswers(response, questions.length);
     const parts = [];
     let modelUsed = null;
-    for (let i = 0; i < questions.length; i++) {
+
+    // Com a IA de verdade: uma chamada só para todas as questões respondidas deste aluno
+    const answered = questions.map((q, i) => i).filter((i) => answers[i].trim());
+    if (usesRealModel() && answered.length > 0) {
+      const r = await generateFeedback({
+        studentName: response.student_name,
+        apiKey,
+        prompt: {
+          userPrompt: buildMultiQuestionPrompt({
+            studentName: response.student_name,
+            educationLevel: activity.education_level,
+            subject: activity.subject,
+            suggestGrade,
+            items: answered.map((i) => ({
+              numero: i + 1,
+              pergunta: questions[i].pergunta,
+              rubrica: questions[i].rubrica,
+              resposta: answers[i],
+              criterios: i === 0 && Array.isArray(parsedCriteria) ? parsedCriteria : null,
+            })),
+          }),
+          responseSchema: getMultiFeedbackSchema({ suggestGrade }),
+        },
+      });
+      const list = Array.isArray(r.parsed?.questoes) ? r.parsed.questoes : [];
+      const byNumber = new Map(list.map((q) => [Number(q?.numero), q]));
+      for (let i = 0; i < questions.length; i++) {
+        if (!answers[i].trim()) {
+          parts.push(blankQuestionFeedback());
+          continue;
+        }
+        const got = byNumber.get(i + 1) || list[answered.indexOf(i)];
+        if (!got || typeof got.feedback_completo !== 'string') {
+          throw new Error(`A IA não devolveu o feedback da questão ${i + 1}.`);
+        }
+        const { numero: _n, ...rest } = got;
+        if (Array.isArray(rest.criterios_avaliacao) && rest.criterios_avaliacao.length === 0) delete rest.criterios_avaliacao;
+        parts.push(rest);
+      }
+      modelUsed = r.modelUsed;
+    }
+
+    for (let i = 0; i < questions.length && parts.length < questions.length; i++) {
       if (!answers[i].trim()) {
         parts.push(blankQuestionFeedback());
         continue;
@@ -154,14 +201,15 @@ export async function generateAndSave(activity, response, { teacherId = null, ap
 export function upsertJob(activityId, status, total, processed, errors) {
   const db = getDb();
   db.prepare(`
-    INSERT INTO processing_jobs (activity_id, status, total, processed, errors, updated_at)
-    VALUES (?, ?, ?, ?, ?, datetime('now'))
+    INSERT INTO processing_jobs (activity_id, status, total, processed, errors, updated_at, last_error)
+    VALUES (?, ?, ?, ?, ?, datetime('now'), NULL)
     ON CONFLICT(activity_id) DO UPDATE SET
       status     = excluded.status,
       total      = excluded.total,
       processed  = excluded.processed,
       errors     = excluded.errors,
-      updated_at = excluded.updated_at
+      updated_at = excluded.updated_at,
+      last_error = NULL
   `).run(activityId, status, total, processed, errors);
 }
 
@@ -188,13 +236,13 @@ function markJobComplete(activityId) {
 /**
  * Marca um job com status 'error' quando abortado ou interrompido.
  */
-export function markJobError(activityId) {
+export function markJobError(activityId, lastError = null) {
   const db = getDb();
   db.prepare(`
     UPDATE processing_jobs
-    SET status = 'error', updated_at = datetime('now')
+    SET status = 'error', updated_at = datetime('now'), last_error = COALESCE(?, last_error)
     WHERE activity_id = ?
-  `).run(activityId);
+  `).run(lastError, activityId);
 }
 
 /**
@@ -281,6 +329,10 @@ export async function processResponses(
 
             return { success: true, studentName: response.student_name, responseId: response.id };
           } catch (error) {
+            if (isDailyQuotaError(error)) {
+              console.error(`❌ Cota diária do Gemini esgotada ao processar ${response.student_name}.`);
+              return { success: false, dailyQuota: true, studentName: response.student_name, responseId: response.id };
+            }
             console.error(`❌ Erro no processamento de ${response.student_name}:`, formatErrorSummary(error));
             // NÃO salva feedback falso. A resposta permanece sem feedback_id para reprocessamento.
             return {
@@ -297,6 +349,14 @@ export async function processResponses(
       for (const result of results) {
         const isError = result.status === 'rejected' || (result.value && !result.value.success);
         incrementJob(activityId, isError);
+      }
+
+      // Cota do dia acabou: não adianta continuar chamando a API para os próximos alunos
+      if (results.some((r) => r.value?.dailyQuota)) {
+        log(`⛔ Cota diária do Gemini esgotada. Processamento da atividade ${activityId} interrompido.`);
+        refundFailures(activityId, teacherId, reservedUnits, true);
+        markJobError(activityId, 'gemini_daily_quota');
+        return;
       }
 
       const progress = getProgress(activityId);

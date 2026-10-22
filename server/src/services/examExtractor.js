@@ -14,6 +14,8 @@ import {
   isTransientError,
   formatErrorSummary,
   getClientForKey,
+  isDailyQuotaError,
+  DAILY_QUOTA_MESSAGE,
 } from './gemini.js';
 import { DocumentError } from './documentReader.js';
 
@@ -48,6 +50,10 @@ let genAI = null;
 /** Permite injetar um modelo falso nos testes: { generateContent({contents, config}) => {text} } */
 export function setExamModel(model) {
   customExamModel = model;
+}
+
+export function hasCustomExamModel() {
+  return customExamModel !== null;
 }
 
 export function resetExamModel() {
@@ -348,7 +354,7 @@ export function mockExtractExam(text) {
 // Chamada ao Gemini
 // ──────────────────────────────────────────
 
-function getExamModel(ownKey = null) {
+export function getExamModel(ownKey = null) {
   if (customExamModel) return customExamModel;
 
   let client;
@@ -418,6 +424,7 @@ export async function extractExam(doc, { fileName, classes = [], apiKey = null }
       lastError = error;
       const transient = isTransientError(error);
       console.warn(`⚠️ Leitura da prova — tentativa ${attempt}/${MAX_ATTEMPTS}: ${formatErrorSummary(error)}`);
+      if (isDailyQuotaError(error)) throw new DocumentError(DAILY_QUOTA_MESSAGE, 429);
       if (!transient || attempt === MAX_ATTEMPTS) break;
       await new Promise((r) => setTimeout(r, baseDelay * 2 ** (attempt - 1)));
     }

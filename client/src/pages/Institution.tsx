@@ -1,10 +1,11 @@
 /**
  * Área da instituição (/instituicao).
  * - Professor sem instituição: cria a instituição e vira administrador.
- * - Administrador: vê professores, turmas, alunos com conta e o uso de IA; cria acessos e códigos.
+ * - Administrador: vê professores, turmas, alunos com conta, atividades da escola e o uso de IA;
+ *   cria acessos, redefine senhas, promove administradores, desativa acessos e gera códigos.
  * - Professor da instituição (não admin): vê só o nome da instituição.
  *
- * Por minimização de dados (LGPD), o painel não mostra respostas nem feedbacks dos alunos.
+ * Por minimização de dados (LGPD), o painel não mostra respostas, feedbacks nem notas dos alunos.
  */
 import { useEffect, useState, FormEvent } from 'react';
 import { Link } from 'react-router-dom';
@@ -16,8 +17,14 @@ import {
   removeOrgTeacher,
   createOrgStudent,
   generateOrgJoinCode,
+  resetOrgTeacherPassword,
+  setOrgTeacherRole,
+  getOrgActivities,
+  resetOrgStudentPassword,
+  setOrgStudentDisabled,
+  removeOrgStudentFromClass,
 } from '../services/api';
-import type { OrgOverview } from '../types';
+import type { OrgActivity, OrgOverview, OrgStudentAccount } from '../types';
 import { Window } from '../components/ui/Window';
 import { Button } from '../components/ui/Button';
 import { Stamp } from '../components/ui/Stamp';
@@ -25,7 +32,18 @@ import { ProgressBar } from '../components/ui/ProgressBar';
 import { Mascot } from '../components/ui/Mascot';
 import { IconAlertCircle, IconCheckCircle } from '../components/ui/Icons';
 
-type Tab = 'professores' | 'turmas' | 'alunos';
+type Tab = 'professores' | 'turmas' | 'alunos' | 'atividades';
+
+/** Junta as linhas (uma por turma) de cada conta de aluno. */
+function groupStudents(rows: OrgStudentAccount[]) {
+  const map = new Map<number, { id: number; name: string; email: string; disabled: boolean; classes: { id: number; name: string }[] }>();
+  for (const r of rows) {
+    const entry = map.get(r.id) || { id: r.id, name: r.name, email: r.email, disabled: Boolean(r.disabled_at), classes: [] };
+    entry.classes.push({ id: r.class_id, name: r.class_name });
+    map.set(r.id, entry);
+  }
+  return [...map.values()];
+}
 
 function plural(n: number, one: string, many: string) {
   return n === 1 ? one : many;
@@ -109,6 +127,7 @@ export default function Institution() {
   const [teacherForm, setTeacherForm] = useState({ name: '', email: '' });
   const [studentForm, setStudentForm] = useState({ name: '', email: '', classId: '' });
   const [busy, setBusy] = useState('');
+  const [activities, setActivities] = useState<OrgActivity[] | null>(null);
 
   const isAdmin = teacher?.role === 'org_admin';
 
@@ -129,6 +148,13 @@ export default function Institution() {
   useEffect(() => {
     load();
   }, [isAdmin]);
+
+  useEffect(() => {
+    if (tab !== 'atividades' || !isAdmin) return;
+    getOrgActivities()
+      .then((res) => setActivities(res.activities))
+      .catch((err: unknown) => setError(err instanceof Error ? err.message : 'Não foi possível carregar as atividades.'));
+  }, [tab, isAdmin]);
 
   if (!teacher?.organization) {
     return (
@@ -203,6 +229,56 @@ export default function Institution() {
     }
   }
 
+  /** Executa uma ação do administrador mostrando aviso, erro e senha provisória. */
+  async function act(key: string, fn: () => Promise<{ message: string; tempPassword?: string }>, who?: string) {
+    setBusy(key);
+    setError('');
+    try {
+      const res = await fn();
+      setNotice(res.message);
+      if (res.tempPassword && who) setTemp({ who, password: res.tempPassword });
+      await load();
+      return true;
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Não foi possível concluir a ação.');
+      return false;
+    } finally {
+      setBusy('');
+    }
+  }
+
+  function handleResetTeacher(id: number, name: string) {
+    if (!window.confirm(`Gerar uma senha provisória nova para ${name}? A senha atual deixa de funcionar.`)) return;
+    act(`t-pass-${id}`, () => resetOrgTeacherPassword(id), name);
+  }
+
+  async function handleRole(id: number, name: string, makeAdmin: boolean) {
+    const self = id === teacher?.id;
+    const question = makeAdmin
+      ? `Tornar ${name} administrador(a)? Ele(a) poderá criar acessos, redefinir senhas e gerenciar a instituição.`
+      : self
+        ? 'Deixar de ser administrador(a)? Você perde o acesso a este painel.'
+        : `Tirar ${name} da administração?`;
+    if (!window.confirm(question)) return;
+    const ok = await act(`t-role-${id}`, () => setOrgTeacherRole(id, makeAdmin ? 'org_admin' : 'teacher'));
+    if (ok && self && !makeAdmin) await refreshTeacher();
+  }
+
+  function handleResetStudent(id: number, name: string) {
+    if (!window.confirm(`Gerar uma senha provisória nova para ${name}? A senha atual deixa de funcionar.`)) return;
+    act(`s-pass-${id}`, () => resetOrgStudentPassword(id), name);
+  }
+
+  function handleToggleStudent(id: number, name: string, disable: boolean) {
+    if (disable && !window.confirm(`Desativar o acesso de ${name}? Ele(a) não conseguirá mais entrar no portal.`)) return;
+    act(`s-dis-${id}`, () => setOrgStudentDisabled(id, disable));
+  }
+
+  function handleRemoveFromClass(id: number, name: string, classId: number, className: string) {
+    if (!window.confirm(`Tirar ${name} da turma ${className}? O nome continua na lista do professor, mas o aluno deixa de ver a turma.`)) return;
+    act(`s-cls-${id}-${classId}`, () => removeOrgStudentFromClass(id, classId));
+  }
+
   async function handleCode(classId: number) {
     try {
       await generateOrgJoinCode(classId);
@@ -235,7 +311,7 @@ export default function Institution() {
           <p className="org-page__kicker">Painel da instituição</p>
           <h2 className="page-title">{data.organization.name}</h2>
           <p className="page-subtitle">
-            Você é o administrador. Aqui você vê a equipe, as turmas e o uso de IA; respostas e feedbacks continuam visíveis só para cada professor.
+            Você é o administrador: gerencia professores e alunos, acompanha as turmas, as atividades e o uso de IA. Respostas, feedbacks e notas continuam visíveis só para cada professor.
           </p>
         </div>
         <Link to="/planos" className="ui-btn ui-btn--primary ui-btn--md">Plano: {q.plan.name}</Link>
@@ -274,9 +350,15 @@ export default function Institution() {
       </Window>
 
       <div className="filter-tabs org-tabs" role="tablist" aria-label="Seções da instituição">
-        {(['professores', 'turmas', 'alunos'] as Tab[]).map((t) => (
+        {(['professores', 'turmas', 'alunos', 'atividades'] as Tab[]).map((t) => (
           <button key={t} role="tab" aria-selected={tab === t} className={`filter-tab ${tab === t ? 'active' : ''}`} onClick={() => setTab(t)}>
-            {t === 'professores' ? `Professores (${data.teachers.length})` : t === 'turmas' ? `Turmas (${data.classes.length})` : `Alunos com conta (${data.totals.studentAccounts})`}
+            {t === 'professores'
+              ? `Professores (${data.teachers.length})`
+              : t === 'turmas'
+                ? `Turmas (${data.classes.length})`
+                : t === 'alunos'
+                  ? `Alunos com conta (${data.totals.studentAccounts})`
+                  : 'Atividades da escola'}
           </button>
         ))}
       </div>
@@ -300,9 +382,24 @@ export default function Institution() {
                       <td>{t.activities}</td>
                       <td>{t.usage_month}</td>
                       <td>
-                        {t.id !== teacher.id && (
-                          <Button variant="ghost" size="sm" onClick={() => handleRemoveTeacher(t.id, t.name)}>Remover</Button>
-                        )}
+                        <div className="org-actions">
+                          {t.id !== teacher.id && (
+                            <Button variant="ghost" size="sm" loading={busy === `t-pass-${t.id}`} onClick={() => handleResetTeacher(t.id, t.name)}>
+                              Nova senha
+                            </Button>
+                          )}
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            loading={busy === `t-role-${t.id}`}
+                            onClick={() => handleRole(t.id, t.name, t.role !== 'org_admin')}
+                          >
+                            {t.role === 'org_admin' ? (t.id === teacher.id ? 'Deixar de ser admin' : 'Tirar admin') : 'Tornar admin'}
+                          </Button>
+                          {t.id !== teacher.id && (
+                            <Button variant="ghost" size="sm" onClick={() => handleRemoveTeacher(t.id, t.name)}>Remover</Button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -360,6 +457,51 @@ export default function Institution() {
         </Window>
       )}
 
+      {tab === 'atividades' && (
+        <Window fileName="atividades-da-escola.csv">
+          <p className="input-hint org-lgpd">
+            Andamento da correção de todos os professores. Por proteção de dados (LGPD), aqui não aparecem nomes, respostas,
+            feedbacks nem notas dos alunos: isso fica com o professor de cada turma.
+          </p>
+          {activities === null ? (
+            <p className="usage__text">Carregando...</p>
+          ) : activities.length === 0 ? (
+            <p className="usage__text">Nenhuma atividade criada pelos professores ainda.</p>
+          ) : (
+            <div className="table-wrapper">
+              <table className="table">
+                <thead>
+                  <tr><th>Atividade</th><th>Professor</th><th>Turma</th><th>Respostas</th><th>Com feedback</th><th>Aprovadas</th></tr>
+                </thead>
+                <tbody>
+                  {activities.map((a) => (
+                    <tr key={a.id}>
+                      <td>
+                        <div className="table-cell-strong">{a.title}</div>
+                        <div className="student-row__email">
+                          {a.subject || 'Sem disciplina'} ·{' '}
+                          {a.question_type === 'objetiva' ? 'múltipla escolha' : a.question_count > 1 ? `${a.question_count} perguntas` : 'dissertativa'}
+                        </div>
+                      </td>
+                      <td>{a.teacher_name}</td>
+                      <td>{a.class_name || '—'}</td>
+                      <td>{a.responses}</td>
+                      <td>{a.with_feedback}</td>
+                      <td>
+                        {a.approved}
+                        {a.responses > 0 && (
+                          <ProgressBar value={a.approved} max={a.responses} color="green" label={`Aprovadas em ${a.title}`} showLabel={false} />
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Window>
+      )}
+
       {tab === 'alunos' && (
         <div className="org-grid">
           <Window fileName="alunos.csv">
@@ -368,15 +510,50 @@ export default function Institution() {
             ) : (
               <div className="table-wrapper">
                 <table className="table">
-                  <thead><tr><th>Aluno</th><th>Turma</th></tr></thead>
+                  <thead><tr><th>Aluno</th><th>Turmas</th><th /></tr></thead>
                   <tbody>
-                    {data.students.map((s) => (
-                      <tr key={`${s.id}-${s.class_id}`}>
+                    {groupStudents(data.students).map((s) => (
+                      <tr key={s.id} className={s.disabled ? 'org-student--off' : ''}>
                         <td>
-                          <div className="table-cell-strong">{s.name}</div>
+                          <div className="table-cell-strong">
+                            {s.name} {s.disabled && <Stamp tone="error">Desativado</Stamp>}
+                          </div>
                           <div className="student-row__email">{s.email}</div>
                         </td>
-                        <td>{s.class_name}</td>
+                        <td>
+                          <div className="org-chips">
+                            {s.classes.map((c) => (
+                              <span key={c.id} className="org-chip">
+                                {c.name}
+                                <button
+                                  type="button"
+                                  className="org-chip__x"
+                                  aria-label={`Tirar ${s.name} da turma ${c.name}`}
+                                  title="Tirar da turma"
+                                  disabled={busy === `s-cls-${s.id}-${c.id}`}
+                                  onClick={() => handleRemoveFromClass(s.id, s.name, c.id, c.name)}
+                                >
+                                  ×
+                                </button>
+                              </span>
+                            ))}
+                          </div>
+                        </td>
+                        <td>
+                          <div className="org-actions">
+                            <Button variant="ghost" size="sm" loading={busy === `s-pass-${s.id}`} onClick={() => handleResetStudent(s.id, s.name)}>
+                              Nova senha
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              loading={busy === `s-dis-${s.id}`}
+                              onClick={() => handleToggleStudent(s.id, s.name, !s.disabled)}
+                            >
+                              {s.disabled ? 'Reativar' : 'Desativar'}
+                            </Button>
+                          </div>
+                        </td>
                       </tr>
                     ))}
                   </tbody>

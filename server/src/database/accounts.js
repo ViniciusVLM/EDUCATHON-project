@@ -50,10 +50,10 @@ export function listOrgClasses(orgId) {
   `).all(orgId);
 }
 
-/** Alunos com conta ativa em turmas da instituição. */
+/** Alunos com conta em turmas da instituição (uma linha por turma). */
 export function listOrgStudentAccounts(orgId) {
   return getDb().prepare(`
-    SELECT sa.id, sa.name, sa.email, c.id AS class_id, c.name AS class_name
+    SELECT sa.id, sa.name, sa.email, sa.disabled_at, c.id AS class_id, c.name AS class_name
     FROM students s
     JOIN student_accounts sa ON sa.id = s.account_id
     JOIN classes c ON c.id = s.class_id
@@ -73,6 +73,88 @@ export function getOrgClass(orgId, classId) {
 export function getOrgTeacher(orgId, teacherId) {
   return getDb().prepare('SELECT id, name, email, role FROM teachers WHERE id = ? AND organization_id = ?')
     .get(teacherId, orgId) || null;
+}
+
+export function countOrgAdmins(orgId) {
+  return getDb().prepare("SELECT COUNT(*) AS n FROM teachers WHERE organization_id = ? AND role = 'org_admin'").get(orgId).n;
+}
+
+export function setOrgTeacherRole(orgId, teacherId, role) {
+  return getDb().prepare('UPDATE teachers SET role = ? WHERE id = ? AND organization_id = ?').run(role, teacherId, orgId);
+}
+
+/** Troca a senha e derruba as sessões abertas (session_epoch). */
+export function setTeacherPassword(teacherId, passwordHash) {
+  return getDb().prepare('UPDATE teachers SET password_hash = ?, session_epoch = session_epoch + 1 WHERE id = ?')
+    .run(passwordHash, teacherId);
+}
+
+/**
+ * Atividades de todos os professores da instituição, só com contagens.
+ * Minimização de dados (LGPD): nada de nomes de alunos, respostas, feedbacks ou notas.
+ */
+export function listOrgActivities(orgId) {
+  return getDb().prepare(`
+    SELECT a.id, a.title, a.subject, a.question_type, a.created_at, a.due_date,
+      CASE WHEN a.questions IS NOT NULL THEN json_array_length(a.questions) ELSE 1 END AS question_count,
+      t.id AS teacher_id, t.name AS teacher_name, c.name AS class_name,
+      (SELECT COUNT(*) FROM student_responses sr WHERE sr.activity_id = a.id) AS responses,
+      (SELECT COUNT(*) FROM student_responses sr JOIN feedbacks f ON f.student_response_id = sr.id
+        WHERE sr.activity_id = a.id) AS with_feedback,
+      (SELECT COUNT(*) FROM student_responses sr JOIN feedbacks f ON f.student_response_id = sr.id
+        WHERE sr.activity_id = a.id AND f.status = 'aprovado') AS approved
+    FROM activities a
+    JOIN teachers t ON t.id = a.teacher_id
+    LEFT JOIN classes c ON c.id = a.class_id
+    WHERE t.organization_id = ? AND (a.is_archived = 0 OR a.is_archived IS NULL)
+    ORDER BY a.created_at DESC, a.id DESC
+    LIMIT 500
+  `).all(orgId);
+}
+
+/**
+ * Conta de aluno que o administrador pode gerenciar: precisa estar em alguma turma da instituição
+ * e em NENHUMA turma de fora (senão uma escola mexeria no acesso de um aluno de outra).
+ */
+export function getManageableStudent(orgId, accountId) {
+  const db = getDb();
+  const account = db.prepare('SELECT id, name, email, disabled_at FROM student_accounts WHERE id = ?').get(accountId);
+  if (!account) return { error: 'not_found' };
+  const memberships = db.prepare(`
+    SELECT s.class_id, t.organization_id FROM students s
+    JOIN classes c ON c.id = s.class_id JOIN teachers t ON t.id = c.teacher_id
+    WHERE s.account_id = ?
+  `).all(accountId);
+  if (!memberships.some((m) => m.organization_id === orgId)) return { error: 'not_found' };
+  if (memberships.some((m) => m.organization_id !== orgId)) return { error: 'other_org', account };
+  return { account };
+}
+
+export function setStudentPassword(accountId, passwordHash) {
+  return getDb().prepare('UPDATE student_accounts SET password_hash = ?, session_epoch = session_epoch + 1 WHERE id = ?')
+    .run(passwordHash, accountId);
+}
+
+/** Desativa (ou reativa) o acesso; ao desativar, derruba as sessões abertas. */
+export function setStudentDisabled(accountId, disabled) {
+  return getDb().prepare(`
+    UPDATE student_accounts
+    SET disabled_at = CASE WHEN ? THEN datetime('now') ELSE NULL END,
+        session_epoch = session_epoch + CASE WHEN ? THEN 1 ELSE 0 END
+    WHERE id = ?
+  `).run(disabled ? 1 : 0, disabled ? 1 : 0, accountId);
+}
+
+/**
+ * Tira a conta do aluno de uma turma da instituição. O nome continua na lista da turma (as
+ * respostas e notas já lançadas ficam com o professor), mas o aluno deixa de ver aquela turma.
+ */
+export function unlinkStudentFromOrgClass(orgId, accountId, classId) {
+  return getDb().prepare(`
+    UPDATE students SET account_id = NULL
+    WHERE account_id = ? AND class_id = ?
+      AND class_id IN (SELECT c.id FROM classes c JOIN teachers t ON t.id = c.teacher_id WHERE t.organization_id = ?)
+  `).run(accountId, classId, orgId);
 }
 
 export function removeTeacherFromOrg(orgId, teacherId) {

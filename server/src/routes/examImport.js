@@ -7,14 +7,14 @@ import { reserveQuota, recordUsage, resolveGeminiKey, QuotaError } from '../serv
 
 const router = Router();
 
-// Base64 aumenta o tamanho em ~33%: 8 MB de arquivo viram ~10,7 MB de texto.
-const jsonParser = json({ limit: '12mb' });
+// Base64 aumenta o tamanho em ~33%: 14 MB de arquivo viram ~18,7 MB de texto.
+const jsonParser = json({ limit: '20mb' });
 
 function parseLargeJson(req, res, next) {
   jsonParser(req, res, (err) => {
     if (!err) return next();
     if (err.type === 'entity.too.large' || err.status === 413) {
-      return res.status(413).json({ error: 'O arquivo é maior que o limite de 8 MB.' });
+      return res.status(413).json({ error: 'O arquivo é maior que o limite de 14 MB.' });
     }
     return res.status(400).json({ error: 'Envio inválido. Tente selecionar o arquivo de novo.' });
   });
@@ -43,7 +43,7 @@ router.post('/', examImportLimiter, parseLargeJson, async (req, res) => {
 
   const buffer = Buffer.from(cleanBase64, 'base64');
   if (buffer.length > MAX_IMPORT_FILE_BYTES) {
-    return res.status(413).json({ error: 'O arquivo é maior que o limite de 8 MB.' });
+    return res.status(413).json({ error: 'O arquivo é maior que o limite de 14 MB.' });
   }
 
   let reserved = false;
