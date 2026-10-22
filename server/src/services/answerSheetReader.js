@@ -4,7 +4,7 @@
  */
 import { getExamModel, hasCustomExamModel } from './examExtractor.js';
 import { DocumentError } from './documentReader.js';
-import { isMockEnabled, isTransientError, formatErrorSummary } from './gemini.js';
+import { isMockEnabled, isTransientError, formatErrorSummary, isDailyQuotaError, DAILY_QUOTA_MESSAGE } from './gemini.js';
 import { getQuestions, splitResponse } from './multiQuestion.js';
 import { parseOptions } from './objective.js';
 import {
@@ -103,6 +103,7 @@ export async function readAnswerSheets(doc, activity, { apiKey = null } = {}) {
     } catch (error) {
       lastError = error;
       console.warn(`⚠️ Leitura de provas respondidas — tentativa ${attempt}/${MAX_ATTEMPTS}: ${formatErrorSummary(error)}`);
+      if (isDailyQuotaError(error)) throw new DocumentError(DAILY_QUOTA_MESSAGE, 429);
       if (!(isTransientError(error) || error instanceof SyntaxError) || attempt === MAX_ATTEMPTS) break;
       await new Promise((r) => setTimeout(r, baseDelay * 2 ** (attempt - 1)));
     }

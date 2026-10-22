@@ -426,3 +426,16 @@ describe('ReviewDashboard — atividade sem respostas', () => {
     expect(await screen.findByText('upload aberto')).toBeInTheDocument();
   });
 });
+
+describe('ReviewDashboard — cota do Gemini esgotada', () => {
+  it('explica que a cota acabou em vez de um erro genérico', async () => {
+    mockGetActivity.mockResolvedValue({
+      ...sampleActivity,
+      responses: [{ ...sampleActivity.responses[0], feedback_id: null, ai_feedback_text: null, ai_feedback_json: null, status: null }],
+    });
+    vi.mocked(api.getProgress).mockResolvedValueOnce({ status: 'error', total: 3, processed: 1, errors: 1, last_error: 'gemini_daily_quota' });
+    renderDashboard();
+    expect(await screen.findByText('A cota gratuita do Gemini acabou por hoje.')).toBeInTheDocument();
+    expect(screen.getByText(/parou para não gastar tentativas/i)).toBeInTheDocument();
+  });
+});

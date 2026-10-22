@@ -109,6 +109,8 @@ export interface Progress {
   total: number;
   processed: number;
   errors: number;
+  /** Motivo da última falha (ex.: 'gemini_daily_quota' quando a cota do Gemini acabou) */
+  last_error?: string | null;
 }
 
 // ── Fase 4.4: novas entidades ─────────────────────────────────────────────

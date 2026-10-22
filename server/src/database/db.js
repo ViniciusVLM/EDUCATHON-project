@@ -187,6 +187,11 @@ const MIGRATIONS = [
       'ALTER TABLE feedbacks ADD COLUMN ai_grade_reason TEXT',
     ],
   },
+  // ── Motivo da última falha do processamento (ex.: cota diária do Gemini) ──
+  {
+    name: '015_processing_jobs_last_error',
+    sqls: ['ALTER TABLE processing_jobs ADD COLUMN last_error TEXT'],
+  },
 ];
 
 /**

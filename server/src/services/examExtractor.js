@@ -14,6 +14,8 @@ import {
   isTransientError,
   formatErrorSummary,
   getClientForKey,
+  isDailyQuotaError,
+  DAILY_QUOTA_MESSAGE,
 } from './gemini.js';
 import { DocumentError } from './documentReader.js';
 
@@ -422,6 +424,7 @@ export async function extractExam(doc, { fileName, classes = [], apiKey = null }
       lastError = error;
       const transient = isTransientError(error);
       console.warn(`⚠️ Leitura da prova — tentativa ${attempt}/${MAX_ATTEMPTS}: ${formatErrorSummary(error)}`);
+      if (isDailyQuotaError(error)) throw new DocumentError(DAILY_QUOTA_MESSAGE, 429);
       if (!transient || attempt === MAX_ATTEMPTS) break;
       await new Promise((r) => setTimeout(r, baseDelay * 2 ** (attempt - 1)));
     }
