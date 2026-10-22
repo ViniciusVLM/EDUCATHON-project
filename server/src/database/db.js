@@ -192,6 +192,11 @@ const MIGRATIONS = [
     name: '015_processing_jobs_last_error',
     sqls: ['ALTER TABLE processing_jobs ADD COLUMN last_error TEXT'],
   },
+  // ── Administrador da instituição pode desativar o acesso de um aluno ──────
+  {
+    name: '016_student_accounts_disabled',
+    sqls: ['ALTER TABLE student_accounts ADD COLUMN disabled_at TEXT'],
+  },
 ];
 
 /**

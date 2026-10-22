@@ -22,6 +22,7 @@ import type {
   StudentPortalActivity,
   StudentSubjectSummary,
   AnswerSheetsResult,
+  OrgActivity,
 } from '../types';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
@@ -472,6 +473,30 @@ export async function createOrgStudent(data: { name: string; email: string; clas
 
 export async function generateOrgJoinCode(classId: number): Promise<{ message: string; joinCode: string }> {
   return request(`/org/classes/${classId}/join-code`, { method: 'POST' });
+}
+
+export async function resetOrgTeacherPassword(teacherId: number): Promise<{ message: string; tempPassword: string }> {
+  return request(`/org/teachers/${teacherId}/reset-password`, { method: 'POST' });
+}
+
+export async function setOrgTeacherRole(teacherId: number, role: 'org_admin' | 'teacher'): Promise<{ message: string; role: string }> {
+  return request(`/org/teachers/${teacherId}/role`, { method: 'PATCH', body: JSON.stringify({ role }) });
+}
+
+export async function getOrgActivities(): Promise<{ activities: OrgActivity[] }> {
+  return request('/org/activities');
+}
+
+export async function resetOrgStudentPassword(studentId: number): Promise<{ message: string; tempPassword: string }> {
+  return request(`/org/students/${studentId}/reset-password`, { method: 'POST' });
+}
+
+export async function setOrgStudentDisabled(studentId: number, disabled: boolean): Promise<{ message: string; disabled: boolean }> {
+  return request(`/org/students/${studentId}`, { method: 'PATCH', body: JSON.stringify({ disabled }) });
+}
+
+export async function removeOrgStudentFromClass(studentId: number, classId: number): Promise<{ message: string }> {
+  return request(`/org/students/${studentId}/classes/${classId}`, { method: 'DELETE' });
 }
 
 // ──────────────────────────────────────────

@@ -1,8 +1,9 @@
 /**
  * Área da instituição (montada em /api/org com requireAuth).
  *
- * O administrador vê professores, turmas, alunos com conta e o uso de IA, cria acessos e
- * gera códigos de turma. Por minimização de dados (LGPD), ele NÃO vê respostas nem feedbacks.
+ * O administrador vê professores, turmas, alunos com conta, as atividades da escola (só contagens)
+ * e o uso de IA; cria acessos, redefine senhas, promove administradores, desativa acessos de alunos
+ * e gera códigos de turma. Por minimização de dados (LGPD), ele NÃO vê respostas, feedbacks nem notas.
  */
 import { Router } from 'express';
 import { createTeacher, getTeacherByEmail, getTeacherById } from '../database/db.js';
@@ -19,6 +20,14 @@ import {
   createStudentAccount,
   getStudentAccountByEmail,
   joinClass,
+  countOrgAdmins,
+  setOrgTeacherRole,
+  setTeacherPassword,
+  listOrgActivities,
+  getManageableStudent,
+  setStudentPassword,
+  setStudentDisabled,
+  unlinkStudentFromOrgClass,
 } from '../database/accounts.js';
 import { requireOrgAdmin } from '../middleware/auth.js';
 import { hashPassword } from '../services/auth.js';
@@ -128,6 +137,9 @@ router.delete('/teachers/:id', requireOrgAdmin, (req, res) => {
   }
   const teacher = getOrgTeacher(req.organizationId, teacherId);
   if (!teacher) return res.status(404).json({ error: 'Professor não encontrado nesta instituição.' });
+  if (teacher.role === 'org_admin' && countOrgAdmins(req.organizationId) <= 1) {
+    return res.status(400).json({ error: 'A instituição precisa de pelo menos um administrador.' });
+  }
   removeTeacherFromOrg(req.organizationId, teacherId);
   res.json({ message: `${teacher.name} foi removido(a) da instituição.` });
 });
@@ -179,6 +191,128 @@ router.post('/classes/:id/join-code', requireOrgAdmin, (req, res) => {
   if (!cls) return res.status(404).json({ error: 'Turma não encontrada nesta instituição.' });
   const code = rotateJoinCode(cls.id);
   res.json({ message: 'Código da turma gerado.', joinCode: code });
+});
+
+/**
+ * POST /api/org/teachers/:id/reset-password
+ * Gera uma senha provisória nova para o professor e derruba as sessões abertas dele.
+ */
+router.post('/teachers/:id/reset-password', requireOrgAdmin, async (req, res) => {
+  try {
+    const teacherId = Number(req.params.id);
+    if (teacherId === req.teacher.id) {
+      return res.status(400).json({ error: 'Para trocar a sua própria senha, use a página Conta.' });
+    }
+    const teacher = getOrgTeacher(req.organizationId, teacherId);
+    if (!teacher) return res.status(404).json({ error: 'Professor não encontrado nesta instituição.' });
+    const tempPassword = generateTempPassword();
+    setTeacherPassword(teacherId, await hashPassword(tempPassword));
+    res.json({ message: `Nova senha provisória criada para ${teacher.name}.`, tempPassword });
+  } catch (err) {
+    console.error('Erro ao redefinir senha de professor:', err);
+    res.status(500).json({ error: 'Erro interno ao redefinir a senha.' });
+  }
+});
+
+/**
+ * PATCH /api/org/teachers/:id/role — Body: { role: 'org_admin' | 'teacher' }
+ * Promove ou tira um administrador. A instituição nunca fica sem administrador.
+ */
+router.patch('/teachers/:id/role', requireOrgAdmin, (req, res) => {
+  const teacherId = Number(req.params.id);
+  const role = req.body?.role;
+  if (role !== 'org_admin' && role !== 'teacher') {
+    return res.status(400).json({ error: 'Papel inválido.' });
+  }
+  const teacher = getOrgTeacher(req.organizationId, teacherId);
+  if (!teacher) return res.status(404).json({ error: 'Professor não encontrado nesta instituição.' });
+  if (teacher.role === role) {
+    return res.json({ message: 'Nada mudou.', role });
+  }
+  if (role === 'teacher' && countOrgAdmins(req.organizationId) <= 1) {
+    return res.status(400).json({ error: 'A instituição precisa de pelo menos um administrador. Promova outra pessoa antes.' });
+  }
+  setOrgTeacherRole(req.organizationId, teacherId, role);
+  res.json({
+    message: role === 'org_admin'
+      ? `${teacher.name} agora é administrador(a) da instituição.`
+      : `${teacher.name} deixou de ser administrador(a).`,
+    role,
+  });
+});
+
+/**
+ * GET /api/org/activities
+ * Atividades de todos os professores, só com andamento da correção (sem dados de alunos).
+ */
+router.get('/activities', requireOrgAdmin, (req, res) => {
+  try {
+    res.json({ activities: listOrgActivities(req.organizationId) });
+  } catch (err) {
+    console.error('Erro ao listar atividades da instituição:', err);
+    res.status(500).json({ error: 'Erro interno ao listar as atividades.' });
+  }
+});
+
+function loadManageableStudent(req, res) {
+  const result = getManageableStudent(req.organizationId, Number(req.params.id));
+  if (result.error === 'not_found') {
+    res.status(404).json({ error: 'Aluno não encontrado nas turmas desta instituição.' });
+    return null;
+  }
+  if (result.error === 'other_org') {
+    res.status(403).json({ error: 'Este aluno também estuda em turmas de outra instituição: o acesso dele só pode ser alterado por ele mesmo.' });
+    return null;
+  }
+  return result.account;
+}
+
+/**
+ * POST /api/org/students/:id/reset-password
+ * Nova senha provisória para o aluno (derruba as sessões abertas).
+ */
+router.post('/students/:id/reset-password', requireOrgAdmin, async (req, res) => {
+  try {
+    const account = loadManageableStudent(req, res);
+    if (!account) return;
+    const tempPassword = generateTempPassword();
+    setStudentPassword(account.id, await hashPassword(tempPassword));
+    res.json({ message: `Nova senha provisória criada para ${account.name}.`, tempPassword });
+  } catch (err) {
+    console.error('Erro ao redefinir senha de aluno:', err);
+    res.status(500).json({ error: 'Erro interno ao redefinir a senha.' });
+  }
+});
+
+/**
+ * PATCH /api/org/students/:id — Body: { disabled: boolean }
+ * Desativa (o aluno não consegue mais entrar) ou reativa o acesso.
+ */
+router.patch('/students/:id', requireOrgAdmin, (req, res) => {
+  if (typeof req.body?.disabled !== 'boolean') {
+    return res.status(400).json({ error: 'Envie "disabled" como true ou false.' });
+  }
+  const account = loadManageableStudent(req, res);
+  if (!account) return;
+  setStudentDisabled(account.id, req.body.disabled);
+  res.json({
+    message: req.body.disabled
+      ? `Acesso de ${account.name} desativado. Ele não consegue mais entrar.`
+      : `Acesso de ${account.name} reativado.`,
+    disabled: req.body.disabled,
+  });
+});
+
+/**
+ * DELETE /api/org/students/:id/classes/:classId
+ * Tira o aluno de uma turma: ele deixa de ver a turma; o nome continua na lista do professor.
+ */
+router.delete('/students/:id/classes/:classId', requireOrgAdmin, (req, res) => {
+  const account = loadManageableStudent(req, res);
+  if (!account) return;
+  const result = unlinkStudentFromOrgClass(req.organizationId, account.id, Number(req.params.classId));
+  if (result.changes === 0) return res.status(404).json({ error: 'O aluno não está nesta turma.' });
+  res.json({ message: `${account.name} saiu da turma.` });
 });
 
 export default router;

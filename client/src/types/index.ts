@@ -337,6 +337,24 @@ export interface OrgStudentAccount {
   email: string;
   class_id: number;
   class_name: string;
+  disabled_at?: string | null;
+}
+
+/** Atividade da escola vista pelo administrador: só andamento, sem dados de alunos. */
+export interface OrgActivity {
+  id: number;
+  title: string;
+  subject: string | null;
+  question_type: 'dissertativa' | 'objetiva';
+  question_count: number;
+  created_at: string;
+  due_date: string | null;
+  teacher_id: number;
+  teacher_name: string;
+  class_name: string | null;
+  responses: number;
+  with_feedback: number;
+  approved: number;
 }
 
 export interface OrgOverview {

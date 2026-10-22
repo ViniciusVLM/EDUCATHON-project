@@ -26,6 +26,9 @@ function findClass(code) {
 }
 
 function respond(res, status, account, message, joinedClass = null) {
+  if (account.disabled_at) {
+    return res.status(403).json({ error: 'Seu acesso foi desativado pela escola. Fale com a coordenação.' });
+  }
   const student = { id: Number(account.id), name: account.name, email: account.email };
   res.status(status).json({
     message,
