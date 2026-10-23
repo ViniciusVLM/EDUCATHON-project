@@ -7,8 +7,43 @@
 <!-- LINK: deploy -->
 > 🌐 **Deploy em Produção**: [educathon.dev (Em Breve / Configurar URL do Deploy)](https://educathon.dev)
 
-<!-- GIF: demonstracao -->
-> 🎥 *Insira aqui o GIF demonstrativo do fluxo completo da aplicação (Upload CSV → Geração por IA → Revisão Pedagógica → Aprovação e Exportação).*
+> **Vídeo do pitch (7 min)**: [assistir no Google Drive](https://drive.google.com/file/d/12m5g6TW-f6cV1u64u8nYXsZOfpuAYZ3A/view?usp=sharing) — projeto do desafio **Salte com a IA · Instituto Leapy**.
+
+**A IA sugere, o professor decide.** O Educathon lê a prova e as respostas dos alunos (até escritas à mão), escreve um rascunho de feedback por questão seguindo a rubrica e, se o professor quiser, sugere uma nota. O aluno só recebe o que o professor revisou e aprovou.
+
+---
+
+## 🎥 Veja funcionando
+
+**1. A IA lê a prova a partir de uma foto** e preenche as questões, a rubrica e a turma
+
+![Importar a prova pela foto](docs/gifs/1-importar-prova.gif)
+
+**2. Lê as provas respondidas à mão (PDF ou fotos)** e transcreve a resposta de cada aluno, sem corrigir
+
+![Ler provas escritas à mão](docs/gifs/2-ler-provas-a-mao.gif)
+
+**3. Gera um rascunho de feedback para cada aluno**, questão por questão
+
+![Gerar feedbacks com IA](docs/gifs/3-gerar-feedbacks.gif)
+
+**4. O professor revisa**: critérios da rubrica, feedback editável e nota sugerida pela IA, que só ele vê
+
+![Revisão com nota sugerida](docs/gifs/4-revisao-nota-sugerida.gif)
+
+**5. O aluno recebe** o feedback de cada questão e a nota aprovada pelo professor
+
+![Portal do aluno](docs/gifs/5-portal-do-aluno.gif)
+
+---
+
+## 👥 Equipe
+
+Projeto 42 São Paulo:
+
+- Bruna Marques Carneiro
+- Bruno Coutinho Cavalcanti Filho
+- Vinicius Lourenço Martins
 
 ---
 
@@ -72,6 +107,8 @@ Faça login com a conta de demonstração pré-populada:
 | **Ler provas respondidas (PDF/fotos)** | Enviar respostas → "Ler PDF ou fotos" | O professor envia o PDF escaneado ou fotos (vários arquivos). A IA só transcreve nome e respostas de cada aluno, sem corrigir; trechos ilegíveis vêm marcados. O professor confere e edita tudo antes de enviar. Arquivos não são salvos. Precisa da chave do Gemini (no modo demonstração, só .docx/.txt com "Nome:" e "Questão N:"). |
 | **Várias questões dissertativas** | Nova Atividade → "Adicionar outra pergunta dissertativa" | Até 20 perguntas por atividade, cada uma com rubrica. Respostas por questão (manual ou CSV com `resposta_1`, `resposta_2`...). A IA escreve um feedback por questão. |
 | **Múltipla escolha** | Nova atividade → *Tipo de questão* | Alternativas + gabarito. A correção é automática pelo gabarito (sem IA e sem gastar cota); a IA só escreve a explicação para quem errou. A leitura de provas também reconhece questões objetivas. |
+| **Limites de arquivo** | Importação da prova, leitura de provas e CSV | Prova ou folhas respondidas: até 14 MB por arquivo. CSV: até 5 MB e 500 alunos. |
+| **Cota do Gemini e modelo reserva** | Servidor | Uma única chamada à IA por aluno, mesmo em provas com várias questões (questões em branco não vão para a IA). Se o modelo principal estiver sobrecarregado (erro 503), a geração de feedback, a importação da prova e a leitura das provas respondidas passam para o modelo reserva (`GEMINI_FALLBACK_MODEL`). Se a cota diária acabar, o processamento para na hora, avisa o professor e devolve a cota reservada. |
 | **Login com Google** | Telas de login do professor e do aluno | Firebase Authentication. O servidor confere o token com os certificados públicos do Google (sem `firebase-admin`). Os usuários aparecem no console do Firebase. |
 
 ### Como ligar o login com Google (Firebase)
@@ -160,6 +197,17 @@ graph TD
 
 ---
 
+## 🤖 Como a IA faz parte do projeto
+
+| Onde | IA | O que faz |
+|---|---|---|
+| **No produto** | Google Gemini | Lê a prova (foto, PDF, Word ou texto) e monta a atividade; transcreve provas respondidas à mão; escreve o rascunho de feedback por critério da rubrica; sugere a nota quando o professor liga a opção. Sempre com saída estruturada (JSON com esquema) e com a resposta do aluno tratada como dado, nunca como instrução. |
+| **Na construção** | Claude | Par de programação no desenvolvimento: implementação das funcionalidades, revisão de segurança (IDOR, *prompt injection*, LGPD) e escrita dos testes automatizados. |
+
+O projeto tem **318 testes automatizados** (230 no servidor e 88 nas telas), que rodam a cada mudança.
+
+---
+
 ## 🧪 Como Rodar os Testes e Avaliações
 
 A aplicação conta com uma suíte de testes automatizados e avaliação de qualidade da IA:
@@ -218,24 +266,21 @@ O Educathon foi projetado com base nas diretrizes modernas de design de produtos
 #### 1. Painel do Professor (`/painel`)
 Visão consolidada com métricas em tempo real, anéis de progresso, fila de revisão ativa, lista de pendências com ação rápida e calendário de prazos da semana.
 
-<!-- PRINT: painel -->
-> *Insira aqui a captura de tela do Painel Geral do Professor.*
+![Painel do professor](docs/prints/painel.png)
 
 ---
 
 #### 2. Dashboard de Revisão (`/review/:activityId`)
 Estação de trabalho pedagógica lado a lado: lista lateral de alunos com chips de status (`pendente`, `revisado`, `aprovado`), cartão de resposta original, editor de feedback da IA, critérios de rubrica interativos, auto-avanço inteligente, proteção contra perda de edições não salvas e atalhos rápidos de teclado (`Alt + A` / `Ctrl + Enter` para aprovar, `Alt + →` / `Alt + ←` para navegar).
 
-<!-- PRINT: revisao -->
-> *Insira aqui a captura de tela do Dashboard de Revisão com a resposta e o feedback pedagógico.*
+![Dashboard de revisão](docs/gifs/4-revisao-nota-sugerida.gif)
 
 ---
 
-#### 3. Modo Noturno / Tema Escuro
-Paleta escura de alto contraste com tons profundos de azul e ametista, projetada para longas sessões noturnas de correção com conforto visual.
+#### 3. Portal do Aluno no Tema Escuro (`/aluno`)
+Paleta escura de alto contraste, projetada para longas sessões com conforto visual. Na tela, a aluna vê suas matérias, as atividades corrigidas, o feedback de cada questão e a nota lançada pelo professor.
 
-<!-- PRINT: tema-escuro -->
-> *Insira aqui a captura de tela do tema escuro em funcionamento.*
+![Portal do aluno no tema escuro](docs/gifs/5-portal-do-aluno.gif)
 
 ---
 
@@ -269,6 +314,8 @@ Para conectar à API real do Google Gemini em ambiente de produção:
    GEMINI_MODEL=gemini-3.8-flash
    # Opcional: modelo usado só na leitura de provas (padrão: o mesmo de GEMINI_MODEL)
    # GEMINI_IMPORT_MODEL=gemini-3.8-flash
+   # Recomendado: modelo reserva, usado quando o principal estiver sobrecarregado (503)
+   GEMINI_FALLBACK_MODEL=gemini-3.5-flash
    # Recomendado: chave para criptografar as chaves do Gemini cadastradas pelos usuários
    ENCRYPTION_KEY=outro_valor_aleatorio_de_64_caracteres
    # Opcional: login com Google
