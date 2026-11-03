@@ -353,10 +353,13 @@ export function listStudentActivities(accountId) {
     FROM students s
     JOIN classes c ON c.id = s.class_id
     JOIN teachers t ON t.id = c.teacher_id
-    JOIN activities a ON a.class_id = c.id AND (a.is_archived = 0 OR a.is_archived IS NULL)
+    JOIN activities a ON a.class_id = c.id
     LEFT JOIN student_responses sr ON sr.activity_id = a.id AND sr.student_id = s.id
     LEFT JOIN feedbacks f ON f.student_response_id = sr.id
+    -- Atividade arquivada pelo professor continua aparecendo para quem já recebeu o feedback
+    -- aprovado (arquivar não tira do aluno o que ele já recebeu); as demais somem do portal.
     WHERE s.account_id = ?
+      AND (a.is_archived = 0 OR a.is_archived IS NULL OR f.status = 'aprovado')
     ORDER BY a.created_at DESC, a.id DESC, sr.id DESC
   `).all(accountId);
 

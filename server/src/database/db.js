@@ -22,6 +22,26 @@ const SCHEMA_PATH = join(__dirname, 'schema.sql');
  * ⚠️ Regra: nunca editar ou remover uma migração já aplicada em produção.
  *    Sempre adicione novas entradas ao final da lista.
  */
+/**
+ * Migração 018: contas de aluno que já existiam com e-mail "confirmado" sem Google foram criadas
+ * por uma instituição e passam a valer só nas turmas dela. Só dá para saber qual escola criou a
+ * conta quando todas as turmas do aluno são da mesma instituição; nos outros casos fica sem
+ * instituição (o e-mail deixa de ser confiável). As ligações já feitas continuam como estão.
+ * Exportado para ser testado num banco no formato antigo.
+ */
+export const MIGRATE_ORG_VERIFIED_ACCOUNTS_SQL = `UPDATE student_accounts
+       SET verified_org_id = (
+             SELECT CASE WHEN COUNT(DISTINCT t.organization_id) = 1
+                              AND COUNT(*) = COUNT(t.organization_id)
+                         THEN MIN(t.organization_id) END
+             FROM students s
+             JOIN classes c ON c.id = s.class_id
+             JOIN teachers t ON t.id = c.teacher_id
+             WHERE s.account_id = student_accounts.id
+           ),
+           email_verified = 0
+       WHERE email_verified = 1 AND google_uid IS NULL`;
+
 const MIGRATIONS = [
   // ── Fase 4.1: novos campos em activities ─────────────────────────────────
   {
@@ -209,15 +229,7 @@ const MIGRATIONS = [
       'ALTER TABLE student_accounts ADD COLUMN verified_org_id INTEGER REFERENCES organizations(id) ON DELETE SET NULL',
       // Contas que já existiam com e-mail "confirmado" sem Google foram criadas por uma instituição:
       // passam a valer só nas turmas dessa instituição. As ligações já feitas continuam como estão.
-      `UPDATE student_accounts
-       SET verified_org_id = (
-             SELECT MIN(t.organization_id) FROM students s
-             JOIN classes c ON c.id = s.class_id
-             JOIN teachers t ON t.id = c.teacher_id
-             WHERE s.account_id = student_accounts.id AND t.organization_id IS NOT NULL
-           ),
-           email_verified = 0
-       WHERE email_verified = 1 AND google_uid IS NULL`,
+      MIGRATE_ORG_VERIFIED_ACCOUNTS_SQL,
     ],
   },
 ];

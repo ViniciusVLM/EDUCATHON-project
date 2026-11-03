@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { getActivities, setActivityArchived, duplicateActivity, getClasses } from '../services/api';
 import type { Activity, Class } from '../types';
@@ -24,6 +24,16 @@ export default function ActivitiesList() {
   const [dupClassId, setDupClassId] = useState('');
   const [classes, setClasses] = useState<Class[] | null>(null);
   const [dupSaving, setDupSaving] = useState(false);
+  const [classesError, setClassesError] = useState(false);
+  const dupPanelRef = useRef<HTMLHeadingElement | null>(null);
+
+  // Ao abrir o painel de reaplicar, leva o foco (e a tela) até ele
+  useEffect(() => {
+    if (!duplicating) return;
+    const heading = dupPanelRef.current;
+    heading?.focus();
+    heading?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
+  }, [duplicating]);
 
   useEffect(() => {
     getActivities()
@@ -44,7 +54,7 @@ export default function ActivitiesList() {
 
   async function handleArchive(activity: Activity) {
     const archive = !activity.is_archived;
-    if (archive && !window.confirm(`Arquivar "${activity.title}"?\n\nEla sai do painel e desta lista, mas nada é apagado: você pode reativar em "Arquivadas".`)) {
+    if (archive && !window.confirm(`Arquivar "${activity.title}"?\n\nEla sai do painel e desta lista, mas nada é apagado: os alunos continuam vendo os feedbacks já aprovados e você pode reativar em "Arquivadas".`)) {
       return;
     }
     setBusyId(activity.id);
@@ -67,10 +77,17 @@ export default function ActivitiesList() {
     setDupClassId(activity.class_id ? String(activity.class_id) : '');
     setError('');
     setInfo('');
-    if (classes === null) {
+    if (classes === null || classesError) {
+      setClasses(null);
+      setClassesError(false);
       getClasses()
         .then(setClasses)
-        .catch(() => setClasses([]));
+        .catch(() => {
+          // Sem a lista, não dá para mostrar a turma: a cópia fica sem turma e o professor é avisado
+          setClasses([]);
+          setClassesError(true);
+          setDupClassId('');
+        });
     }
   }
 
@@ -146,7 +163,9 @@ export default function ActivitiesList() {
       {duplicating && (
         <Card className="duplicate-panel">
           <form onSubmit={handleDuplicate} aria-label="Reaplicar atividade">
-            <h3 className="duplicate-panel__title">Reaplicar “{duplicating.title}”</h3>
+            <h3 className="duplicate-panel__title" ref={dupPanelRef} tabIndex={-1}>
+              Reaplicar “{duplicating.title}”
+            </h3>
             <p className="duplicate-panel__hint">
               Copia o enunciado, a rubrica, os critérios e as alternativas. Respostas, feedbacks, notas e prazo não
               são copiados.
@@ -163,7 +182,13 @@ export default function ActivitiesList() {
               </label>
               <label className="duplicate-panel__field">
                 <span>Turma</span>
-                <select value={dupClassId} onChange={(e) => setDupClassId(e.target.value)}>
+                <select
+                  value={dupClassId}
+                  onChange={(e) => setDupClassId(e.target.value)}
+                  disabled={classes === null}
+                  aria-busy={classes === null}
+                >
+                  {classes === null && dupClassId && <option value={dupClassId}>Carregando turmas...</option>}
                   <option value="">Sem turma</option>
                   {(classes || []).map((c) => (
                     <option key={c.id} value={c.id}>
@@ -173,11 +198,17 @@ export default function ActivitiesList() {
                 </select>
               </label>
             </div>
+            {classesError && (
+              <p className="duplicate-panel__hint" role="alert">
+                Não foi possível carregar suas turmas. A cópia será criada sem turma; você pode tentar de novo
+                fechando e abrindo este painel.
+              </p>
+            )}
             <div className="table-actions">
               <Button type="button" variant="ghost" onClick={() => setDuplicating(null)} disabled={dupSaving}>
                 Cancelar
               </Button>
-              <Button type="submit" variant="primary" loading={dupSaving} disabled={dupSaving || !dupTitle.trim()}>
+              <Button type="submit" variant="primary" loading={dupSaving} disabled={dupSaving || !dupTitle.trim() || classes === null}>
                 Criar cópia e enviar respostas
               </Button>
             </div>
@@ -216,6 +247,7 @@ export default function ActivitiesList() {
               <button
                 type="button"
                 className={`filter-tab ${view === 'ativas' ? 'active' : ''}`}
+                aria-pressed={view === 'ativas'}
                 onClick={() => setView('ativas')}
               >
                 Ativas ({activities.length - archivedCount})
@@ -223,6 +255,7 @@ export default function ActivitiesList() {
               <button
                 type="button"
                 className={`filter-tab ${view === 'arquivadas' ? 'active' : ''}`}
+                aria-pressed={view === 'arquivadas'}
                 onClick={() => setView('arquivadas')}
               >
                 Arquivadas ({archivedCount})

@@ -491,4 +491,58 @@ describe('ReviewDashboard — aba "A revisar" e tempo de revisão', () => {
     await waitFor(() => expect(mockApproveFeedback).toHaveBeenCalledWith(201, 95));
     nowSpy.mockRestore();
   });
+  it('na aba "A revisar", aprovar abre o próximo aluno sem pular ninguém', async () => {
+    const user = userEvent.setup();
+    const base = multiStudentActivity.responses[0];
+    const mk = (id: number, name: string, text: string, status: 'pendente' | 'aprovado') => ({
+      ...base, id, feedback_id: id + 100, student_name: name, original_response: text, status,
+    });
+    const before = {
+      ...multiStudentActivity,
+      stats: { total_students: 3, total_feedbacks: 3, pending: 3, reviewed: 0, approved: 0 },
+      responses: [mk(1, 'Ana', 'Resposta da Ana.', 'pendente'), mk(2, 'Bruno', 'Resposta do Bruno.', 'pendente'), mk(3, 'Caio', 'Resposta do Caio.', 'pendente')],
+    };
+    const after = { ...before, responses: [mk(1, 'Ana', 'Resposta da Ana.', 'aprovado'), before.responses[1], before.responses[2]] };
+    mockGetActivity.mockResolvedValue(before);
+    renderDashboard();
+
+    await user.click(await screen.findByRole('button', { name: /A revisar \(3\)/ }));
+    expect(await screen.findByText('Resposta da Ana.')).toBeInTheDocument();
+
+    mockGetActivity.mockResolvedValue(after);
+    await user.click(screen.getByRole('button', { name: /Aprovar$/i }));
+    expect(await screen.findByText('Resposta do Bruno.')).toBeInTheDocument();
+    expect(screen.queryByText('Resposta do Caio.')).not.toBeInTheDocument();
+  });
+
+  it('se a aprovação falhar, o tempo de revisão não se perde', async () => {
+    const user = userEvent.setup();
+    let now = 2_000_000;
+    const nowSpy = vi.spyOn(Date, 'now').mockImplementation(() => now);
+    mockGetActivity.mockResolvedValue(sampleActivity);
+    renderDashboard();
+    await screen.findByText('As plantas usam a luz do sol e água para crescer.');
+
+    now += 30_000;
+    mockApproveFeedback.mockRejectedValueOnce(new Error('Servidor fora do ar.'));
+    await user.click(screen.getByRole('button', { name: /Aprovar$/i }));
+    expect(await screen.findByText('Servidor fora do ar.')).toBeInTheDocument();
+
+    now += 20_000;
+    await user.click(screen.getByRole('button', { name: /Aprovar$/i }));
+    await waitFor(() => expect(mockApproveFeedback).toHaveBeenLastCalledWith(201, 50));
+    nowSpy.mockRestore();
+  });
+
+  it('a aba "A revisar" não conta alunos que ainda não têm feedback', async () => {
+    mockGetActivity.mockResolvedValue({
+      ...multiStudentActivity,
+      responses: [
+        multiStudentActivity.responses[0],
+        { ...multiStudentActivity.responses[1], feedback_id: null, ai_feedback_text: null, status: null },
+      ],
+    });
+    renderDashboard();
+    expect(await screen.findByRole('button', { name: /A revisar \(1\)/ })).toBeInTheDocument();
+  });
 });

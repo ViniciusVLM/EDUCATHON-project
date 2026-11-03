@@ -26,7 +26,8 @@ function sendQuotaError(res, error) {
 
 function isValidCriteriaScores(list) {
   return Array.isArray(list)
-    && list.length <= 30
+    // Provas com várias perguntas juntam os critérios de todas (até 20 perguntas x 20 critérios)
+    && list.length <= 400
     && list.every((c) => c && typeof c === 'object' && !Array.isArray(c)
       && typeof c.criterio === 'string' && c.criterio.trim().length > 0 && c.criterio.length <= 500
       && typeof c.atendido === 'boolean'
@@ -62,7 +63,7 @@ function exportCriteriaNames(activity, data) {
   const rubric = parseJsonSafe(activity.rubric_criteria);
   if (Array.isArray(rubric)) rubric.forEach((c) => add(typeof c === 'string' ? c : c?.criterio));
   data.forEach((row) => rowCriteria(row).forEach((c) => add(c.criterio)));
-  return names.slice(0, 30);
+  return names.slice(0, 400);
 }
 
 /** Nota do professor: número de 0 a 10 com até uma casa decimal, ou null para apagar. */
@@ -201,7 +202,7 @@ router.patch('/feedback/:feedbackId', (req, res) => {
     // Um item inválido salvo aqui quebrava o portal do aluno depois da aprovação.
     if (criteriaScores !== undefined && criteriaScores !== null && !isValidCriteriaScores(criteriaScores)) {
       return res.status(400).json({
-        error: 'Os critérios devem ser uma lista de { criterio, atendido } (até 30 itens).',
+        error: 'Os critérios devem ser uma lista de { criterio, atendido } (até 400 itens).',
       });
     }
 

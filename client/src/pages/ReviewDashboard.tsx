@@ -56,11 +56,11 @@ export default function ReviewDashboard() {
   function filterResponses(responses: StudentResponse[], f: FilterType): StudentResponse[] {
     if (f === 'todos') return responses;
     // "A revisar" inclui os editados e ainda não aprovados (antes eles sumiam das duas abas)
-    if (f === 'pendente') return responses.filter((r) => r.status !== 'aprovado');
+    if (f === 'pendente') return responses.filter((r) => r.feedback_id && r.status !== 'aprovado');
     return responses.filter((r) => r.status === f);
   }
 
-  const loadActivity = useCallback(async () => {
+  const loadActivity = useCallback(async (): Promise<ActivityWithResponses | null> => {
     try {
       const data = await getActivity(Number(activityId));
       setActivity(data);
@@ -81,6 +81,7 @@ export default function ReviewDashboard() {
       if (responses.length > 0 && selectedIndex >= responses.length) {
         setSelectedIndex(0);
       }
+      return data;
     } catch (err: unknown) {
       const msg =
         err instanceof Error
@@ -88,6 +89,7 @@ export default function ReviewDashboard() {
           : 'Não foi possível conectar ao servidor. Tente novamente em instantes.';
       setError(msg);
       setLoading(false);
+      return null;
     }
   }, [activityId, filter, selectedIndex]);
 
@@ -156,12 +158,10 @@ export default function ReviewDashboard() {
     };
   }, [selectedFeedbackId, selectedStatus, pauseReviewClock]);
 
-  /** Segundos de revisão acumulados para o feedback (zera o contador). */
-  function takeReviewSeconds(feedbackId: number): number {
+  /** Segundos de revisão acumulados para o feedback (sem zerar: só zera se a aprovação der certo). */
+  function peekReviewSeconds(feedbackId: number): number {
     pauseReviewClock();
-    const ms = reviewMs.current.get(feedbackId) || 0;
-    reviewMs.current.delete(feedbackId);
-    return Math.round(ms / 1000);
+    return Math.round((reviewMs.current.get(feedbackId) || 0) / 1000);
   }
 
   // Sync edit text and criteria when selection changes
@@ -383,20 +383,25 @@ export default function ReviewDashboard() {
         criteriaScores: currentCriteriaScores,
         ...(isGradeDirty() ? { teacherGrade: grade.value } : {}),
       });
-      await approveFeedback(selected.feedback_id, takeReviewSeconds(selected.feedback_id));
-      await loadActivity();
-
-      // Avanço automático para o próximo não aprovado
-      let nextIndex = filteredResponses.findIndex(
-        (r, i) => i > selectedIndex && r.status !== 'aprovado'
-      );
-      if (nextIndex === -1) {
-        nextIndex = filteredResponses.findIndex(
-          (r, i) => i !== selectedIndex && r.status !== 'aprovado'
-        );
+      const approvedId = selected.feedback_id;
+      try {
+        await approveFeedback(approvedId, peekReviewSeconds(approvedId));
+      } catch (approveError) {
+        // A aprovação falhou: o tempo continua contando para este aluno
+        reviewStart.current = { id: approvedId, at: Date.now() };
+        throw approveError;
       }
-      if (nextIndex !== -1) {
-        setSelectedIndex(nextIndex);
+      reviewMs.current.delete(approvedId);
+
+      // Próximo aluno não aprovado, escolhido na lista de antes e achado pelo id na lista nova
+      // (na aba "A revisar" o aluno aprovado sai da lista e as posições mudam)
+      const next =
+        filteredResponses.find((r, i) => i > selectedIndex && r.status !== 'aprovado') ||
+        filteredResponses.find((r, i) => i !== selectedIndex && r.status !== 'aprovado');
+      const fresh = await loadActivity();
+      if (next && fresh) {
+        const nextIndex = filterResponses(fresh.responses, filter).findIndex((r) => r.id === next.id);
+        if (nextIndex !== -1) setSelectedIndex(nextIndex);
       }
     } catch (err: unknown) {
       const msg =
@@ -407,7 +412,7 @@ export default function ReviewDashboard() {
     } finally {
       setActionLoading('');
     }
-  }, [selected?.feedback_id, editText, currentCriteriaScores, loadActivity, filteredResponses, selectedIndex, gradeText, isGradeDirty]);
+  }, [selected?.feedback_id, editText, currentCriteriaScores, loadActivity, filteredResponses, selectedIndex, gradeText, isGradeDirty, filter]);
 
   async function handleToggleAiGrade() {
     if (!activity) return;
@@ -587,7 +592,7 @@ export default function ReviewDashboard() {
   const objectiveOptions: ObjectiveOption[] = isObjective ? parseJsonArray<ObjectiveOption>(activity.options) : [];
   const objectiveResult: ObjectiveResult | null = selected?.auto_result ? parseJsonObject<ObjectiveResult>(selected.auto_result) : null;
   const needsGeneration = activity.responses.some((r) => !r.feedback_id);
-  const toReviewCount = activity.responses.filter((r) => r.status !== 'aprovado').length;
+  const toReviewCount = activity.responses.filter((r) => r.feedback_id && r.status !== 'aprovado').length;
   const pendingFeedbacksCount = activity.responses.filter(
     (r) => r.feedback_id && r.status !== 'aprovado'
   ).length;

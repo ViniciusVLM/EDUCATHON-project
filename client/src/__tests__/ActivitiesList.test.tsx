@@ -162,4 +162,21 @@ describe('ActivitiesList — busca e arquivadas', () => {
     await waitFor(() => expect(api.duplicateActivity).toHaveBeenCalledWith(1, { title: 'Fotossíntese (cópia)', classId: 6 }));
     expect(mockNavigate).toHaveBeenCalledWith('/upload/42');
   });
+  it('abas indicam qual está ativa e, sem a lista de turmas, a cópia fica sem turma com aviso', async () => {
+    const user = userEvent.setup();
+    mockGetActivities.mockResolvedValue([{ ...list[0], class_id: 5 }, list[1], list[2]]);
+    vi.mocked(api.getClasses).mockRejectedValue(new Error('falhou'));
+    vi.mocked(api.duplicateActivity).mockResolvedValue({ message: 'ok', id: 43 });
+    renderActivitiesList();
+
+    expect(await screen.findByRole('button', { name: 'Ativas (2)' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'Arquivadas (1)' })).toHaveAttribute('aria-pressed', 'false');
+
+    await user.click(document.getElementById('btn-duplicate-1') as HTMLElement);
+    expect(await screen.findByText(/Não foi possível carregar suas turmas/)).toBeInTheDocument();
+    const form = screen.getByRole('form', { name: 'Reaplicar atividade' });
+    expect(within(form).getByRole('heading')).toHaveFocus();
+    await user.click(within(form).getByRole('button', { name: /Criar cópia/ }));
+    await waitFor(() => expect(api.duplicateActivity).toHaveBeenCalledWith(1, { title: 'Fotossíntese (cópia)', classId: null }));
+  });
 });

@@ -64,6 +64,7 @@ describe('ClassInsights', () => {
     expect(screen.getByText('6,8')).toBeInTheDocument();
     expect(screen.getByText(/diferença média de 0,8 ponto/)).toBeInTheDocument();
     expect(screen.getByText(/editou o texto da IA em 2 de 5/)).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: /0 a 2: 0; 2 a 4: 1; 4 a 6: 0; 6 a 8: 2; 8 a 10: 2/ })).toBeInTheDocument();
   });
 
   it('compara o tempo medido com a estimativa manual do professor', async () => {

@@ -217,7 +217,11 @@ export function ClassInsights({ activityId, refreshKey, onSelectStudent }: Class
             {data.grades.count > 0 && (
               <section className="insights__section">
                 <h4 className="insights__section-title">Distribuição das notas</h4>
-                <div className="insights__histogram" role="img" aria-label="Quantidade de alunos por faixa de nota">
+                <div
+                  className="insights__histogram"
+                  role="img"
+                  aria-label={`Alunos por faixa de nota: ${data.grades.distribution.map((b) => `${b.label}: ${b.count}`).join('; ')}`}
+                >
                   {data.grades.distribution.map((b) => {
                     const maxCount = Math.max(...data.grades.distribution.map((x) => x.count), 1);
                     return (
