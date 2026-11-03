@@ -429,6 +429,28 @@ export interface AnswerSheetsResult {
   warnings: string[];
 }
 
+// ── Evolução da turma (GET /classes/:id/progress) ──
+export interface ClassProgress {
+  class_id: number;
+  class_name: string;
+  activities: {
+    activity_id: number;
+    title: string;
+    date: string | null;
+    is_archived: boolean;
+    students: number;
+    approved: number;
+    criteria_percent: number | null;
+    objective_percent: number | null;
+    average_grade: number | null;
+  }[];
+  recurring_criteria: {
+    criterio: string;
+    change: number;
+    points: { activity_id: number; title: string; percent: number }[];
+  }[];
+}
+
 // ── Sugestão de retomada em aula (POST /activities/:id/class-plan) ──
 export interface ClassPlan {
   criteria: InsightCriterion[];

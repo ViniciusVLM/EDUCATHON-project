@@ -25,6 +25,7 @@ import type {
   OrgActivity,
   ActivityInsights,
   ClassPlan,
+  ClassProgress,
 } from '../types';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
@@ -403,6 +404,11 @@ export async function getMe(): Promise<{ teacher: AuthTeacher }> {
 
 export async function getClasses(): Promise<Class[]> {
   return request<Class[]>('/classes');
+}
+
+/** Evolução da turma ao longo das atividades corrigidas. */
+export async function getClassProgress(id: number): Promise<ClassProgress> {
+  return request<ClassProgress>(`/classes/${id}/progress`);
 }
 
 export async function getClass(id: number): Promise<ClassWithStudents> {

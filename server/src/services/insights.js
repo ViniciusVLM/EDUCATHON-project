@@ -210,3 +210,74 @@ export function parseReviewSeconds(value) {
   if (typeof n !== 'number' || !Number.isFinite(n) || n <= 0) return 0;
   return Math.min(Math.round(n), MAX_REVIEW_SECONDS);
 }
+
+function normalizeCriterion(name) {
+  return String(name || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+const MAX_RECURRING = 8;
+
+/**
+ * Evolução da turma: um ponto por atividade já corrigida (com feedbacks), em ordem de data,
+ * e a trajetória dos critérios que se repetem em duas ou mais atividades (mesmo nome).
+ * Serve para o professor ver se a retomada de um ponto funcionou.
+ *
+ * @param {Array<{activity: object, rows: object[]}>} items atividades da turma com as respostas
+ */
+export function buildClassProgress(items) {
+  const timeline = [];
+  const recurring = new Map();
+
+  const sorted = [...items].sort((a, b) => {
+    const da = String(a.activity.due_date || a.activity.created_at || '');
+    const db = String(b.activity.due_date || b.activity.created_at || '');
+    return da.localeCompare(db) || a.activity.id - b.activity.id;
+  });
+
+  for (const { activity, rows } of sorted) {
+    const insights = buildActivityInsights(activity, rows);
+    if (insights.totals.with_feedback === 0) continue;
+
+    // Múltipla escolha mede acertos, não critérios de rubrica
+    const isObjective = activity.question_type === 'objetiva';
+    const criteria = isObjective ? [] : insights.criteria;
+    const met = criteria.reduce((s, c) => s + c.atendidos, 0);
+    const evaluated = criteria.reduce((s, c) => s + c.avaliados, 0);
+    timeline.push({
+      activity_id: activity.id,
+      title: activity.title,
+      date: String(activity.due_date || activity.created_at || '').slice(0, 10) || null,
+      is_archived: Boolean(activity.is_archived),
+      students: insights.totals.students,
+      approved: insights.totals.approved,
+      criteria_percent: evaluated > 0 ? Math.round((met / evaluated) * 100) : null,
+      objective_percent: insights.objective ? insights.objective.percent : null,
+      average_grade: insights.grades.average,
+    });
+
+    for (const c of criteria) {
+      const key = normalizeCriterion(c.criterio);
+      if (!key) continue;
+      const entry = recurring.get(key) || { criterio: c.criterio, points: [] };
+      entry.points.push({ activity_id: activity.id, title: activity.title, percent: c.percent });
+      recurring.set(key, entry);
+    }
+  }
+
+  const repeated = [...recurring.values()]
+    .filter((e) => new Set(e.points.map((p) => p.activity_id)).size >= 2)
+    .map((e) => {
+      const first = e.points[0].percent;
+      const last = e.points[e.points.length - 1].percent;
+      return { ...e, change: last - first };
+    })
+    .sort((a, b) => a.change - b.change || a.criterio.localeCompare(b.criterio, 'pt-BR'))
+    .slice(0, MAX_RECURRING);
+
+  return { activities: timeline, recurring_criteria: repeated };
+}

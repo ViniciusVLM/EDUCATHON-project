@@ -12,6 +12,7 @@ import {
 } from '../services/api';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
+import { ClassProgressPanel } from '../components/ClassProgressPanel';
 import { Chip } from '../components/ui/Chip';
 import { IconPlus, IconAlertCircle, IconCheckCircle } from '../components/ui/Icons';
 import { Mascot } from '../components/ui/Mascot';
@@ -411,6 +412,8 @@ export default function ClassesManagement() {
                 Fechar
               </Button>
             </div>
+
+            <ClassProgressPanel classId={selectedClass.id} />
 
             {/* Código da turma para o portal do aluno */}
             <div className="join-code-box" aria-live="polite">
