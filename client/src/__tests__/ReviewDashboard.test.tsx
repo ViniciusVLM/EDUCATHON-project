@@ -2,7 +2,7 @@
  * Testes da página ReviewDashboard (Fase 4 e Fase 6D).
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, fireEvent, within } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, within, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import ReviewDashboard from '../pages/ReviewDashboard';
@@ -308,6 +308,10 @@ describe('ReviewDashboard — Recursos da Fase 6D', () => {
 
     await waitFor(() => {
       expect(screen.getByText('Fotossíntese converte energia luminosa em glicose.')).toBeInTheDocument();
+    }, { timeout: 3000 });
+    // Deixa a tela terminar de recarregar (o atalho é religado a cada troca de aluno)
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
     });
 
     // Pressiona Alt+ArrowLeft para voltar para Beatriz Santos
@@ -315,7 +319,7 @@ describe('ReviewDashboard — Recursos da Fase 6D', () => {
 
     await waitFor(() => {
       expect(screen.getByText('As plantas usam a luz do sol e água para crescer.')).toBeInTheDocument();
-    });
+    }, { timeout: 3000 });
   });
 });
 

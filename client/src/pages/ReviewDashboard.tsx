@@ -553,8 +553,11 @@ export default function ReviewDashboard() {
 
   // Atalhos de teclado (Alt+A para aprovar, Alt+→ para próximo, Alt+← para anterior)
   // Não conflitam com a digitação em textarea/input
-  useEffect(() => {
-    function handleKeyDown(e: KeyboardEvent) {
+  // O atalho fica registrado uma vez só e sempre chama a versão mais nova do handler.
+  // Antes, o listener era removido e registrado de novo a cada troca de aluno, e uma tecla
+  // apertada nesse meio-tempo podia usar o aluno anterior ou se perder.
+  const keyHandlerRef = useRef<(e: KeyboardEvent) => void>(() => {});
+  keyHandlerRef.current = function handleKeyDown(e: KeyboardEvent) {
       const target = e.target as HTMLElement | null;
       const isTyping =
         target?.tagName === 'INPUT' ||
@@ -602,11 +605,13 @@ export default function ReviewDashboard() {
         handleNavigateRelative(-1);
         return;
       }
-    }
+  };
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selected?.feedback_id, selected?.status, actionLoading, handleApprove, handleNavigateRelative]);
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => keyHandlerRef.current(e);
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
 
   function getStatusChip(status: string | null) {
     switch (status) {
