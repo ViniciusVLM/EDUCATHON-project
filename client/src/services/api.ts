@@ -23,6 +23,7 @@ import type {
   StudentSubjectSummary,
   AnswerSheetsResult,
   OrgActivity,
+  ActivityInsights,
 } from '../types';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
@@ -247,12 +248,35 @@ export async function updateFeedback(
   });
 }
 
-export async function approveFeedback(feedbackId: number): Promise<{
+/**
+ * Aprova um feedback. reviewSeconds é o tempo que o professor passou revisando este aluno,
+ * usado para medir o ganho de tempo frente à correção manual.
+ */
+export async function approveFeedback(feedbackId: number, reviewSeconds?: number): Promise<{
   message: string;
   status: string;
 }> {
   return request(`/feedback/${feedbackId}/approve`, {
     method: 'POST',
+    ...(reviewSeconds && reviewSeconds > 0 ? { body: JSON.stringify({ reviewSeconds }) } : {}),
+  });
+}
+
+/** Aprova de uma vez, no servidor, todos os feedbacks ainda não aprovados da atividade. */
+export async function approveAllFeedbacks(activityId: number): Promise<{ message: string; approved: number }> {
+  return request(`/activities/${activityId}/approve-all`, { method: 'POST' });
+}
+
+/** Diagnóstico da turma: critérios, notas, alunos que pedem atenção e tempo de revisão. */
+export async function getActivityInsights(activityId: number): Promise<ActivityInsights> {
+  return request(`/activities/${activityId}/insights`);
+}
+
+/** Arquiva (some do painel e da lista principal) ou reativa uma atividade. Nada é apagado. */
+export async function setActivityArchived(activityId: number, archived: boolean): Promise<{ message: string; archived: boolean }> {
+  return request(`/activities/${activityId}/archive`, {
+    method: 'PATCH',
+    body: JSON.stringify({ archived }),
   });
 }
 
@@ -268,6 +292,21 @@ export async function regenerateFeedback(feedbackId: number): Promise<{
 // ──────────────────────────────────────────
 // Export
 // ──────────────────────────────────────────
+
+/** Lê o nome do arquivo enviado pelo servidor (prefere a versão UTF-8, com acentos). */
+export function filenameFromDisposition(header: string | null): string | null {
+  if (!header) return null;
+  const utf8 = /filename\*=UTF-8''([^;]+)/i.exec(header);
+  if (utf8) {
+    try {
+      return decodeURIComponent(utf8[1].trim());
+    } catch {
+      // cai para o nome ASCII
+    }
+  }
+  const ascii = /filename="([^"]+)"/i.exec(header);
+  return ascii ? ascii[1] : null;
+}
 
 export async function exportCSV(activityId: number): Promise<void> {
   const token = getAuthToken();
@@ -287,7 +326,7 @@ export async function exportCSV(activityId: number): Promise<void> {
   const url = window.URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `feedbacks_atividade_${activityId}.csv`;
+  a.download = filenameFromDisposition(response.headers.get('content-disposition')) || `feedbacks_atividade_${activityId}.csv`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);

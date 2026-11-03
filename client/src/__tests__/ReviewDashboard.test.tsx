@@ -15,6 +15,8 @@ vi.mock('../services/api', () => ({
   getProgress: vi.fn().mockResolvedValue({ status: 'complete', total: 1, processed: 1, errors: 0 }),
   updateFeedback: vi.fn().mockResolvedValue({ message: 'OK', status: 'revisado' }),
   approveFeedback: vi.fn().mockResolvedValue({ message: 'OK', status: 'aprovado' }),
+  approveAllFeedbacks: vi.fn().mockResolvedValue({ message: '2 feedback(s) aprovado(s).', approved: 2 }),
+  getActivityInsights: vi.fn().mockResolvedValue(null),
   regenerateFeedback: vi.fn().mockResolvedValue({ message: 'OK', feedbackId: 10 }),
   setActivityAiGrade: vi.fn().mockResolvedValue({ message: 'Nota sugerida ligada.', aiGradeEnabled: true }),
 }));
@@ -22,6 +24,7 @@ vi.mock('../services/api', () => ({
 const mockGetActivity = vi.mocked(api.getActivity);
 const mockUpdateFeedback = vi.mocked(api.updateFeedback);
 const mockApproveFeedback = vi.mocked(api.approveFeedback);
+const mockApproveAll = vi.mocked(api.approveAllFeedbacks);
 
 const sampleActivity: ActivityWithResponses = {
   id: 1,
@@ -242,7 +245,7 @@ describe('ReviewDashboard — Recursos da Fase 6D', () => {
     await user.click(approveBtn);
 
     await waitFor(() => {
-      expect(mockApproveFeedback).toHaveBeenCalledWith(201);
+      expect(mockApproveFeedback).toHaveBeenCalledWith(201, expect.any(Number));
       // Avança automaticamente para o próximo não aprovado (Carlos Dias)
       expect(screen.getByText('Fotossíntese converte energia luminosa em glicose.')).toBeInTheDocument();
     });
@@ -267,9 +270,10 @@ describe('ReviewDashboard — Recursos da Fase 6D', () => {
     );
 
     await waitFor(() => {
-      expect(mockApproveFeedback).toHaveBeenCalledWith(201);
-      expect(mockApproveFeedback).toHaveBeenCalledWith(202);
+      // Uma chamada só ao servidor, que aprova todos numa transação
+      expect(mockApproveAll).toHaveBeenCalledWith(1);
     });
+    expect(mockApproveFeedback).not.toHaveBeenCalled();
   });
 
   it('executa atalho de teclado Alt+A para aprovar o aluno atual', async () => {
@@ -285,7 +289,7 @@ describe('ReviewDashboard — Recursos da Fase 6D', () => {
     fireEvent.keyDown(window, { key: 'a', altKey: true });
 
     await waitFor(() => {
-      expect(mockApproveFeedback).toHaveBeenCalledWith(201);
+      expect(mockApproveFeedback).toHaveBeenCalledWith(201, expect.any(Number));
     });
   });
 
@@ -437,5 +441,55 @@ describe('ReviewDashboard — cota do Gemini esgotada', () => {
     renderDashboard();
     expect(await screen.findByText('A cota gratuita do Gemini acabou por hoje.')).toBeInTheDocument();
     expect(screen.getByText(/parou para não gastar tentativas/i)).toBeInTheDocument();
+  });
+});
+
+describe('ReviewDashboard — aba "A revisar" e tempo de revisão', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('a aba "A revisar" inclui os feedbacks editados e ainda não aprovados', async () => {
+    const user = userEvent.setup();
+    mockGetActivity.mockResolvedValue({
+      ...multiStudentActivity,
+      stats: { total_students: 3, total_feedbacks: 3, pending: 1, reviewed: 1, approved: 1 },
+      responses: [
+        { ...multiStudentActivity.responses[0], status: 'revisado', teacher_feedback: 'Editado pelo professor.' },
+        { ...multiStudentActivity.responses[1], status: 'aprovado' },
+        {
+          ...multiStudentActivity.responses[1],
+          id: 103,
+          feedback_id: 203,
+          student_name: 'Diana Lopes',
+          status: 'pendente',
+        },
+      ],
+    });
+    renderDashboard();
+
+    const tab = await screen.findByRole('button', { name: /A revisar \(2\)/ });
+    await user.click(tab);
+
+    const sidebar = document.querySelector('.review-sidebar') as HTMLElement;
+    expect(sidebar).toHaveTextContent('Beatriz Santos');
+    expect(sidebar).toHaveTextContent('Diana Lopes');
+    expect(sidebar).not.toHaveTextContent('Carlos Dias');
+  });
+
+  it('envia o tempo de revisão do aluno ao aprovar', async () => {
+    const user = userEvent.setup();
+    let now = 1_000_000;
+    const nowSpy = vi.spyOn(Date, 'now').mockImplementation(() => now);
+    mockGetActivity.mockResolvedValue(sampleActivity);
+
+    renderDashboard();
+    await waitFor(() => expect(screen.getAllByText('Beatriz Santos').length).toBeGreaterThan(0));
+
+    now += 95_000; // o professor passou 95 s revisando
+    await user.click(screen.getByRole('button', { name: /Aprovar$/i }));
+
+    await waitFor(() => expect(mockApproveFeedback).toHaveBeenCalledWith(201, 95));
+    nowSpy.mockRestore();
   });
 });

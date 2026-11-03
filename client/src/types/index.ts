@@ -77,6 +77,7 @@ export interface StudentResponse {
   // Nota de 0 a 10 lançada pelo professor (a IA nunca preenche)
   teacher_grade?: number | null;
   auto_result?: string | null; // JSON: ObjectiveResult
+  review_seconds?: number | null; // tempo que o professor levou revisando este aluno
 }
 
 export interface ActivityStats {
@@ -424,4 +425,42 @@ export interface AnswerSheetsResult {
   questions: string[];
   students: AnswerSheetStudent[];
   warnings: string[];
+}
+
+// ── Diagnóstico da turma (GET /activities/:id/insights) ──
+
+export interface InsightCriterion {
+  criterio: string;
+  atendidos: number;
+  avaliados: number;
+  percent: number;
+}
+
+export interface ActivityInsights {
+  activity_id: number;
+  question_type: 'dissertativa' | 'objetiva';
+  totals: {
+    students: number;
+    with_feedback: number;
+    without_feedback: number;
+    pending: number;
+    edited: number;
+    approved: number;
+  };
+  /** Ordenados do menos para o mais atendido */
+  criteria: InsightCriterion[];
+  weakest_criterion: InsightCriterion | null;
+  grades: {
+    count: number;
+    average: number | null;
+    min: number | null;
+    max: number | null;
+    distribution: { label: string; count: number }[];
+  };
+  ai_agreement: { compared: number; average_difference: number; within_one_point: number } | null;
+  teacher_edits: { approved: number; edited: number; percent: number };
+  review_time: { timed: number; total_seconds: number; average_seconds: number | null };
+  objective: { answered: number; correct: number; percent: number; options: Record<string, number> } | null;
+  attention: { response_id: number; student_name: string; reasons: string[] }[];
+  attention_total: number;
 }

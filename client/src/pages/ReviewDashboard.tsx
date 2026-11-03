@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import {
   getActivity,
@@ -6,6 +6,7 @@ import {
   getProgress as fetchProgress,
   updateFeedback,
   approveFeedback,
+  approveAllFeedbacks,
   regenerateFeedback,
   setActivityAiGrade,
 } from '../services/api';
@@ -26,6 +27,7 @@ import { ProgressBar } from '../components/ui/ProgressBar';
 import { Stamp } from '../components/ui/Stamp';
 import { Window, toFileSlug } from '../components/ui/Window';
 import { Mascot } from '../components/ui/Mascot';
+import { ClassInsights } from '../components/ClassInsights';
 import { getActivityQuestions, getResponseAnswers } from '../services/questions';
 import {
   IconCheckCircle,
@@ -53,6 +55,8 @@ export default function ReviewDashboard() {
 
   function filterResponses(responses: StudentResponse[], f: FilterType): StudentResponse[] {
     if (f === 'todos') return responses;
+    // "A revisar" inclui os editados e ainda não aprovados (antes eles sumiam das duas abas)
+    if (f === 'pendente') return responses.filter((r) => r.status !== 'aprovado');
     return responses.filter((r) => r.status === f);
   }
 
@@ -115,6 +119,50 @@ export default function ReviewDashboard() {
 
   const filteredResponses = activity ? filterResponses(activity.responses, filter) : [];
   const selected = filteredResponses[selectedIndex] || null;
+
+  // ── Tempo de revisão ──
+  // Conta o tempo em que o feedback de cada aluno ficou aberto com a aba visível.
+  // Vai junto na aprovação para o diagnóstico comparar com a correção manual.
+  const reviewMs = useRef<Map<number, number>>(new Map());
+  const reviewStart = useRef<{ id: number; at: number } | null>(null);
+
+  const pauseReviewClock = useCallback(() => {
+    const current = reviewStart.current;
+    if (!current) return;
+    const elapsed = Date.now() - current.at;
+    reviewMs.current.set(current.id, (reviewMs.current.get(current.id) || 0) + elapsed);
+    reviewStart.current = null;
+  }, []);
+
+  const selectedFeedbackId = selected?.feedback_id ?? null;
+  const selectedStatus = selected?.status ?? null;
+  useEffect(() => {
+    pauseReviewClock();
+    const isVisible = typeof document === 'undefined' || document.visibilityState !== 'hidden';
+    if (selectedFeedbackId && selectedStatus !== 'aprovado' && isVisible) {
+      reviewStart.current = { id: selectedFeedbackId, at: Date.now() };
+    }
+    function onVisibility() {
+      if (document.visibilityState === 'hidden') {
+        pauseReviewClock();
+      } else if (selectedFeedbackId && selectedStatus !== 'aprovado' && !reviewStart.current) {
+        reviewStart.current = { id: selectedFeedbackId, at: Date.now() };
+      }
+    }
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility);
+      pauseReviewClock();
+    };
+  }, [selectedFeedbackId, selectedStatus, pauseReviewClock]);
+
+  /** Segundos de revisão acumulados para o feedback (zera o contador). */
+  function takeReviewSeconds(feedbackId: number): number {
+    pauseReviewClock();
+    const ms = reviewMs.current.get(feedbackId) || 0;
+    reviewMs.current.delete(feedbackId);
+    return Math.round(ms / 1000);
+  }
 
   // Sync edit text and criteria when selection changes
   useEffect(() => {
@@ -248,6 +296,23 @@ export default function ReviewDashboard() {
     setSelectedIndex(0);
   }
 
+  /** Abre um aluno vindo do diagnóstico da turma (mostra a lista completa). */
+  function handleJumpToResponse(responseId: number) {
+    if (!activity) return;
+    const index = activity.responses.findIndex((r) => r.id === responseId);
+    if (index === -1) return;
+    if (filter === 'todos' && index === selectedIndex) return;
+    if (isDirty()) {
+      const confirmed = window.confirm(
+        'Você tem alterações não salvas no feedback atual. Deseja descartar as alterações e abrir este aluno?'
+      );
+      if (!confirmed) return;
+    }
+    setFilter('todos');
+    setSelectedIndex(index);
+    document.querySelector('.review-layout')?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+  }
+
   function handleToggleCriterion(idx: number) {
     setCurrentCriteriaScores((prev) => {
       const updated = [...prev];
@@ -318,7 +383,7 @@ export default function ReviewDashboard() {
         criteriaScores: currentCriteriaScores,
         ...(isGradeDirty() ? { teacherGrade: grade.value } : {}),
       });
-      await approveFeedback(selected.feedback_id);
+      await approveFeedback(selected.feedback_id, takeReviewSeconds(selected.feedback_id));
       await loadActivity();
 
       // Avanço automático para o próximo não aprovado
@@ -392,7 +457,8 @@ export default function ReviewDashboard() {
     setActionLoading('approve-all');
     setError('');
     try {
-      await Promise.all(pendingWithFeedback.map((p) => approveFeedback(p.feedback_id!)));
+      // Uma chamada só: o servidor aprova todos numa transação (tudo ou nada)
+      await approveAllFeedbacks(Number(activityId));
       await loadActivity();
     } catch (err: unknown) {
       const msg =
@@ -521,6 +587,7 @@ export default function ReviewDashboard() {
   const objectiveOptions: ObjectiveOption[] = isObjective ? parseJsonArray<ObjectiveOption>(activity.options) : [];
   const objectiveResult: ObjectiveResult | null = selected?.auto_result ? parseJsonObject<ObjectiveResult>(selected.auto_result) : null;
   const needsGeneration = activity.responses.some((r) => !r.feedback_id);
+  const toReviewCount = activity.responses.filter((r) => r.status !== 'aprovado').length;
   const pendingFeedbacksCount = activity.responses.filter(
     (r) => r.feedback_id && r.status !== 'aprovado'
   ).length;
@@ -599,9 +666,9 @@ export default function ReviewDashboard() {
         <div className="stat-item">
           <div>
             <div className="stat-value" style={{ color: 'var(--warning-500)' }}>
-              {activity.stats.pending || 0}
+              {toReviewCount}
             </div>
-            <div className="stat-label">Pendentes</div>
+            <div className="stat-label">A revisar</div>
           </div>
         </div>
         <div className="stat-item">
@@ -696,6 +763,17 @@ export default function ReviewDashboard() {
         </Card>
       )}
 
+      {/* Diagnóstico da turma (recarrega quando os feedbacks mudam) */}
+      {activity.responses.some((r) => r.feedback_id) && (
+        <ClassInsights
+          activityId={activity.id}
+          refreshKey={activity.responses
+            .map((r) => `${r.feedback_id}:${r.status}:${r.teacher_grade ?? ''}:${r.criteria_scores ?? ''}`)
+            .join('|')}
+          onSelectStudent={handleJumpToResponse}
+        />
+      )}
+
       {/* Filter Tabs e Dica de Atalhos */}
       <div className="page-header-row" style={{ marginBottom: 'var(--space-4)' }}>
         <div className="filter-tabs" style={{ margin: 0 }}>
@@ -708,8 +786,9 @@ export default function ReviewDashboard() {
           <button
             className={`filter-tab ${filter === 'pendente' ? 'active' : ''}`}
             onClick={() => handleFilterChange('pendente')}
+            title="Feedbacks ainda não aprovados, inclusive os que você já editou"
           >
-            Pendentes ({activity.stats.pending || 0})
+            A revisar ({toReviewCount})
           </button>
           <button
             className={`filter-tab ${filter === 'aprovado' ? 'active' : ''}`}
