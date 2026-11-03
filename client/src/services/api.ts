@@ -272,6 +272,20 @@ export async function getActivityInsights(activityId: number): Promise<ActivityI
   return request(`/activities/${activityId}/insights`);
 }
 
+/**
+ * Reaplica uma atividade (ex.: em outra turma). Copia enunciado, rubrica, critérios e alternativas;
+ * não copia respostas, feedbacks, notas nem o prazo. classId null = sem turma.
+ */
+export async function duplicateActivity(
+  activityId: number,
+  data: { classId?: number | null; title?: string } = {}
+): Promise<{ message: string; id: number }> {
+  return request(`/activities/${activityId}/duplicate`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
 /** Arquiva (some do painel e da lista principal) ou reativa uma atividade. Nada é apagado. */
 export async function setActivityArchived(activityId: number, archived: boolean): Promise<{ message: string; archived: boolean }> {
   return request(`/activities/${activityId}/archive`, {

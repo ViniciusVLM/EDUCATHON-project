@@ -306,4 +306,44 @@ describe('rotas de diagnóstico, aprovação em lote e arquivamento', () => {
     const insights = await request(app).get(`/api/activities/${id}/insights`).set(auth(token));
     assert.equal(insights.body.objective.percent, 50);
   });
+  test('POST /duplicate copia a atividade sem respostas e respeita turma e dono', async () => {
+    const token = await registerTeacher('diag12@escola.dev');
+    const other = await registerTeacher('diag13@escola.dev');
+    const { id } = await createActivityWithFeedbacks(token, RESPONSES.slice(0, 1));
+    assert.equal((await request(app).post(`/api/activities/${id}/duplicate`).set(auth(other))).status, 404);
+    assert.equal((await request(app).post(`/api/activities/${id}/duplicate`).set(auth(token)).send({ classId: 99999 })).status, 404);
+    assert.equal((await request(app).post(`/api/activities/${id}/duplicate`).set(auth(token)).send({ title: '' })).status, 400);
+
+    const dup = await request(app).post(`/api/activities/${id}/duplicate`).set(auth(token));
+    assert.equal(dup.status, 201, JSON.stringify(dup.body));
+    const copy = await request(app).get(`/api/activities/${dup.body.id}`).set(auth(token));
+    const orig = await request(app).get(`/api/activities/${id}`).set(auth(token));
+    assert.equal(copy.body.title, 'Ciclo da água (cópia)');
+    for (const field of ['question', 'rubric', 'education_level', 'rubric_criteria', 'question_type']) {
+      assert.deepEqual(copy.body[field], orig.body[field], field);
+    }
+    assert.equal(copy.body.responses.length, 0, 'não copia respostas');
+    assert.equal(copy.body.due_date, null);
+  });
+
+  test('POST /duplicate mantém perguntas extras e alternativas', async () => {
+    const token = await registerTeacher('diag14@escola.dev');
+    const multi = await request(app).post('/api/activities').set(auth(token)).send({
+      title: 'Prova', question: 'P1?', rubric: 'R1.', extraQuestions: [{ question: 'P2?', rubric: 'R2.' }],
+    });
+    const dupMulti = await request(app).post(`/api/activities/${multi.body.id}/duplicate`).set(auth(token)).send({ title: 'Prova 2' });
+    const copyMulti = await request(app).get(`/api/activities/${dupMulti.body.id}`).set(auth(token));
+    assert.equal(copyMulti.body.title, 'Prova 2');
+    assert.equal(JSON.parse(copyMulti.body.questions).length, 2);
+
+    const quiz = await request(app).post('/api/activities').set(auth(token)).send({
+      title: 'Quiz', question: 'Qual?', rubric: '', questionType: 'objetiva',
+      options: [{ texto: 'um' }, { texto: 'dois' }], correctOption: 'B',
+    });
+    const dupQuiz = await request(app).post(`/api/activities/${quiz.body.id}/duplicate`).set(auth(token));
+    const copyQuiz = await request(app).get(`/api/activities/${dupQuiz.body.id}`).set(auth(token));
+    assert.equal(copyQuiz.body.question_type, 'objetiva');
+    assert.equal(copyQuiz.body.correct_option, 'B');
+    assert.equal(JSON.parse(copyQuiz.body.options).length, 2);
+  });
 });

@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { getActivities, setActivityArchived } from '../services/api';
-import type { Activity } from '../types';
+import { getActivities, setActivityArchived, duplicateActivity, getClasses } from '../services/api';
+import type { Activity, Class } from '../types';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Chip } from '../components/ui/Chip';
@@ -19,6 +19,11 @@ export default function ActivitiesList() {
   const [query, setQuery] = useState('');
   const [view, setView] = useState<'ativas' | 'arquivadas'>('ativas');
   const [busyId, setBusyId] = useState<number | null>(null);
+  const [duplicating, setDuplicating] = useState<Activity | null>(null);
+  const [dupTitle, setDupTitle] = useState('');
+  const [dupClassId, setDupClassId] = useState('');
+  const [classes, setClasses] = useState<Class[] | null>(null);
+  const [dupSaving, setDupSaving] = useState(false);
 
   useEffect(() => {
     getActivities()
@@ -53,6 +58,36 @@ export default function ActivitiesList() {
       setError(err instanceof Error ? err.message : 'Não foi possível arquivar a atividade.');
     } finally {
       setBusyId(null);
+    }
+  }
+
+  function openDuplicate(activity: Activity) {
+    setDuplicating(activity);
+    setDupTitle(`${activity.title} (cópia)`.slice(0, 200));
+    setDupClassId(activity.class_id ? String(activity.class_id) : '');
+    setError('');
+    setInfo('');
+    if (classes === null) {
+      getClasses()
+        .then(setClasses)
+        .catch(() => setClasses([]));
+    }
+  }
+
+  async function handleDuplicate(e: React.FormEvent) {
+    e.preventDefault();
+    if (!duplicating) return;
+    setDupSaving(true);
+    setError('');
+    try {
+      const res = await duplicateActivity(duplicating.id, {
+        title: dupTitle.trim(),
+        classId: dupClassId ? Number(dupClassId) : null,
+      });
+      navigate(`/upload/${res.id}`);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Não foi possível reaplicar a atividade.');
+      setDupSaving(false);
     }
   }
 
@@ -106,6 +141,48 @@ export default function ActivitiesList() {
           <IconAlertCircle size={18} />
           <span>{error}</span>
         </div>
+      )}
+
+      {duplicating && (
+        <Card className="duplicate-panel">
+          <form onSubmit={handleDuplicate} aria-label="Reaplicar atividade">
+            <h3 className="duplicate-panel__title">Reaplicar “{duplicating.title}”</h3>
+            <p className="duplicate-panel__hint">
+              Copia o enunciado, a rubrica, os critérios e as alternativas. Respostas, feedbacks, notas e prazo não
+              são copiados.
+            </p>
+            <div className="duplicate-panel__fields">
+              <label className="duplicate-panel__field">
+                <span>Título da cópia</span>
+                <input
+                  value={dupTitle}
+                  onChange={(e) => setDupTitle(e.target.value)}
+                  maxLength={200}
+                  required
+                />
+              </label>
+              <label className="duplicate-panel__field">
+                <span>Turma</span>
+                <select value={dupClassId} onChange={(e) => setDupClassId(e.target.value)}>
+                  <option value="">Sem turma</option>
+                  {(classes || []).map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <div className="table-actions">
+              <Button type="button" variant="ghost" onClick={() => setDuplicating(null)} disabled={dupSaving}>
+                Cancelar
+              </Button>
+              <Button type="submit" variant="primary" loading={dupSaving} disabled={dupSaving || !dupTitle.trim()}>
+                Criar cópia e enviar respostas
+              </Button>
+            </div>
+          </form>
+        </Card>
       )}
 
       {activities.length === 0 ? (
@@ -212,6 +289,18 @@ export default function ActivitiesList() {
                           id={`btn-review-${a.id}`}
                         >
                           Abrir →
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openDuplicate(a);
+                          }}
+                          id={`btn-duplicate-${a.id}`}
+                          title="Usar a mesma atividade em outra turma"
+                        >
+                          Reaplicar
                         </Button>
                         <Button
                           variant="ghost"

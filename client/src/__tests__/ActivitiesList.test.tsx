@@ -3,7 +3,7 @@
  * Cobre: estado de loading, empty state e listagem de atividades.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import ActivitiesList from '../pages/ActivitiesList';
@@ -19,6 +19,8 @@ vi.mock('react-router-dom', async (importOriginal) => {
 vi.mock('../services/api', () => ({
   getActivities: vi.fn(),
   setActivityArchived: vi.fn(),
+  duplicateActivity: vi.fn(),
+  getClasses: vi.fn(),
 }));
 
 const mockGetActivities = vi.mocked(api.getActivities);
@@ -138,5 +140,26 @@ describe('ActivitiesList — busca e arquivadas', () => {
     expect(screen.getByRole('button', { name: 'Arquivadas (2)' })).toBeInTheDocument();
     expect(mockNavigate).not.toHaveBeenCalled();
     confirmSpy.mockRestore();
+  });
+  it('reaplica a atividade em outra turma e leva ao envio de respostas', async () => {
+    const user = userEvent.setup();
+    mockGetActivities.mockResolvedValue(list);
+    vi.mocked(api.getClasses).mockResolvedValue([
+      { id: 5, teacher_id: 1, name: '9º A' },
+      { id: 6, teacher_id: 1, name: '9º B' },
+    ] as never);
+    vi.mocked(api.duplicateActivity).mockResolvedValue({ message: 'ok', id: 42 });
+    renderActivitiesList();
+
+    await screen.findByText('Fotossíntese');
+    await user.click(document.getElementById('btn-duplicate-1') as HTMLElement);
+    const form = await screen.findByRole('form', { name: 'Reaplicar atividade' });
+    expect(within(form).getByDisplayValue('Fotossíntese (cópia)')).toBeInTheDocument();
+    await screen.findByRole('option', { name: '9º B' });
+    await user.selectOptions(within(form).getByRole('combobox'), '6');
+    await user.click(within(form).getByRole('button', { name: /Criar cópia/ }));
+
+    await waitFor(() => expect(api.duplicateActivity).toHaveBeenCalledWith(1, { title: 'Fotossíntese (cópia)', classId: 6 }));
+    expect(mockNavigate).toHaveBeenCalledWith('/upload/42');
   });
 });

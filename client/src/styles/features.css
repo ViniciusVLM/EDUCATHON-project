@@ -976,3 +976,46 @@ a.edu-user__item:hover { background: var(--surface-hover); }
 .insights__bars .ui-progress-bar__fill--green {
   background: repeating-linear-gradient(-45deg, var(--success-500) 0 8px, color-mix(in srgb, var(--success-500) 80%, #000) 8px 16px) !important;
 }
+
+/* ── Reaplicar atividade ─────────────────────────────────────────────── */
+.duplicate-panel {
+  margin-bottom: var(--space-5);
+}
+
+.duplicate-panel__title {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-lg);
+  overflow-wrap: anywhere;
+}
+
+.duplicate-panel__hint {
+  margin: 0 0 var(--space-4);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.duplicate-panel__fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.duplicate-panel__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-size: var(--text-sm);
+  font-weight: 700;
+}
+
+.duplicate-panel__field input,
+.duplicate-panel__field select {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-md);
+  background: var(--surface-input);
+  color: var(--text-primary);
+  font: inherit;
+  font-weight: 400;
+}

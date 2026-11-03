@@ -113,6 +113,7 @@ Faça login com a conta de demonstração pré-populada:
 | **Tempo de revisão x correção manual** | Diagnóstico da turma e Painel | A tela de revisão mede o tempo em que cada feedback ficou aberto (só com a aba visível) e envia ao aprovar. O professor informa quantos minutos levaria corrigindo à mão e o Educathon calcula o tempo economizado. A estimativa manual é do professor e fica só no navegador dele: o sistema não inventa esse número. |
 | **Aprovar todos de uma vez** | Tela de revisão | Uma única chamada ao servidor aprova, numa transação, todos os feedbacks gerados e ainda não aprovados. Nunca lança a nota sugerida pela IA. |
 | **Arquivar atividades e buscar** | Atividades | Busca por título ou disciplina (ignora acentos). Arquivar tira a atividade do painel e da lista principal sem apagar nada; ela pode ser reativada na aba *Arquivadas*. |
+| **Reaplicar atividade** | Atividades → *Reaplicar* | Cria uma cópia (por exemplo, para outra turma) com o enunciado, a rubrica, os critérios, as alternativas e as perguntas extras. Respostas, feedbacks, notas e prazo não são copiados. |
 | **CSV completo** | Exportar resultados | Além de nome, resposta, feedback, nota e status, uma coluna por critério da rubrica (sim/não) e, em múltipla escolha, a alternativa marcada e se acertou. As 5 primeiras colunas continuam iguais. |
 | **Login com Google** | Telas de login do professor e do aluno | Firebase Authentication. O servidor confere o token com os certificados públicos do Google (sem `firebase-admin`). Os usuários aparecem no console do Firebase. |
 

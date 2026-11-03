@@ -181,6 +181,71 @@ router.patch('/:id/ai-grade', (req, res) => {
   }
 });
 
+function parseJsonOrNull(value) {
+  if (!value || typeof value !== 'string') return value || null;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * POST /api/activities/:id/duplicate
+ * Reaplica a atividade (por exemplo, em outra turma): copia enunciado, rubrica, critérios,
+ * alternativas e perguntas extras. Não copia respostas, feedbacks, notas nem o prazo.
+ * Body opcional: { classId: number | null, title: string }
+ */
+router.post('/:id/duplicate', (req, res) => {
+  try {
+    const original = getActivityIfOwned(Number(req.params.id), req.teacher.id);
+    if (!original) {
+      return res.status(404).json({ error: 'Atividade não encontrada.' });
+    }
+
+    let classId = original.class_id || null;
+    if (req.body?.classId !== undefined) {
+      if (req.body.classId === null || req.body.classId === '') {
+        classId = null;
+      } else {
+        const cls = getClassById(Number(req.body.classId), req.teacher.id);
+        if (!cls) return res.status(404).json({ error: 'Turma não encontrada.' });
+        classId = cls.id;
+      }
+    }
+
+    let title = `${original.title} (cópia)`.slice(0, 200);
+    if (req.body?.title !== undefined) {
+      if (typeof req.body.title !== 'string' || !req.body.title.trim() || req.body.title.trim().length > 200) {
+        return res.status(400).json({ error: 'O título deve ter entre 1 e 200 caracteres.' });
+      }
+      title = req.body.title.trim();
+    }
+
+    const result = createActivity({
+      title,
+      question: original.question,
+      rubric: original.rubric,
+      educationLevel: original.education_level,
+      subject: original.subject,
+      classId,
+      dueDate: null,
+      rubricCriteria: original.rubric_criteria,
+      teacherId: req.teacher.id,
+      questionType: original.question_type,
+      options: original.options,
+      correctOption: original.correct_option,
+      questions: parseJsonOrNull(original.questions),
+      aiGradeEnabled: Boolean(original.ai_grade_enabled),
+    });
+
+    res.status(201).json({ message: 'Cópia criada. Agora é só enviar as respostas.', id: Number(result.id) });
+  } catch (error) {
+    console.error('Erro ao duplicar atividade:', error);
+    res.status(500).json({ error: 'Erro interno ao duplicar a atividade.' });
+  }
+});
+
 /**
  * PATCH /api/activities/:id/archive
  * Arquiva ou reativa uma atividade. Arquivar só tira a atividade do painel e da lista
