@@ -1,4 +1,4 @@
-import { useState, FormEvent } from 'react';
+import { useState, useRef, FormEvent } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { Button } from '../components/ui/Button';
@@ -15,6 +15,7 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const emailRef = useRef<HTMLInputElement | null>(null);
 
   const from = (location.state as { from?: { pathname: string } })?.from?.pathname || '/painel';
 
@@ -34,6 +35,8 @@ export default function Login() {
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Não foi possível conectar ao servidor. Tente novamente em instantes.';
       setError(msg);
+      // O botão fica desabilitado durante o envio e o foco se perderia: volta para o e-mail
+      window.setTimeout(() => emailRef.current?.focus(), 0);
     } finally {
       setLoading(false);
     }
@@ -74,7 +77,7 @@ export default function Login() {
           </div>
 
           {error && (
-            <div className="auth-split__error" role="alert">
+            <div className="auth-split__error" role="alert" id="login-error">
               <IconAlertCircle size={18} />
               <span>{error}</span>
             </div>
@@ -86,8 +89,11 @@ export default function Login() {
                 E-mail institucional ou pessoal *
               </label>
               <input
+                ref={emailRef}
                 id="email"
                 type="email"
+                aria-invalid={error ? true : undefined}
+                aria-describedby={error ? 'login-error' : undefined}
                 className="input"
                 placeholder="exemplo@escola.org"
                 value={email}
@@ -104,6 +110,8 @@ export default function Login() {
               <input
                 id="password"
                 type="password"
+                aria-invalid={error ? true : undefined}
+                aria-describedby={error ? 'login-error' : undefined}
                 className="input"
                 placeholder="Sua senha"
                 value={password}

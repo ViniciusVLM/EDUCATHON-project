@@ -71,7 +71,7 @@ export function getOrgClass(orgId, classId) {
 }
 
 export function getOrgTeacher(orgId, teacherId) {
-  return getDb().prepare('SELECT id, name, email, role FROM teachers WHERE id = ? AND organization_id = ?')
+  return getDb().prepare('SELECT id, name, email, role, google_uid FROM teachers WHERE id = ? AND organization_id = ?')
     .get(teacherId, orgId) || null;
 }
 
@@ -118,7 +118,7 @@ export function listOrgActivities(orgId) {
  */
 export function getManageableStudent(orgId, accountId) {
   const db = getDb();
-  const account = db.prepare('SELECT id, name, email, disabled_at FROM student_accounts WHERE id = ?').get(accountId);
+  const account = db.prepare('SELECT id, name, email, disabled_at, google_uid FROM student_accounts WHERE id = ?').get(accountId);
   if (!account) return { error: 'not_found' };
   const memberships = db.prepare(`
     SELECT s.class_id, t.organization_id FROM students s
@@ -150,11 +150,66 @@ export function setStudentDisabled(accountId, disabled) {
  * respostas e notas já lançadas ficam com o professor), mas o aluno deixa de ver aquela turma.
  */
 export function unlinkStudentFromOrgClass(orgId, accountId, classId) {
+  const db = getDb();
+  return db.transaction(() => {
+    const row = db.prepare(`
+      SELECT s.id FROM students s
+      WHERE s.account_id = ? AND s.class_id = ?
+        AND s.class_id IN (SELECT c.id FROM classes c JOIN teachers t ON t.id = c.teacher_id WHERE t.organization_id = ?)
+      ORDER BY s.id ASC LIMIT 1
+    `).get(accountId, classId, orgId);
+    if (!row) return { changes: 0 };
+    const result = db.prepare('UPDATE students SET account_id = NULL WHERE account_id = ? AND class_id = ?').run(accountId, classId);
+    // Registra a remoção: sem isso, o aluno voltava para a turma usando o código dela
+    db.prepare('INSERT OR REPLACE INTO class_removals (class_id, account_id, student_id) VALUES (?, ?, ?)').run(classId, accountId, row.id);
+    return result;
+  })();
+}
+
+/** Alunos tirados de turmas desta instituição (para o administrador poder devolvê-los). */
+export function listOrgClassRemovals(orgId) {
   return getDb().prepare(`
-    UPDATE students SET account_id = NULL
-    WHERE account_id = ? AND class_id = ?
-      AND class_id IN (SELECT c.id FROM classes c JOIN teachers t ON t.id = c.teacher_id WHERE t.organization_id = ?)
-  `).run(accountId, classId, orgId);
+    SELECT r.account_id AS id, sa.name, sa.email, r.class_id, c.name AS class_name, r.removed_at
+    FROM class_removals r
+    JOIN student_accounts sa ON sa.id = r.account_id
+    JOIN classes c ON c.id = r.class_id
+    JOIN teachers t ON t.id = c.teacher_id
+    WHERE t.organization_id = ?
+    ORDER BY r.removed_at DESC, sa.name ASC
+    LIMIT 500
+  `).all(orgId);
+}
+
+export function isRemovedFromClass(classId, accountId) {
+  return Boolean(getDb().prepare('SELECT 1 FROM class_removals WHERE class_id = ? AND account_id = ?').get(classId, accountId));
+}
+
+/**
+ * A instituição devolve o aluno à turma (ao criar o acesso de novo nela). Religa a conta ao
+ * mesmo cadastro da lista, para o aluno voltar a ver as respostas e notas antigas e o professor
+ * não ficar com o nome duplicado.
+ */
+export function readmitStudentToClass(classId, accountId) {
+  const db = getDb();
+  return db.transaction(() => {
+    const removal = db.prepare('SELECT student_id FROM class_removals WHERE class_id = ? AND account_id = ?').get(classId, accountId);
+    db.prepare('DELETE FROM class_removals WHERE class_id = ? AND account_id = ?').run(classId, accountId);
+    if (removal?.student_id) {
+      const relinked = db.prepare('UPDATE students SET account_id = ? WHERE id = ? AND class_id = ? AND account_id IS NULL')
+        .run(accountId, removal.student_id, classId);
+      if (relinked.changes > 0) return { studentId: removal.student_id };
+    }
+    return joinClass(accountId, classId);
+  })();
+}
+
+/** O aluno foi tirado desta turma pela instituição e não pode voltar sozinho. */
+export class ClassRemovedError extends Error {
+  constructor() {
+    super('Você foi retirado(a) desta turma pela escola. Fale com a coordenação para voltar.');
+    this.name = 'ClassRemovedError';
+    this.status = 403;
+  }
 }
 
 export function removeTeacherFromOrg(orgId, teacherId) {
@@ -195,11 +250,15 @@ export function getClassByJoinCode(code) {
 // Contas de aluno
 // ──────────────────────────────────────────
 
-export function createStudentAccount({ name, email, passwordHash, googleUid = null, emailVerified = false }) {
+/**
+ * emailVerified: e-mail confirmado de verdade (login com Google) — vale em qualquer turma.
+ * verifiedOrgId: a instituição criou o acesso e conhece o aluno — vale SÓ nas turmas dela.
+ */
+export function createStudentAccount({ name, email, passwordHash, googleUid = null, emailVerified = false, verifiedOrgId = null }) {
   const normalizedEmail = email.toLowerCase().trim();
   const result = getDb().prepare(`
-    INSERT INTO student_accounts (name, email, password_hash, google_uid, email_verified) VALUES (?, ?, ?, ?, ?)
-  `).run(name.trim(), normalizedEmail, passwordHash, googleUid, emailVerified ? 1 : 0);
+    INSERT INTO student_accounts (name, email, password_hash, google_uid, email_verified, verified_org_id) VALUES (?, ?, ?, ?, ?, ?)
+  `).run(name.trim(), normalizedEmail, passwordHash, googleUid, emailVerified ? 1 : 0, verifiedOrgId || null);
   return { id: Number(result.lastInsertRowid), name: name.trim(), email: normalizedEmail };
 }
 
@@ -224,7 +283,7 @@ export function linkStudentGoogle(accountId, uid, unusableHash) {
 }
 
 export function getStudentAccount(accountId) {
-  return getDb().prepare('SELECT id, name, email, email_verified, created_at FROM student_accounts WHERE id = ?').get(accountId) || null;
+  return getDb().prepare('SELECT id, name, email, email_verified, verified_org_id, created_at FROM student_accounts WHERE id = ?').get(accountId) || null;
 }
 
 /**
@@ -243,8 +302,20 @@ export function joinClass(accountId, classId) {
   return db.transaction(() => {
     const existing = db.prepare('SELECT id FROM students WHERE class_id = ? AND account_id = ?').get(classId, accountId);
     if (existing) return { studentId: existing.id, alreadyMember: true };
+    if (db.prepare('SELECT 1 FROM class_removals WHERE class_id = ? AND account_id = ?').get(classId, accountId)) {
+      throw new ClassRemovedError();
+    }
 
-    const roster = account.email_verified ? db.prepare(`
+    // O e-mail só é confiável nesta turma se foi confirmado pelo Google, ou se a instituição
+    // que criou o acesso é a dona da turma. Um admin de outra instituição não consegue
+    // "verificar" o e-mail de um aluno alheio e puxar as notas dele.
+    const classOrg = db.prepare(`
+      SELECT t.organization_id AS org FROM classes c JOIN teachers t ON t.id = c.teacher_id WHERE c.id = ?
+    `).get(classId)?.org ?? null;
+    const trusted = Boolean(account.email_verified)
+      || (account.verified_org_id !== null && account.verified_org_id !== undefined && classOrg === account.verified_org_id);
+
+    const roster = trusted ? db.prepare(`
       SELECT id FROM students
       WHERE class_id = ? AND account_id IS NULL AND email IS NOT NULL AND lower(email) = ?
       ORDER BY id ASC LIMIT 1
@@ -258,11 +329,11 @@ export function joinClass(accountId, classId) {
       // E-mail não verificado não é gravado no cadastro: respostas enviadas pelo professor
       // com aquele e-mail não podem ser puxadas por quem só digitou o e-mail de outra pessoa.
       const created = db.prepare('INSERT INTO students (class_id, name, email, account_id, self_joined) VALUES (?, ?, ?, ?, 1)')
-        .run(classId, account.name, account.email_verified ? account.email : null, accountId);
+        .run(classId, account.name, trusted ? account.email : null, accountId);
       studentId = Number(created.lastInsertRowid);
     }
 
-    if (account.email_verified) db.prepare(`
+    if (trusted) db.prepare(`
       UPDATE student_responses SET student_id = ?
       WHERE student_id IS NULL AND email IS NOT NULL AND lower(email) = ?
         AND activity_id IN (SELECT id FROM activities WHERE class_id = ?)
@@ -340,10 +411,13 @@ export function listStudentActivities(accountId) {
     FROM students s
     JOIN classes c ON c.id = s.class_id
     JOIN teachers t ON t.id = c.teacher_id
-    JOIN activities a ON a.class_id = c.id AND (a.is_archived = 0 OR a.is_archived IS NULL)
+    JOIN activities a ON a.class_id = c.id
     LEFT JOIN student_responses sr ON sr.activity_id = a.id AND sr.student_id = s.id
     LEFT JOIN feedbacks f ON f.student_response_id = sr.id
+    -- Atividade arquivada pelo professor continua aparecendo para quem já recebeu o feedback
+    -- aprovado (arquivar não tira do aluno o que ele já recebeu); as demais somem do portal.
     WHERE s.account_id = ?
+      AND (a.is_archived = 0 OR a.is_archived IS NULL OR f.status = 'aprovado')
     ORDER BY a.created_at DESC, a.id DESC, sr.id DESC
   `).all(accountId);
 

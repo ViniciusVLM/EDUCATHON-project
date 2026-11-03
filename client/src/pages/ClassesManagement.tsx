@@ -12,6 +12,7 @@ import {
 } from '../services/api';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
+import { ClassProgressPanel } from '../components/ClassProgressPanel';
 import { Chip } from '../components/ui/Chip';
 import { IconPlus, IconAlertCircle, IconCheckCircle } from '../components/ui/Icons';
 import { Mascot } from '../components/ui/Mascot';
@@ -319,7 +320,7 @@ export default function ClassesManagement() {
 
           {loading ? (
             <div className="page-container--center">
-              <div className="spinner spinner-lg" />
+              <div className="spinner spinner-lg" role="status" aria-label="Carregando turmas" />
             </div>
           ) : classes.length === 0 ? (
             <Card className="empty-state">
@@ -412,6 +413,8 @@ export default function ClassesManagement() {
               </Button>
             </div>
 
+            <ClassProgressPanel classId={selectedClass.id} />
+
             {/* Código da turma para o portal do aluno */}
             <div className="join-code-box" aria-live="polite">
               <div>
@@ -440,6 +443,7 @@ export default function ClassesManagement() {
                 <button
                   type="button"
                   onClick={() => setAddMode('single')}
+                  aria-pressed={addMode === 'single'}
                   className={`filter-tab ${addMode === 'single' ? 'active' : ''}`}
                 >
                   Adicionar Individual
@@ -447,6 +451,7 @@ export default function ClassesManagement() {
                 <button
                   type="button"
                   onClick={() => setAddMode('batch')}
+                  aria-pressed={addMode === 'batch'}
                   className={`filter-tab ${addMode === 'batch' ? 'active' : ''}`}
                 >
                   Adicionar em Lote
@@ -460,6 +465,7 @@ export default function ClassesManagement() {
                       type="text"
                       className="input"
                       placeholder="Nome completo do aluno *"
+                      aria-label="Nome completo do aluno"
                       value={studentName}
                       onChange={(e) => setStudentName(e.target.value)}
                       required
@@ -468,6 +474,7 @@ export default function ClassesManagement() {
                       type="email"
                       className="input"
                       placeholder="E-mail (opcional)"
+                      aria-label="E-mail do aluno (opcional)"
                       value={studentEmail}
                       onChange={(e) => setStudentEmail(e.target.value)}
                     />
@@ -486,11 +493,13 @@ export default function ClassesManagement() {
                 </form>
               ) : (
                 <form onSubmit={handleAddBatchStudents} className="form-grid">
-                  <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', margin: 0 }}>
+                  <p id="batch-hint" style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', margin: 0 }}>
                     Cole a lista de alunos (um por linha). Formato: <code>Nome do Aluno, email@escola.org</code>
                   </p>
                   <textarea
                     className="textarea"
+                    aria-label="Lista de alunos, um por linha"
+                    aria-describedby="batch-hint"
                     rows={4}
                     placeholder="Ana Clara, ana@escola.org&#10;Bernardo Silva&#10;Carlos Eduardo, carlos@escola.org"
                     value={batchText}
@@ -539,9 +548,10 @@ export default function ClassesManagement() {
                         size="sm"
                         onClick={() => handleDeleteStudent(student.id)}
                         title="Remover aluno"
+                        aria-label={`Remover ${student.name} da turma`}
                         style={{ color: 'var(--error-500)', padding: 'var(--space-1) var(--space-2)' }}
                       >
-                        ✕
+                        <span aria-hidden="true">✕</span>
                       </Button>
                     </div>
                   ))}

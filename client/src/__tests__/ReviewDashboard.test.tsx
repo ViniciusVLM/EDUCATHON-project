@@ -2,7 +2,7 @@
  * Testes da página ReviewDashboard (Fase 4 e Fase 6D).
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, within, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import ReviewDashboard from '../pages/ReviewDashboard';
@@ -15,6 +15,10 @@ vi.mock('../services/api', () => ({
   getProgress: vi.fn().mockResolvedValue({ status: 'complete', total: 1, processed: 1, errors: 0 }),
   updateFeedback: vi.fn().mockResolvedValue({ message: 'OK', status: 'revisado' }),
   approveFeedback: vi.fn().mockResolvedValue({ message: 'OK', status: 'aprovado' }),
+  approveAllFeedbacks: vi.fn().mockResolvedValue({ message: '2 feedback(s) aprovado(s).', approved: 2 }),
+  getActivityInsights: vi.fn().mockResolvedValue(null),
+  updateActivityDetails: vi.fn(),
+  getClasses: vi.fn().mockResolvedValue([]),
   regenerateFeedback: vi.fn().mockResolvedValue({ message: 'OK', feedbackId: 10 }),
   setActivityAiGrade: vi.fn().mockResolvedValue({ message: 'Nota sugerida ligada.', aiGradeEnabled: true }),
 }));
@@ -22,6 +26,7 @@ vi.mock('../services/api', () => ({
 const mockGetActivity = vi.mocked(api.getActivity);
 const mockUpdateFeedback = vi.mocked(api.updateFeedback);
 const mockApproveFeedback = vi.mocked(api.approveFeedback);
+const mockApproveAll = vi.mocked(api.approveAllFeedbacks);
 
 const sampleActivity: ActivityWithResponses = {
   id: 1,
@@ -242,7 +247,7 @@ describe('ReviewDashboard — Recursos da Fase 6D', () => {
     await user.click(approveBtn);
 
     await waitFor(() => {
-      expect(mockApproveFeedback).toHaveBeenCalledWith(201);
+      expect(mockApproveFeedback).toHaveBeenCalledWith(201, expect.any(Number));
       // Avança automaticamente para o próximo não aprovado (Carlos Dias)
       expect(screen.getByText('Fotossíntese converte energia luminosa em glicose.')).toBeInTheDocument();
     });
@@ -267,9 +272,10 @@ describe('ReviewDashboard — Recursos da Fase 6D', () => {
     );
 
     await waitFor(() => {
-      expect(mockApproveFeedback).toHaveBeenCalledWith(201);
-      expect(mockApproveFeedback).toHaveBeenCalledWith(202);
+      // Uma chamada só ao servidor, que aprova todos numa transação
+      expect(mockApproveAll).toHaveBeenCalledWith(1);
     });
+    expect(mockApproveFeedback).not.toHaveBeenCalled();
   });
 
   it('executa atalho de teclado Alt+A para aprovar o aluno atual', async () => {
@@ -285,7 +291,7 @@ describe('ReviewDashboard — Recursos da Fase 6D', () => {
     fireEvent.keyDown(window, { key: 'a', altKey: true });
 
     await waitFor(() => {
-      expect(mockApproveFeedback).toHaveBeenCalledWith(201);
+      expect(mockApproveFeedback).toHaveBeenCalledWith(201, expect.any(Number));
     });
   });
 
@@ -294,15 +300,18 @@ describe('ReviewDashboard — Recursos da Fase 6D', () => {
 
     renderDashboard();
 
-    await waitFor(() => {
-      expect(screen.getAllByText('Beatriz Santos').length).toBeGreaterThan(0);
-    });
+    // Espera o painel do aluno (e o atalho de teclado) estar pronto antes de apertar
+    expect(await screen.findByText('As plantas usam a luz do sol e água para crescer.')).toBeInTheDocument();
 
     // Pressiona Alt+ArrowRight para ir para Carlos Dias
     fireEvent.keyDown(window, { key: 'ArrowRight', altKey: true });
 
     await waitFor(() => {
       expect(screen.getByText('Fotossíntese converte energia luminosa em glicose.')).toBeInTheDocument();
+    }, { timeout: 3000 });
+    // Deixa a tela terminar de recarregar (o atalho é religado a cada troca de aluno)
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
     });
 
     // Pressiona Alt+ArrowLeft para voltar para Beatriz Santos
@@ -310,7 +319,7 @@ describe('ReviewDashboard — Recursos da Fase 6D', () => {
 
     await waitFor(() => {
       expect(screen.getByText('As plantas usam a luz do sol e água para crescer.')).toBeInTheDocument();
-    });
+    }, { timeout: 3000 });
   });
 });
 
@@ -437,5 +446,204 @@ describe('ReviewDashboard — cota do Gemini esgotada', () => {
     renderDashboard();
     expect(await screen.findByText('A cota gratuita do Gemini acabou por hoje.')).toBeInTheDocument();
     expect(screen.getByText(/parou para não gastar tentativas/i)).toBeInTheDocument();
+  });
+});
+
+describe('ReviewDashboard — aba "A revisar" e tempo de revisão', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('a aba "A revisar" inclui os feedbacks editados e ainda não aprovados', async () => {
+    const user = userEvent.setup();
+    mockGetActivity.mockResolvedValue({
+      ...multiStudentActivity,
+      stats: { total_students: 3, total_feedbacks: 3, pending: 1, reviewed: 1, approved: 1 },
+      responses: [
+        { ...multiStudentActivity.responses[0], status: 'revisado', teacher_feedback: 'Editado pelo professor.' },
+        { ...multiStudentActivity.responses[1], status: 'aprovado' },
+        {
+          ...multiStudentActivity.responses[1],
+          id: 103,
+          feedback_id: 203,
+          student_name: 'Diana Lopes',
+          status: 'pendente',
+        },
+      ],
+    });
+    renderDashboard();
+
+    const tab = await screen.findByRole('button', { name: /A revisar \(2\)/ });
+    await user.click(tab);
+
+    const sidebar = document.querySelector('.review-sidebar') as HTMLElement;
+    expect(sidebar).toHaveTextContent('Beatriz Santos');
+    expect(sidebar).toHaveTextContent('Diana Lopes');
+    expect(sidebar).not.toHaveTextContent('Carlos Dias');
+  });
+
+  it('envia o tempo de revisão do aluno ao aprovar', async () => {
+    const user = userEvent.setup();
+    let now = 1_000_000;
+    const nowSpy = vi.spyOn(Date, 'now').mockImplementation(() => now);
+    mockGetActivity.mockResolvedValue(sampleActivity);
+
+    renderDashboard();
+    await waitFor(() => expect(screen.getAllByText('Beatriz Santos').length).toBeGreaterThan(0));
+
+    now += 95_000; // o professor passou 95 s revisando
+    await user.click(screen.getByRole('button', { name: /Aprovar$/i }));
+
+    await waitFor(() => expect(mockApproveFeedback).toHaveBeenCalledWith(201, 95));
+    nowSpy.mockRestore();
+  });
+  it('na aba "A revisar", aprovar abre o próximo aluno sem pular ninguém', async () => {
+    const user = userEvent.setup();
+    const base = multiStudentActivity.responses[0];
+    const mk = (id: number, name: string, text: string, status: 'pendente' | 'aprovado') => ({
+      ...base, id, feedback_id: id + 100, student_name: name, original_response: text, status,
+    });
+    const before = {
+      ...multiStudentActivity,
+      stats: { total_students: 3, total_feedbacks: 3, pending: 3, reviewed: 0, approved: 0 },
+      responses: [mk(1, 'Ana', 'Resposta da Ana.', 'pendente'), mk(2, 'Bruno', 'Resposta do Bruno.', 'pendente'), mk(3, 'Caio', 'Resposta do Caio.', 'pendente')],
+    };
+    const after = { ...before, responses: [mk(1, 'Ana', 'Resposta da Ana.', 'aprovado'), before.responses[1], before.responses[2]] };
+    mockGetActivity.mockResolvedValue(before);
+    renderDashboard();
+
+    await user.click(await screen.findByRole('button', { name: /A revisar \(3\)/ }));
+    expect(await screen.findByText('Resposta da Ana.')).toBeInTheDocument();
+
+    mockGetActivity.mockResolvedValue(after);
+    await user.click(screen.getByRole('button', { name: /Aprovar$/i }));
+    expect(await screen.findByText('Resposta do Bruno.')).toBeInTheDocument();
+    expect(screen.queryByText('Resposta do Caio.')).not.toBeInTheDocument();
+  });
+
+  it('se a aprovação falhar, o tempo de revisão não se perde', async () => {
+    const user = userEvent.setup();
+    let now = 2_000_000;
+    const nowSpy = vi.spyOn(Date, 'now').mockImplementation(() => now);
+    mockGetActivity.mockResolvedValue(sampleActivity);
+    renderDashboard();
+    await screen.findByText('As plantas usam a luz do sol e água para crescer.');
+
+    now += 30_000;
+    mockApproveFeedback.mockRejectedValueOnce(new Error('Servidor fora do ar.'));
+    await user.click(screen.getByRole('button', { name: /Aprovar$/i }));
+    expect(await screen.findByText('Servidor fora do ar.')).toBeInTheDocument();
+
+    now += 20_000;
+    await user.click(screen.getByRole('button', { name: /Aprovar$/i }));
+    await waitFor(() => expect(mockApproveFeedback).toHaveBeenLastCalledWith(201, 50));
+    nowSpy.mockRestore();
+  });
+
+  it('a aba "A revisar" não conta alunos que ainda não têm feedback', async () => {
+    mockGetActivity.mockResolvedValue({
+      ...multiStudentActivity,
+      responses: [
+        multiStudentActivity.responses[0],
+        { ...multiStudentActivity.responses[1], feedback_id: null, ai_feedback_text: null, status: null },
+      ],
+    });
+    renderDashboard();
+    expect(await screen.findByRole('button', { name: /A revisar \(1\)/ })).toBeInTheDocument();
+  });
+  it('o professor avalia o rascunho da IA sem mudar o status; clicar de novo apaga', async () => {
+    const user = userEvent.setup();
+    mockGetActivity.mockResolvedValue(sampleActivity);
+    renderDashboard();
+    await screen.findByText('As plantas usam a luz do sol e água para crescer.');
+
+    const helped = screen.getByRole('button', { name: 'Ajudou' });
+    expect(helped).toHaveAttribute('aria-pressed', 'false');
+    await user.click(helped);
+    await waitFor(() => expect(mockUpdateFeedback).toHaveBeenCalledWith(201, { teacherRating: 1 }));
+    expect(screen.getByRole('button', { name: 'Ajudou' })).toHaveAttribute('aria-pressed', 'true');
+
+    await user.click(screen.getByRole('button', { name: 'Ajudou' }));
+    await waitFor(() => expect(mockUpdateFeedback).toHaveBeenLastCalledWith(201, { teacherRating: null }));
+    expect(screen.getByRole('button', { name: 'Ajudou' })).toHaveAttribute('aria-pressed', 'false');
+  });
+  it('para de contar o tempo depois de 2 min sem interação e volta quando o professor mexe', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    let now = 5_000_000;
+    const nowSpy = vi.spyOn(Date, 'now').mockImplementation(() => now);
+    mockGetActivity.mockResolvedValue(sampleActivity);
+    renderDashboard();
+    await screen.findByText('As plantas usam a luz do sol e água para crescer.');
+
+    // 30 s revisando, depois 10 min parado com a aba aberta
+    now += 30_000;
+    fireEvent.pointerMove(window);
+    now += 10 * 60_000;
+    vi.advanceTimersByTime(15_000);
+
+    // Volta, mexe e revisa mais 20 s antes de aprovar
+    fireEvent.pointerMove(window);
+    now += 20_000;
+    fireEvent.click(screen.getByRole('button', { name: /Aprovar$/i }));
+
+    // 30 s + 2 min (tolerância) + 20 s = 170 s, e não os 10 min parados
+    await waitFor(() => expect(mockApproveFeedback).toHaveBeenCalledWith(201, 170));
+    nowSpy.mockRestore();
+    vi.useRealTimers();
+  });
+  it('edita título, disciplina e prazo; com respostas, a turma fica travada', async () => {
+    const user = userEvent.setup();
+    mockGetActivity.mockResolvedValue({ ...sampleActivity, class_id: 9 });
+    vi.mocked(api.updateActivityDetails).mockResolvedValue({
+      message: 'Atividade atualizada.',
+      activity: { ...sampleActivity, title: 'Biologia revisada', subject: 'Biologia', due_date: '2026-12-01' },
+    });
+    renderDashboard();
+    await screen.findByText('As plantas usam a luz do sol e água para crescer.');
+
+    await user.click(screen.getByRole('button', { name: 'Editar dados' }));
+    const form = screen.getByRole('form', { name: 'Editar dados da atividade' });
+    expect(within(form).getByRole('heading')).toHaveFocus();
+    expect(within(form).getByRole('combobox')).toBeDisabled();
+
+    const titleInput = within(form).getByDisplayValue('Atividade de Biologia');
+    await user.clear(titleInput);
+    await user.type(titleInput, 'Biologia revisada');
+    await user.type(within(form).getByLabelText('Disciplina'), 'Biologia');
+    fireEvent.change(within(form).getByLabelText('Prazo de entrega'), { target: { value: '2026-12-01' } });
+    await user.click(within(form).getByRole('button', { name: 'Salvar' }));
+
+    await waitFor(() =>
+      expect(api.updateActivityDetails).toHaveBeenCalledWith(1, { title: 'Biologia revisada', subject: 'Biologia', dueDate: '2026-12-01' })
+    );
+    expect(await screen.findByRole('heading', { name: 'Biologia revisada' })).toBeInTheDocument();
+    expect(screen.queryByRole('form', { name: 'Editar dados da atividade' })).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Editar dados' })).toHaveFocus());
+
+    // Esc fecha o painel e devolve o foco
+    await user.click(screen.getByRole('button', { name: 'Editar dados' }));
+    expect(screen.getByRole('button', { name: 'Editar dados' })).toHaveAttribute('aria-expanded', 'true');
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('form', { name: 'Editar dados da atividade' })).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Editar dados' })).toHaveFocus());
+  });
+  it('volta depois de mais de 2 min parado antes do tique: conta no máximo 2 min do trecho parado', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    let now = 9_000_000;
+    const nowSpy = vi.spyOn(Date, 'now').mockImplementation(() => now);
+    mockGetActivity.mockResolvedValue(sampleActivity);
+    renderDashboard();
+    await screen.findByText('As plantas usam a luz do sol e água para crescer.');
+
+    fireEvent.pointerMove(window);
+    now += 130_000; // 130 s sem mexer, sem o tique de 15 s ter rodado
+    fireEvent.pointerMove(window);
+    now += 10_000;
+    fireEvent.click(screen.getByRole('button', { name: /Aprovar$/i }));
+
+    // 120 s (limite) + 10 s depois de voltar
+    await waitFor(() => expect(mockApproveFeedback).toHaveBeenCalledWith(201, 130));
+    nowSpy.mockRestore();
+    vi.useRealTimers();
   });
 });

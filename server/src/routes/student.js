@@ -10,6 +10,7 @@ import {
   listStudentActivities,
   getClassByJoinCode,
   joinClass,
+  ClassRemovedError,
 } from '../database/accounts.js';
 import { normalizeJoinCode } from '../services/secrets.js';
 import { parseOptions } from '../services/objective.js';
@@ -58,7 +59,11 @@ function toPortalActivity(row) {
     myAnswer: row.original_response ?? null,
     feedback: row.feedback ?? null,
     grade: row.grade ?? null,
-    criteria: Array.isArray(criteria) ? criteria.map((c) => ({ criterio: c.criterio, atendido: Boolean(c.atendido) })) : [],
+    criteria: Array.isArray(criteria)
+      ? criteria
+        .filter((c) => c && typeof c === 'object' && typeof c.criterio === 'string')
+        .map((c) => ({ criterio: c.criterio, atendido: Boolean(c.atendido) }))
+      : [],
     objectiveResult: parseJson(row.auto_result),
     approvedAt: row.approved_at ?? null,
   };
@@ -107,6 +112,7 @@ router.post('/join', studentAuthLimiter, (req, res) => {
       class: { id: cls.id, name: cls.name, teacher_name: cls.teacher_name },
     });
   } catch (err) {
+    if (err instanceof ClassRemovedError) return res.status(403).json({ error: err.message });
     console.error('Erro ao entrar na turma:', err);
     res.status(500).json({ error: 'Erro interno ao entrar na turma.' });
   }

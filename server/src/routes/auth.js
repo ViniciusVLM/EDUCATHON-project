@@ -33,6 +33,9 @@ router.post('/register', authLimiter, async (req, res) => {
         error: 'Todos os campos são obrigatórios: nome, e-mail e senha.',
       });
     }
+    if (typeof name !== 'string' || typeof email !== 'string' || typeof password !== 'string') {
+      return res.status(400).json({ error: 'Nome, e-mail e senha devem ser texto.' });
+    }
 
     const trimmedName = String(name).trim();
     const normalizedEmail = String(email).trim().toLowerCase();
@@ -95,7 +98,7 @@ router.post('/login', authLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    if (!email || !password) {
+    if (!email || !password || typeof email !== 'string' || typeof password !== 'string') {
       return res.status(400).json({
         error: 'Informe e-mail e senha para entrar.',
       });

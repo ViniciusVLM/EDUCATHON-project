@@ -11,6 +11,7 @@ import {
   relinkVerifiedAccount,
   getClassByJoinCode,
   joinClass,
+  ClassRemovedError,
 } from '../database/accounts.js';
 import { hashPassword, comparePassword, generateStudentToken, unusablePasswordHash } from '../services/auth.js';
 import { normalizeJoinCode } from '../services/secrets.js';
@@ -152,7 +153,14 @@ router.post('/google', studentAuthLimiter, async (req, res) => {
       status = 201;
     }
 
-    if (cls) joinClass(account.id, cls.id);
+    if (cls) {
+      try {
+        joinClass(account.id, cls.id);
+      } catch (joinError) {
+        if (joinError instanceof ClassRemovedError) return res.status(403).json({ error: joinError.message });
+        throw joinError;
+      }
+    }
     respond(res, status, account, message, cls);
   } catch (err) {
     if (err instanceof FirebaseAuthError) {

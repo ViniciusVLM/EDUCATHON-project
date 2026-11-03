@@ -99,11 +99,12 @@ export default function SetupActivity() {
   });
   // Nota sugerida pela IA (vale para as dissertativas criadas agora). Desligada por padrão.
   const [aiGrade, setAiGrade] = useState(false);
+  const [classesError, setClassesError] = useState(false);
 
   useEffect(() => {
     getClasses()
       .then(setClasses)
-      .catch((err) => console.warn('Erro ao carregar turmas:', err));
+      .catch(() => setClassesError(true));
   }, []);
 
   const draft = drafts[active] ?? drafts[0];
@@ -575,6 +576,12 @@ export default function SetupActivity() {
                   </option>
                 ))}
               </select>
+              {classesError && (
+                <p className="input-hint" role="alert">
+                  Não foi possível carregar suas turmas. Você pode criar a atividade sem turma e ajustar depois em
+                  “Editar dados”.
+                </p>
+              )}
             </div>
 
             <div className="input-group">
@@ -806,9 +813,9 @@ export default function SetupActivity() {
           <div className="input-group">
             <div className="page-header-row" style={{ marginBottom: 'var(--space-2)' }}>
               <div>
-                <label className="input-label">
+                <p className="input-label">
                   {hasExtra ? 'Critérios da pergunta 1 (opcional)' : 'Critérios de avaliação da rubrica (opcional)'}
-                </label>
+                </p>
                 <p className="input-hint">
                   A IA avaliará individualmente cada critério (atendido/não atendido + evidência). O peso serve apenas para priorizar o feedback.
                 </p>
@@ -830,10 +837,11 @@ export default function SetupActivity() {
                 {criteria.map((item, idx) => (
                   <div key={item.id} className="criterion-card">
                     <div>
-                      <label className="input-label" style={{ fontSize: 'var(--text-xs)', marginBottom: 'var(--space-1)' }}>
+                      <label className="input-label" htmlFor={`crit-${item.id}`} style={{ fontSize: 'var(--text-xs)', marginBottom: 'var(--space-1)' }}>
                         Critério #{idx + 1} *
                       </label>
                       <input
+                        id={`crit-${item.id}`}
                         type="text"
                         className="input"
                         placeholder="Ex: Explicação do processo biológico"
@@ -843,10 +851,11 @@ export default function SetupActivity() {
                       />
                     </div>
                     <div>
-                      <label className="input-label" style={{ fontSize: 'var(--text-xs)', marginBottom: 'var(--space-1)' }}>
+                      <label className="input-label" htmlFor={`peso-${item.id}`} style={{ fontSize: 'var(--text-xs)', marginBottom: 'var(--space-1)' }}>
                         Peso (prioridade &gt; 0) *
                       </label>
                       <input
+                        id={`peso-${item.id}`}
                         type="number"
                         className="input"
                         min="1"
@@ -863,7 +872,7 @@ export default function SetupActivity() {
                         size="sm"
                         onClick={() => handleRemoveCriterion(item.id)}
                         title="Remover critério"
-                        aria-label="Remover critério"
+                        aria-label={`Remover critério ${idx + 1}`}
                         style={{ color: 'var(--error-500)' }}
                       >
                         <IconTrash size={16} />

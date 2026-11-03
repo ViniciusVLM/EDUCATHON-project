@@ -8,8 +8,11 @@ import {
   createStudent,
   createStudentsBatch,
   deleteStudentFromClass,
+  getResponsesByActivity,
+  getDb,
 } from '../database/db.js';
 import { rotateJoinCode } from '../database/accounts.js';
+import { buildClassProgress } from '../services/insights.js';
 
 const router = Router();
 
@@ -35,8 +38,11 @@ router.post('/', (req, res) => {
   try {
     const { name, schoolYear } = req.body;
 
-    if (!name || !name.trim()) {
+    if (typeof name !== 'string' || !name.trim()) {
       return res.status(400).json({ error: 'O nome da turma é obrigatório.' });
+    }
+    if (schoolYear !== undefined && schoolYear !== null && typeof schoolYear !== 'string') {
+      return res.status(400).json({ error: 'O ano letivo deve ser texto.' });
     }
 
     const newClass = createClass({
@@ -52,6 +58,30 @@ router.post('/', (req, res) => {
   } catch (err) {
     console.error('Erro ao criar turma:', err);
     res.status(500).json({ error: 'Erro interno ao criar turma.' });
+  }
+});
+
+/**
+ * GET /api/classes/:id/progress
+ * Evolução da turma ao longo das atividades: percentual de critérios atendidos e média das
+ * notas por atividade, e a trajetória dos critérios que se repetem. Só o professor dono vê.
+ */
+router.get('/:id/progress', (req, res) => {
+  try {
+    const cls = getClassById(Number(req.params.id), req.teacher.id);
+    if (!cls) {
+      return res.status(404).json({ error: 'Turma não encontrada.' });
+    }
+    const activities = getDb()
+      .prepare('SELECT * FROM activities WHERE class_id = ? AND teacher_id = ?')
+      .all(cls.id, req.teacher.id);
+    const progress = buildClassProgress(
+      activities.map((activity) => ({ activity, rows: getResponsesByActivity(activity.id) }))
+    );
+    res.json({ class_id: cls.id, class_name: cls.name, ...progress });
+  } catch (err) {
+    console.error('Erro ao montar a evolução da turma:', err);
+    res.status(500).json({ error: 'Erro interno ao montar a evolução da turma.' });
   }
 });
 
@@ -149,8 +179,11 @@ router.post('/:id/students', (req, res) => {
     }
 
     // Inclusão individual
-    if (!name || !name.trim()) {
+    if (typeof name !== 'string' || !name.trim()) {
       return res.status(400).json({ error: 'O nome do aluno é obrigatório.' });
+    }
+    if (email !== undefined && email !== null && typeof email !== 'string') {
+      return res.status(400).json({ error: 'O e-mail do aluno deve ser texto.' });
     }
 
     const student = createStudent({

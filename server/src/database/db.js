@@ -22,6 +22,26 @@ const SCHEMA_PATH = join(__dirname, 'schema.sql');
  * ⚠️ Regra: nunca editar ou remover uma migração já aplicada em produção.
  *    Sempre adicione novas entradas ao final da lista.
  */
+/**
+ * Migração 018: contas de aluno que já existiam com e-mail "confirmado" sem Google foram criadas
+ * por uma instituição e passam a valer só nas turmas dela. Só dá para saber qual escola criou a
+ * conta quando todas as turmas do aluno são da mesma instituição; nos outros casos fica sem
+ * instituição (o e-mail deixa de ser confiável). As ligações já feitas continuam como estão.
+ * Exportado para ser testado num banco no formato antigo.
+ */
+export const MIGRATE_ORG_VERIFIED_ACCOUNTS_SQL = `UPDATE student_accounts
+       SET verified_org_id = (
+             SELECT CASE WHEN COUNT(DISTINCT t.organization_id) = 1
+                              AND COUNT(*) = COUNT(t.organization_id)
+                         THEN MIN(t.organization_id) END
+             FROM students s
+             JOIN classes c ON c.id = s.class_id
+             JOIN teachers t ON t.id = c.teacher_id
+             WHERE s.account_id = student_accounts.id
+           ),
+           email_verified = 0
+       WHERE email_verified = 1 AND google_uid IS NULL`;
+
 const MIGRATIONS = [
   // ── Fase 4.1: novos campos em activities ─────────────────────────────────
   {
@@ -197,6 +217,35 @@ const MIGRATIONS = [
     name: '016_student_accounts_disabled',
     sqls: ['ALTER TABLE student_accounts ADD COLUMN disabled_at TEXT'],
   },
+  // ── Tempo que o professor levou revisando cada feedback (em segundos) ─────
+  {
+    name: '017_feedbacks_review_seconds',
+    sqls: ['ALTER TABLE feedbacks ADD COLUMN review_seconds INTEGER NOT NULL DEFAULT 0'],
+  },
+  // ── E-mail confirmado pela instituição vale só nas turmas dela ────────────
+  {
+    name: '018_student_accounts_verified_org',
+    sqls: [
+      'ALTER TABLE student_accounts ADD COLUMN verified_org_id INTEGER REFERENCES organizations(id) ON DELETE SET NULL',
+      // Contas que já existiam com e-mail "confirmado" sem Google foram criadas por uma instituição:
+      // passam a valer só nas turmas dessa instituição. As ligações já feitas continuam como estão.
+      MIGRATE_ORG_VERIFIED_ACCOUNTS_SQL,
+    ],
+  },
+  // ── Aluno tirado da turma pela instituição não volta sozinho pelo código ──
+  {
+    name: '019_class_removals',
+    sqls: [
+      `CREATE TABLE IF NOT EXISTS class_removals (
+        class_id INTEGER NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
+        account_id INTEGER NOT NULL REFERENCES student_accounts(id) ON DELETE CASCADE,
+        -- Cadastro da lista da turma que estava ligado à conta: na readmissão, volta para ele
+        student_id INTEGER REFERENCES students(id) ON DELETE SET NULL,
+        removed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (class_id, account_id)
+      )`,
+    ],
+  },
 ];
 
 /**
@@ -361,8 +410,8 @@ export function createStudentsBatch(classId, students) {
   const insertMany = db.transaction((items) => {
     const created = [];
     for (const item of items) {
-      if (!item.name || !item.name.trim()) continue;
-      const normalizedEmail = item.email ? item.email.toLowerCase().trim() : null;
+      if (!item || typeof item.name !== 'string' || !item.name.trim()) continue;
+      const normalizedEmail = typeof item.email === 'string' && item.email.trim() ? item.email.toLowerCase().trim() : null;
       const result = stmt.run(classId, item.name.trim(), normalizedEmail);
       created.push({ id: result.lastInsertRowid, class_id: classId, name: item.name.trim(), email: normalizedEmail });
     }
@@ -530,8 +579,11 @@ export function addResponses(activityId, responses, defaultMethod = 'manual') {
         : (text.trim() ? text.trim().split(/\s+/).filter(Boolean).length : 0);
       const method = item.submission_method || defaultMethod;
 
-      let matchedStudentId = item.student_id || null;
-      let studentEmail = item.email ? item.email.trim().toLowerCase() : null;
+      // student_id enviado pelo client só vale se o aluno for da turma da atividade
+      let matchedStudentId = item.student_id && registeredStudents.some((s) => s.id === Number(item.student_id))
+        ? Number(item.student_id)
+        : null;
+      let studentEmail = typeof item.email === 'string' && item.email.trim() ? item.email.trim().toLowerCase() : null;
 
       // Reconciliação com alunos cadastrados da turma
       if (!matchedStudentId && registeredStudents.length > 0) {
@@ -580,7 +632,7 @@ export function getResponsesByActivity(activityId) {
     SELECT sr.*, f.id as feedback_id, f.ai_feedback_json, f.ai_feedback_text,
            f.teacher_feedback, f.status, f.generated_at, f.approved_at,
            f.ai_model, f.teacher_rating, f.criteria_scores, f.sent_to_student_at,
-           f.teacher_grade, f.auto_result, f.ai_grade, f.ai_grade_reason
+           f.teacher_grade, f.auto_result, f.ai_grade, f.ai_grade_reason, f.review_seconds
     FROM student_responses sr
     LEFT JOIN feedbacks f ON f.student_response_id = sr.id
     WHERE sr.activity_id = ?
@@ -651,6 +703,14 @@ export function updateFeedback(feedbackId, teacherFeedback, teacherRating = null
 }
 
 /**
+ * Avaliação do professor sobre o rascunho da IA: 1 (ajudou), 0 (mais ou menos), -1 (precisou refazer)
+ * ou null para apagar. Não altera o status do feedback.
+ */
+export function setFeedbackRating(feedbackId, rating) {
+  return getDb().prepare('UPDATE feedbacks SET teacher_rating = ? WHERE id = ?').run(rating, feedbackId);
+}
+
+/**
  * Lança (ou apaga, com null) a nota do professor. Não altera o status do feedback:
  * a nota só aparece para o aluno depois que o feedback for aprovado.
  */
@@ -659,7 +719,11 @@ export function setFeedbackGrade(feedbackId, grade) {
   return db.prepare('UPDATE feedbacks SET teacher_grade = ? WHERE id = ?').run(grade, feedbackId);
 }
 
-export function approveFeedback(feedbackId) {
+/**
+ * Aprova o feedback. reviewSeconds (já validado) soma o tempo que o professor passou
+ * revisando este aluno, para medir o ganho de tempo frente à correção manual.
+ */
+export function approveFeedback(feedbackId, reviewSeconds = 0) {
   const db = getDb();
   // Se o professor não editou, usa o texto da IA como feedback final
   const feedback = db.prepare('SELECT * FROM feedbacks WHERE id = ?').get(feedbackId);
@@ -668,10 +732,52 @@ export function approveFeedback(feedbackId) {
   const finalText = feedback.teacher_feedback || feedback.ai_feedback_text;
   const stmt = db.prepare(`
     UPDATE feedbacks
-    SET teacher_feedback = ?, status = 'aprovado', approved_at = datetime('now')
+    SET teacher_feedback = ?, status = 'aprovado', approved_at = datetime('now'),
+        review_seconds = COALESCE(review_seconds, 0) + ?
     WHERE id = ?
   `);
-  return stmt.run(finalText, feedbackId);
+  return stmt.run(finalText, reviewSeconds, feedbackId);
+}
+
+/**
+ * Aprova de uma vez, numa transação, todos os feedbacks gerados e ainda não aprovados
+ * de uma atividade. Quem chama já conferiu a posse da atividade.
+ * Devolve quantos feedbacks foram aprovados.
+ */
+export function approveAllFeedbacks(activityId) {
+  const db = getDb();
+  const result = db.prepare(`
+    UPDATE feedbacks
+    SET teacher_feedback = COALESCE(NULLIF(teacher_feedback, ''), ai_feedback_text),
+        status = 'aprovado',
+        approved_at = datetime('now')
+    WHERE status != 'aprovado'
+      AND student_response_id IN (SELECT id FROM student_responses WHERE activity_id = ?)
+  `).run(activityId);
+  return result.changes;
+}
+
+/** Atualiza os dados gerais da atividade. Só os campos presentes em `fields` mudam. */
+export function updateActivityDetails(activityId, fields) {
+  const columns = { title: 'title', subject: 'subject', dueDate: 'due_date', classId: 'class_id' };
+  const sets = [];
+  const values = [];
+  for (const [key, column] of Object.entries(columns)) {
+    if (Object.prototype.hasOwnProperty.call(fields, key)) {
+      sets.push(`${column} = ?`);
+      values.push(fields[key]);
+    }
+  }
+  if (sets.length === 0) return null;
+  sets.push("updated_at = datetime('now')");
+  return getDb().prepare(`UPDATE activities SET ${sets.join(', ')} WHERE id = ?`).run(...values, activityId);
+}
+
+/** Arquiva (true) ou reativa (false) uma atividade. Arquivar não apaga nada. */
+export function setActivityArchived(activityId, archived) {
+  return getDb()
+    .prepare("UPDATE activities SET is_archived = ?, updated_at = datetime('now') WHERE id = ?")
+    .run(archived ? 1 : 0, activityId);
 }
 
 export function getFeedback(feedbackId) {
@@ -706,7 +812,8 @@ export function getExportData(activityId) {
     SELECT sr.student_name, sr.original_response,
            COALESCE(f.teacher_feedback, f.ai_feedback_text) as feedback_final,
            f.teacher_grade as nota,
-           f.status
+           f.status,
+           f.criteria_scores, f.ai_feedback_json, f.auto_result
     FROM student_responses sr
     LEFT JOIN feedbacks f ON f.student_response_id = sr.id
     WHERE sr.activity_id = ?
@@ -740,7 +847,9 @@ export function getDashboardSummary(teacherId) {
       COUNT(f.id) as total_feedbacks,
       COALESCE(SUM(CASE WHEN f.status = 'pendente' THEN 1 ELSE 0 END), 0) as pending_review,
       COALESCE(SUM(CASE WHEN f.status = 'revisado' THEN 1 ELSE 0 END), 0) as reviewed,
-      COALESCE(SUM(CASE WHEN f.status = 'aprovado' THEN 1 ELSE 0 END), 0) as approved
+      COALESCE(SUM(CASE WHEN f.status = 'aprovado' THEN 1 ELSE 0 END), 0) as approved,
+      COUNT(CASE WHEN f.review_seconds > 0 THEN 1 END) as timed_reviews,
+      COALESCE(SUM(CASE WHEN f.review_seconds > 0 THEN f.review_seconds ELSE 0 END), 0) as review_seconds
     FROM activities a
     JOIN student_responses sr ON sr.activity_id = a.id
     LEFT JOIN feedbacks f ON f.student_response_id = sr.id
@@ -863,6 +972,10 @@ export function getDashboardSummary(teacherId) {
       reviewed: feedbackMetrics.reviewed,
       approved: feedbackMetrics.approved,
       generation_errors: (jobMetrics.total_errors || 0) + (jobMetrics.error_jobs || 0),
+      // Tempo médio que o professor levou revisando cada aluno (null até a 1ª aprovação medida)
+      avg_review_seconds: feedbackMetrics.timed_reviews > 0
+        ? Math.round(feedbackMetrics.review_seconds / feedbackMetrics.timed_reviews)
+        : null,
     },
     pending_review_items: [
       ...errorJobs,

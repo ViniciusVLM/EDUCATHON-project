@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import {
   getActivity,
@@ -6,6 +6,7 @@ import {
   getProgress as fetchProgress,
   updateFeedback,
   approveFeedback,
+  approveAllFeedbacks,
   regenerateFeedback,
   setActivityAiGrade,
 } from '../services/api';
@@ -26,6 +27,8 @@ import { ProgressBar } from '../components/ui/ProgressBar';
 import { Stamp } from '../components/ui/Stamp';
 import { Window, toFileSlug } from '../components/ui/Window';
 import { Mascot } from '../components/ui/Mascot';
+import { ClassInsights } from '../components/ClassInsights';
+import { EditActivityPanel } from '../components/EditActivityPanel';
 import { getActivityQuestions, getResponseAnswers } from '../services/questions';
 import {
   IconCheckCircle,
@@ -33,6 +36,9 @@ import {
   IconRefresh,
   IconSparkles,
 } from '../components/ui/Icons';
+
+/** Depois de 2 minutos sem nenhuma interação, o tempo de revisão para de contar. */
+const REVIEW_IDLE_MS = 2 * 60 * 1000;
 
 export default function ReviewDashboard() {
   const { activityId } = useParams<{ activityId: string }>();
@@ -50,13 +56,22 @@ export default function ReviewDashboard() {
   const [progress, setProgress] = useState<Progress | null>(null);
   const [generating, setGenerating] = useState(false);
   const [gradeText, setGradeText] = useState('');
+  const [editingDetails, setEditingDetails] = useState(false);
+  const editButtonRef = useRef<HTMLButtonElement | null>(null);
+  function closeEditDetails() {
+    setEditingDetails(false);
+    // Devolve o foco ao botão que abriu o painel (teclado e leitor de tela)
+    window.setTimeout(() => editButtonRef.current?.focus(), 0);
+  }
 
   function filterResponses(responses: StudentResponse[], f: FilterType): StudentResponse[] {
     if (f === 'todos') return responses;
+    // "A revisar" inclui os editados e ainda não aprovados (antes eles sumiam das duas abas)
+    if (f === 'pendente') return responses.filter((r) => r.feedback_id && r.status !== 'aprovado');
     return responses.filter((r) => r.status === f);
   }
 
-  const loadActivity = useCallback(async () => {
+  const loadActivity = useCallback(async (): Promise<ActivityWithResponses | null> => {
     try {
       const data = await getActivity(Number(activityId));
       setActivity(data);
@@ -77,6 +92,7 @@ export default function ReviewDashboard() {
       if (responses.length > 0 && selectedIndex >= responses.length) {
         setSelectedIndex(0);
       }
+      return data;
     } catch (err: unknown) {
       const msg =
         err instanceof Error
@@ -84,6 +100,7 @@ export default function ReviewDashboard() {
           : 'Não foi possível conectar ao servidor. Tente novamente em instantes.';
       setError(msg);
       setLoading(false);
+      return null;
     }
   }, [activityId, filter, selectedIndex]);
 
@@ -115,6 +132,92 @@ export default function ReviewDashboard() {
 
   const filteredResponses = activity ? filterResponses(activity.responses, filter) : [];
   const selected = filteredResponses[selectedIndex] || null;
+
+  // ── Tempo de revisão ──
+  // Conta o tempo em que o feedback de cada aluno ficou aberto com a aba visível.
+  // Vai junto na aprovação para o diagnóstico comparar com a correção manual.
+  const reviewMs = useRef<Map<number, number>>(new Map());
+  const reviewStart = useRef<{ id: number; at: number } | null>(null);
+
+  const pauseReviewClock = useCallback(() => {
+    const current = reviewStart.current;
+    if (!current) return;
+    // Nunca conta além de 2 min depois da última interação (o tique de checagem é a cada 15 s)
+    const end = Math.min(Date.now(), lastActivityAt.current + REVIEW_IDLE_MS);
+    const elapsed = Math.max(0, end - current.at);
+    reviewMs.current.set(current.id, (reviewMs.current.get(current.id) || 0) + elapsed);
+    reviewStart.current = null;
+  }, []);
+
+  const selectedFeedbackId = selected?.feedback_id ?? null;
+  const selectedStatus = selected?.status ?? null;
+  useEffect(() => {
+    pauseReviewClock();
+    pausedByIdle.current = null;
+    lastActivityAt.current = Date.now();
+    const isVisible = typeof document === 'undefined' || document.visibilityState !== 'hidden';
+    if (selectedFeedbackId && selectedStatus !== 'aprovado' && isVisible) {
+      reviewStart.current = { id: selectedFeedbackId, at: Date.now() };
+    }
+    function onVisibility() {
+      if (document.visibilityState === 'hidden') {
+        pauseReviewClock();
+      } else if (selectedFeedbackId && selectedStatus !== 'aprovado' && !reviewStart.current) {
+        reviewStart.current = { id: selectedFeedbackId, at: Date.now() };
+      }
+    }
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility);
+      pauseReviewClock();
+    };
+  }, [selectedFeedbackId, selectedStatus, pauseReviewClock]);
+
+  // Pausa por inatividade: se o professor ficar mais de 2 min sem mexer na tela (saiu para o
+  // café com a aba aberta), conta só até 2 min depois da última interação e volta a contar
+  // quando ele mexer de novo. Assim o tempo medido é tempo de revisão de verdade.
+  const lastActivityAt = useRef(Date.now());
+  const pausedByIdle = useRef<number | null>(null);
+  useEffect(() => {
+    function onActivity() {
+      // Voltou depois de mais de 2 min parado, antes do tique: fecha o trecho no limite
+      const current = reviewStart.current;
+      if (current && Date.now() > lastActivityAt.current + REVIEW_IDLE_MS) {
+        const elapsed = Math.max(0, lastActivityAt.current + REVIEW_IDLE_MS - current.at);
+        reviewMs.current.set(current.id, (reviewMs.current.get(current.id) || 0) + elapsed);
+        reviewStart.current = { id: current.id, at: Date.now() };
+      }
+      lastActivityAt.current = Date.now();
+      const id = pausedByIdle.current;
+      if (id !== null && !reviewStart.current && document.visibilityState !== 'hidden') {
+        reviewStart.current = { id, at: Date.now() };
+      }
+      pausedByIdle.current = null;
+    }
+    const events = ['pointerdown', 'pointermove', 'keydown', 'wheel', 'scroll', 'touchstart'] as const;
+    events.forEach((ev) => window.addEventListener(ev, onActivity, { passive: true }));
+    const timer = window.setInterval(() => {
+      const current = reviewStart.current;
+      if (!current) return;
+      const idleEnd = lastActivityAt.current + REVIEW_IDLE_MS;
+      if (Date.now() > idleEnd) {
+        const elapsed = Math.max(0, idleEnd - current.at);
+        reviewMs.current.set(current.id, (reviewMs.current.get(current.id) || 0) + elapsed);
+        reviewStart.current = null;
+        pausedByIdle.current = current.id;
+      }
+    }, 15_000);
+    return () => {
+      events.forEach((ev) => window.removeEventListener(ev, onActivity));
+      window.clearInterval(timer);
+    };
+  }, []);
+
+  /** Segundos de revisão acumulados para o feedback (sem zerar: só zera se a aprovação der certo). */
+  function peekReviewSeconds(feedbackId: number): number {
+    pauseReviewClock();
+    return Math.round((reviewMs.current.get(feedbackId) || 0) / 1000);
+  }
 
   // Sync edit text and criteria when selection changes
   useEffect(() => {
@@ -248,6 +351,23 @@ export default function ReviewDashboard() {
     setSelectedIndex(0);
   }
 
+  /** Abre um aluno vindo do diagnóstico da turma (mostra a lista completa). */
+  function handleJumpToResponse(responseId: number) {
+    if (!activity) return;
+    const index = activity.responses.findIndex((r) => r.id === responseId);
+    if (index === -1) return;
+    if (filter === 'todos' && index === selectedIndex) return;
+    if (isDirty()) {
+      const confirmed = window.confirm(
+        'Você tem alterações não salvas no feedback atual. Deseja descartar as alterações e abrir este aluno?'
+      );
+      if (!confirmed) return;
+    }
+    setFilter('todos');
+    setSelectedIndex(index);
+    document.querySelector('.review-layout')?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+  }
+
   function handleToggleCriterion(idx: number) {
     setCurrentCriteriaScores((prev) => {
       const updated = [...prev];
@@ -318,20 +438,25 @@ export default function ReviewDashboard() {
         criteriaScores: currentCriteriaScores,
         ...(isGradeDirty() ? { teacherGrade: grade.value } : {}),
       });
-      await approveFeedback(selected.feedback_id);
-      await loadActivity();
-
-      // Avanço automático para o próximo não aprovado
-      let nextIndex = filteredResponses.findIndex(
-        (r, i) => i > selectedIndex && r.status !== 'aprovado'
-      );
-      if (nextIndex === -1) {
-        nextIndex = filteredResponses.findIndex(
-          (r, i) => i !== selectedIndex && r.status !== 'aprovado'
-        );
+      const approvedId = selected.feedback_id;
+      try {
+        await approveFeedback(approvedId, peekReviewSeconds(approvedId));
+      } catch (approveError) {
+        // A aprovação falhou: o tempo continua contando para este aluno
+        reviewStart.current = { id: approvedId, at: Date.now() };
+        throw approveError;
       }
-      if (nextIndex !== -1) {
-        setSelectedIndex(nextIndex);
+      reviewMs.current.delete(approvedId);
+
+      // Próximo aluno não aprovado, escolhido na lista de antes e achado pelo id na lista nova
+      // (na aba "A revisar" o aluno aprovado sai da lista e as posições mudam)
+      const next =
+        filteredResponses.find((r, i) => i > selectedIndex && r.status !== 'aprovado') ||
+        filteredResponses.find((r, i) => i !== selectedIndex && r.status !== 'aprovado');
+      const fresh = await loadActivity();
+      if (next && fresh) {
+        const nextIndex = filterResponses(fresh.responses, filter).findIndex((r) => r.id === next.id);
+        if (nextIndex !== -1) setSelectedIndex(nextIndex);
       }
     } catch (err: unknown) {
       const msg =
@@ -342,7 +467,27 @@ export default function ReviewDashboard() {
     } finally {
       setActionLoading('');
     }
-  }, [selected?.feedback_id, editText, currentCriteriaScores, loadActivity, filteredResponses, selectedIndex, gradeText, isGradeDirty]);
+  }, [selected?.feedback_id, editText, currentCriteriaScores, loadActivity, filteredResponses, selectedIndex, gradeText, isGradeDirty, filter]);
+
+  /** O professor diz se o rascunho da IA ajudou. Clicar de novo na mesma opção apaga. */
+  async function handleRateDraft(rating: -1 | 0 | 1) {
+    if (!selected?.feedback_id || !activity) return;
+    const next = selected.teacher_rating === rating ? null : rating;
+    const feedbackId = selected.feedback_id;
+    setActionLoading('rate');
+    setError('');
+    try {
+      await updateFeedback(feedbackId, { teacherRating: next });
+      setActivity({
+        ...activity,
+        responses: activity.responses.map((r) => (r.feedback_id === feedbackId ? { ...r, teacher_rating: next } : r)),
+      });
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Não foi possível salvar a avaliação.');
+    } finally {
+      setActionLoading('');
+    }
+  }
 
   async function handleToggleAiGrade() {
     if (!activity) return;
@@ -392,7 +537,8 @@ export default function ReviewDashboard() {
     setActionLoading('approve-all');
     setError('');
     try {
-      await Promise.all(pendingWithFeedback.map((p) => approveFeedback(p.feedback_id!)));
+      // Uma chamada só: o servidor aprova todos numa transação (tudo ou nada)
+      await approveAllFeedbacks(Number(activityId));
       await loadActivity();
     } catch (err: unknown) {
       const msg =
@@ -407,8 +553,11 @@ export default function ReviewDashboard() {
 
   // Atalhos de teclado (Alt+A para aprovar, Alt+→ para próximo, Alt+← para anterior)
   // Não conflitam com a digitação em textarea/input
-  useEffect(() => {
-    function handleKeyDown(e: KeyboardEvent) {
+  // O atalho fica registrado uma vez só e sempre chama a versão mais nova do handler.
+  // Antes, o listener era removido e registrado de novo a cada troca de aluno, e uma tecla
+  // apertada nesse meio-tempo podia usar o aluno anterior ou se perder.
+  const keyHandlerRef = useRef<(e: KeyboardEvent) => void>(() => {});
+  keyHandlerRef.current = function handleKeyDown(e: KeyboardEvent) {
       const target = e.target as HTMLElement | null;
       const isTyping =
         target?.tagName === 'INPUT' ||
@@ -456,11 +605,13 @@ export default function ReviewDashboard() {
         handleNavigateRelative(-1);
         return;
       }
-    }
+  };
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selected?.feedback_id, selected?.status, actionLoading, handleApprove, handleNavigateRelative]);
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => keyHandlerRef.current(e);
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
 
   function getStatusChip(status: string | null) {
     switch (status) {
@@ -521,6 +672,7 @@ export default function ReviewDashboard() {
   const objectiveOptions: ObjectiveOption[] = isObjective ? parseJsonArray<ObjectiveOption>(activity.options) : [];
   const objectiveResult: ObjectiveResult | null = selected?.auto_result ? parseJsonObject<ObjectiveResult>(selected.auto_result) : null;
   const needsGeneration = activity.responses.some((r) => !r.feedback_id);
+  const toReviewCount = activity.responses.filter((r) => r.feedback_id && r.status !== 'aprovado').length;
   const pendingFeedbacksCount = activity.responses.filter(
     (r) => r.feedback_id && r.status !== 'aprovado'
   ).length;
@@ -580,6 +732,15 @@ export default function ReviewDashboard() {
             </Button>
           )}
           <Button
+            ref={editButtonRef}
+            variant="ghost"
+            onClick={() => (editingDetails ? closeEditDetails() : setEditingDetails(true))}
+            aria-expanded={editingDetails}
+            id="btn-edit-activity"
+          >
+            Editar dados
+          </Button>
+          <Button
             variant="ghost"
             onClick={() => navigate(`/export/${activityId}`)}
           >
@@ -587,6 +748,18 @@ export default function ReviewDashboard() {
           </Button>
         </div>
       </div>
+
+      {editingDetails && (
+        <EditActivityPanel
+          activity={activity}
+          hasResponses={activity.responses.length > 0}
+          onCancel={closeEditDetails}
+          onSaved={(updated) => {
+            setActivity({ ...activity, ...updated });
+            closeEditDetails();
+          }}
+        />
+      )}
 
       {/* Stats Bar com Progresso */}
       <div className="stats-bar" style={{ marginBottom: 'var(--space-6)' }}>
@@ -598,10 +771,10 @@ export default function ReviewDashboard() {
         </div>
         <div className="stat-item">
           <div>
-            <div className="stat-value" style={{ color: 'var(--warning-500)' }}>
-              {activity.stats.pending || 0}
+            <div className="stat-value" style={{ color: 'var(--warning-text)' }}>
+              {toReviewCount}
             </div>
-            <div className="stat-label">Pendentes</div>
+            <div className="stat-label">A revisar</div>
           </div>
         </div>
         <div className="stat-item">
@@ -696,6 +869,17 @@ export default function ReviewDashboard() {
         </Card>
       )}
 
+      {/* Diagnóstico da turma (recarrega quando os feedbacks mudam) */}
+      {activity.responses.some((r) => r.feedback_id) && (
+        <ClassInsights
+          activityId={activity.id}
+          refreshKey={activity.responses
+            .map((r) => `${r.feedback_id}:${r.status}:${r.teacher_grade ?? ''}:${r.teacher_rating ?? ''}:${r.criteria_scores ?? ''}`)
+            .join('|')}
+          onSelectStudent={handleJumpToResponse}
+        />
+      )}
+
       {/* Filter Tabs e Dica de Atalhos */}
       <div className="page-header-row" style={{ marginBottom: 'var(--space-4)' }}>
         <div className="filter-tabs" style={{ margin: 0 }}>
@@ -708,8 +892,9 @@ export default function ReviewDashboard() {
           <button
             className={`filter-tab ${filter === 'pendente' ? 'active' : ''}`}
             onClick={() => handleFilterChange('pendente')}
+            title="Feedbacks ainda não aprovados, inclusive os que você já editou"
           >
-            Pendentes ({activity.stats.pending || 0})
+            A revisar ({toReviewCount})
           </button>
           <button
             className={`filter-tab ${filter === 'aprovado' ? 'active' : ''}`}
@@ -995,6 +1180,26 @@ export default function ReviewDashboard() {
 
               {/* Barra de Ações */}
               {selected.feedback_id && (
+                <>
+                <div className="draft-rating" role="group" aria-label="O rascunho da IA ajudou?">
+                  <span className="draft-rating__label">O rascunho da IA ajudou?</span>
+                  {([
+                    [1, 'Ajudou'],
+                    [0, 'Mais ou menos'],
+                    [-1, 'Precisei refazer'],
+                  ] as const).map(([value, label]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      className={`draft-rating__option${selected.teacher_rating === value ? ' draft-rating__option--on' : ''}`}
+                      aria-pressed={selected.teacher_rating === value}
+                      disabled={!!actionLoading}
+                      onClick={() => handleRateDraft(value)}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
                 <div className="review-actions">
                   <Button
                     type="button"
@@ -1026,6 +1231,7 @@ export default function ReviewDashboard() {
                     Aprovar
                   </Button>
                 </div>
+                </>
               )}
             </div>
           )}

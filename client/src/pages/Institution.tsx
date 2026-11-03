@@ -23,6 +23,7 @@ import {
   resetOrgStudentPassword,
   setOrgStudentDisabled,
   removeOrgStudentFromClass,
+  readmitOrgStudent,
 } from '../services/api';
 import type { OrgActivity, OrgOverview, OrgStudentAccount } from '../types';
 import { Window } from '../components/ui/Window';
@@ -275,8 +276,13 @@ export default function Institution() {
   }
 
   function handleRemoveFromClass(id: number, name: string, classId: number, className: string) {
-    if (!window.confirm(`Tirar ${name} da turma ${className}? O nome continua na lista do professor, mas o aluno deixa de ver a turma.`)) return;
+    if (!window.confirm(`Tirar ${name} da turma ${className}? O nome continua na lista do professor, mas o aluno deixa de ver a turma e não consegue voltar pelo código. Para devolver, use "Devolver à turma" na lista de alunos tirados.`)) return;
     act(`s-cls-${id}-${classId}`, () => removeOrgStudentFromClass(id, classId));
+  }
+
+  function handleReadmit(id: number, name: string, classId: number, className: string) {
+    if (!window.confirm(`Devolver ${name} à turma ${className}? Ele(a) volta a ver as atividades e o histórico dessa turma.`)) return;
+    act(`s-back-${id}-${classId}`, () => readmitOrgStudent(id, classId));
   }
 
   async function handleCode(classId: number) {
@@ -559,6 +565,31 @@ export default function Institution() {
                   </tbody>
                 </table>
               </div>
+            )}
+            {(data.removedStudents?.length ?? 0) > 0 && (
+              <section className="org-removed" aria-labelledby="org-removed-title">
+                <h3 id="org-removed-title" className="org-form__title">Tirados de turmas</h3>
+                <p className="usage__text">Eles não voltam sozinhos pelo código da turma. Para devolver, use o botão.</p>
+                <ul className="org-removed__list">
+                  {data.removedStudents!.map((r) => (
+                    <li key={`${r.id}-${r.class_id}`} className="org-removed__item">
+                      <span>
+                        <strong>{r.name}</strong> <span className="student-row__email">{r.email}</span>
+                        <span className="usage__text"> · {r.class_name}</span>
+                      </span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        loading={busy === `s-back-${r.id}-${r.class_id}`}
+                        onClick={() => handleReadmit(r.id, r.name, r.class_id, r.class_name)}
+                        aria-label={`Devolver ${r.name} à turma ${r.class_name}`}
+                      >
+                        Devolver à turma
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              </section>
             )}
           </Window>
           <Window fileName="novo-aluno.txt" tone="orange">

@@ -236,4 +236,19 @@ describe('Dashboard Component (/painel)', () => {
     const retryBtn = screen.getByRole('link', { name: /Tentar de novo/i });
     expect(retryBtn).toHaveAttribute('href', '/upload/102');
   });
+  it('mostra a revisão média por aluno quando já há aprovações medidas', async () => {
+    vi.mocked(api.getDashboardSummary).mockResolvedValue({
+      ...mockSummaryPopulated,
+      metrics: { ...mockSummaryPopulated.metrics, avg_review_seconds: 75 },
+    });
+    renderDashboard();
+    expect(await screen.findByText(/revisão média de 1 min 15 s por aluno/)).toBeInTheDocument();
+  });
+
+  it('não mostra a revisão média antes da primeira aprovação medida', async () => {
+    vi.mocked(api.getDashboardSummary).mockResolvedValue(mockSummaryPopulated);
+    renderDashboard();
+    await waitFor(() => expect(screen.getByTestId('dashboard-content')).toBeInTheDocument());
+    expect(screen.queryByText(/revisão média/)).not.toBeInTheDocument();
+  });
 });

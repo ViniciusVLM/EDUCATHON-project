@@ -28,6 +28,9 @@ import {
   setStudentPassword,
   setStudentDisabled,
   unlinkStudentFromOrgClass,
+  readmitStudentToClass,
+  listOrgClassRemovals,
+  isRemovedFromClass,
 } from '../database/accounts.js';
 import { requireOrgAdmin } from '../middleware/auth.js';
 import { hashPassword } from '../services/auth.js';
@@ -89,6 +92,7 @@ router.get('/', requireOrgAdmin, (req, res) => {
       teachers,
       classes,
       students,
+      removedStudents: listOrgClassRemovals(req.organizationId),
     });
   } catch (err) {
     console.error('Erro ao carregar instituição:', err);
@@ -156,7 +160,16 @@ router.post('/students', requireOrgAdmin, async (req, res) => {
     const cls = getOrgClass(req.organizationId, Number(req.body?.classId));
     if (!cls) return res.status(404).json({ error: 'Turma não encontrada nesta instituição.' });
 
-    if (getStudentAccountByEmail(person.email)) {
+    const existing = getStudentAccountByEmail(person.email);
+    if (existing && isRemovedFromClass(cls.id, existing.id)) {
+      // O aluno foi tirado desta turma pela instituição: criar o acesso de novo o devolve a ela
+      readmitStudentToClass(cls.id, existing.id);
+      return res.json({
+        message: `${existing.name} voltou para a turma ${cls.name}. A senha dele não mudou.`,
+        tempPassword: null,
+      });
+    }
+    if (existing) {
       return res.status(409).json({
         error: 'Já existe uma conta de aluno com esse e-mail. Passe o código da turma para o aluno entrar por conta própria.',
       });
@@ -167,8 +180,9 @@ router.post('/students', requireOrgAdmin, async (req, res) => {
       name: person.name,
       email: person.email,
       passwordHash: await hashPassword(tempPassword),
-      // A instituição conhece o aluno e o e-mail: o acesso pode ser ligado à lista da turma.
-      emailVerified: true,
+      // A instituição conhece o aluno: o e-mail vale para ligar o acesso à lista das turmas
+      // DESTA instituição. Em turmas de outras escolas ele não é tratado como confirmado.
+      verifiedOrgId: req.organizationId,
     });
     joinClass(account.id, cls.id);
     res.status(201).json({
@@ -205,6 +219,8 @@ router.post('/teachers/:id/reset-password', requireOrgAdmin, async (req, res) =>
     }
     const teacher = getOrgTeacher(req.organizationId, teacherId);
     if (!teacher) return res.status(404).json({ error: 'Professor não encontrado nesta instituição.' });
+    // Quem entra com Google provou ser dono do e-mail: a instituição não pode assumir a conta.
+    if (teacher.google_uid) return res.status(403).json({ error: 'Esta conta entra com o Google: a senha é controlada pela própria pessoa e não pode ser redefinida pela instituição.' });
     const tempPassword = generateTempPassword();
     setTeacherPassword(teacherId, await hashPassword(tempPassword));
     res.json({ message: `Nova senha provisória criada para ${teacher.name}.`, tempPassword });
@@ -275,6 +291,7 @@ router.post('/students/:id/reset-password', requireOrgAdmin, async (req, res) =>
   try {
     const account = loadManageableStudent(req, res);
     if (!account) return;
+    if (account.google_uid) return res.status(403).json({ error: 'Esta conta entra com o Google: a senha é controlada pela própria pessoa e não pode ser redefinida pela instituição.' });
     const tempPassword = generateTempPassword();
     setStudentPassword(account.id, await hashPassword(tempPassword));
     res.json({ message: `Nova senha provisória criada para ${account.name}.`, tempPassword });
@@ -307,6 +324,26 @@ router.patch('/students/:id', requireOrgAdmin, (req, res) => {
  * DELETE /api/org/students/:id/classes/:classId
  * Tira o aluno de uma turma: ele deixa de ver a turma; o nome continua na lista do professor.
  */
+/**
+ * POST /api/org/students/:id/classes/:classId/readmit
+ * Devolve à turma um aluno que a instituição tinha tirado dela (volta ao mesmo cadastro da
+ * lista, com o histórico). Só vale para remoções feitas em turmas desta instituição.
+ */
+router.post('/students/:id/classes/:classId/readmit', requireOrgAdmin, (req, res) => {
+  try {
+    const accountId = Number(req.params.id);
+    const cls = getOrgClass(req.organizationId, Number(req.params.classId));
+    if (!cls || !isRemovedFromClass(cls.id, accountId)) {
+      return res.status(404).json({ error: 'Não há remoção deste aluno nesta turma da instituição.' });
+    }
+    readmitStudentToClass(cls.id, accountId);
+    res.json({ message: `O aluno voltou para a turma ${cls.name}.` });
+  } catch (err) {
+    console.error('Erro ao devolver aluno à turma:', err);
+    res.status(500).json({ error: 'Erro interno ao devolver o aluno à turma.' });
+  }
+});
+
 router.delete('/students/:id/classes/:classId', requireOrgAdmin, (req, res) => {
   const account = loadManageableStudent(req, res);
   if (!account) return;

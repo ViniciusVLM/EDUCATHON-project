@@ -7,8 +7,15 @@ import {
   getActivityStats,
   getClassById,
   setActivityAiGrade,
+  setActivityArchived,
+  updateActivityDetails,
 } from '../database/db.js';
 import { validateExtraQuestions } from '../services/multiQuestion.js';
+import { buildActivityInsights } from '../services/insights.js';
+import { generateClassPlan, pickFocusCriteria } from '../services/classPlan.js';
+import { reserveQuota, recordUsage, resolveGeminiKey, QuotaError } from '../services/plans.js';
+import { aiGenerateLimiter } from '../middleware/rateLimit.js';
+import { isDailyQuotaError, DAILY_QUOTA_MESSAGE } from '../services/gemini.js';
 
 const router = Router();
 
@@ -176,6 +183,230 @@ router.patch('/:id/ai-grade', (req, res) => {
   } catch (error) {
     console.error('Erro ao alterar nota sugerida:', error);
     res.status(500).json({ error: 'Erro interno ao alterar a configuração.' });
+  }
+});
+
+function parseJsonOrNull(value) {
+  if (!value || typeof value !== 'string') return value || null;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * POST /api/activities/:id/duplicate
+ * Reaplica a atividade (por exemplo, em outra turma): copia enunciado, rubrica, critérios,
+ * alternativas e perguntas extras. Não copia respostas, feedbacks, notas nem o prazo.
+ * Body opcional: { classId: number | null, title: string }
+ */
+router.post('/:id/duplicate', (req, res) => {
+  try {
+    const original = getActivityIfOwned(Number(req.params.id), req.teacher.id);
+    if (!original) {
+      return res.status(404).json({ error: 'Atividade não encontrada.' });
+    }
+
+    let classId = original.class_id || null;
+    if (req.body?.classId !== undefined) {
+      if (req.body.classId === null || req.body.classId === '') {
+        classId = null;
+      } else {
+        const cls = getClassById(Number(req.body.classId), req.teacher.id);
+        if (!cls) return res.status(404).json({ error: 'Turma não encontrada.' });
+        classId = cls.id;
+      }
+    }
+
+    let title = `${original.title} (cópia)`.slice(0, 200);
+    if (req.body?.title !== undefined) {
+      if (typeof req.body.title !== 'string' || !req.body.title.trim() || req.body.title.trim().length > 200) {
+        return res.status(400).json({ error: 'O título deve ter entre 1 e 200 caracteres.' });
+      }
+      title = req.body.title.trim();
+    }
+
+    const result = createActivity({
+      title,
+      question: original.question,
+      rubric: original.rubric,
+      educationLevel: original.education_level,
+      subject: original.subject,
+      classId,
+      dueDate: null,
+      rubricCriteria: original.rubric_criteria,
+      teacherId: req.teacher.id,
+      questionType: original.question_type,
+      options: original.options,
+      correctOption: original.correct_option,
+      questions: parseJsonOrNull(original.questions),
+      aiGradeEnabled: Boolean(original.ai_grade_enabled),
+    });
+
+    res.status(201).json({ message: 'Cópia criada. Agora é só enviar as respostas.', id: Number(result.id) });
+  } catch (error) {
+    console.error('Erro ao duplicar atividade:', error);
+    res.status(500).json({ error: 'Erro interno ao duplicar a atividade.' });
+  }
+});
+
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+
+/** 'AAAA-MM-DD' que existe no calendário (recusa 2026-02-31, que o Date.parse aceita). */
+function isValidDateOnly(value) {
+  if (typeof value !== 'string' || !DATE_ONLY.test(value)) return false;
+  const date = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
+
+/**
+ * PATCH /api/activities/:id
+ * Edita os dados gerais: título, disciplina, prazo e turma. Body com qualquer um destes campos:
+ * { title, subject, dueDate ('AAAA-MM-DD' ou null), classId (número ou null) }.
+ * A turma só muda enquanto a atividade não tem respostas (as respostas ficam ligadas aos
+ * alunos da turma original).
+ */
+router.patch('/:id', (req, res) => {
+  try {
+    const activity = getActivityIfOwned(Number(req.params.id), req.teacher.id);
+    if (!activity) {
+      return res.status(404).json({ error: 'Atividade não encontrada.' });
+    }
+    const body = req.body || {};
+    const fields = {};
+
+    if (body.title !== undefined) {
+      if (typeof body.title !== 'string' || !body.title.trim() || body.title.trim().length > 200) {
+        return res.status(400).json({ error: 'O título deve ter entre 1 e 200 caracteres.' });
+      }
+      fields.title = body.title.trim();
+    }
+    if (body.subject !== undefined) {
+      if (body.subject !== null && (typeof body.subject !== 'string' || body.subject.trim().length > 100)) {
+        return res.status(400).json({ error: 'A disciplina deve ter no máximo 100 caracteres.' });
+      }
+      fields.subject = body.subject && body.subject.trim() ? body.subject.trim() : null;
+    }
+    if (body.dueDate !== undefined) {
+      if (body.dueDate !== null && body.dueDate !== '' && !isValidDateOnly(body.dueDate)) {
+        return res.status(400).json({ error: 'O prazo deve ser uma data no formato AAAA-MM-DD.' });
+      }
+      fields.dueDate = body.dueDate || null;
+    }
+    if (body.classId !== undefined) {
+      const newClassId = body.classId === null || body.classId === '' ? null : body.classId;
+      if (newClassId !== null && !(Number.isInteger(newClassId) && newClassId > 0)) {
+        return res.status(400).json({ error: 'A turma deve ser o número de uma turma, ou null para nenhuma.' });
+      }
+      if (newClassId !== null) {
+        const cls = getClassById(newClassId, req.teacher.id);
+        if (!cls) return res.status(404).json({ error: 'Turma não encontrada.' });
+      }
+      if ((newClassId ?? null) !== (activity.class_id ?? null)) {
+        if (getResponsesByActivity(activity.id).length > 0) {
+          return res.status(409).json({
+            error: 'A turma não pode mudar depois que a atividade recebeu respostas. Use "Reaplicar" para usar a atividade em outra turma.',
+          });
+        }
+        fields.classId = newClassId;
+      }
+    }
+
+    if (Object.keys(fields).length === 0) {
+      return res.status(400).json({ error: 'Envie ao menos um campo para alterar (title, subject, dueDate ou classId).' });
+    }
+    updateActivityDetails(activity.id, fields);
+    res.json({ message: 'Atividade atualizada.', activity: getActivityIfOwned(activity.id, req.teacher.id) });
+  } catch (error) {
+    console.error('Erro ao editar atividade:', error);
+    res.status(500).json({ error: 'Erro interno ao editar a atividade.' });
+  }
+});
+
+/**
+ * PATCH /api/activities/:id/archive
+ * Arquiva ou reativa uma atividade. Arquivar só tira a atividade do painel e da lista
+ * principal: respostas, feedbacks e notas continuam guardados. Body: { archived: boolean }
+ */
+router.patch('/:id/archive', (req, res) => {
+  try {
+    const activity = getActivityIfOwned(Number(req.params.id), req.teacher.id);
+    if (!activity) {
+      return res.status(404).json({ error: 'Atividade não encontrada.' });
+    }
+    if (typeof req.body?.archived !== 'boolean') {
+      return res.status(400).json({ error: 'Envie "archived" como true ou false.' });
+    }
+    setActivityArchived(activity.id, req.body.archived);
+    res.json({
+      message: req.body.archived ? 'Atividade arquivada.' : 'Atividade reativada.',
+      archived: req.body.archived,
+    });
+  } catch (error) {
+    console.error('Erro ao arquivar atividade:', error);
+    res.status(500).json({ error: 'Erro interno ao arquivar a atividade.' });
+  }
+});
+
+/**
+ * GET /api/activities/:id/insights
+ * Diagnóstico da turma: critérios mais e menos atendidos, distribuição das notas do
+ * professor, alunos que pedem atenção e tempo de revisão. Só o professor dono vê.
+ */
+router.get('/:id/insights', (req, res) => {
+  try {
+    const activity = getActivityIfOwned(Number(req.params.id), req.teacher.id);
+    if (!activity) {
+      return res.status(404).json({ error: 'Atividade não encontrada.' });
+    }
+    res.json(buildActivityInsights(activity, getResponsesByActivity(activity.id)));
+  } catch (error) {
+    console.error('Erro ao montar o diagnóstico da turma:', error);
+    res.status(500).json({ error: 'Erro interno ao montar o diagnóstico.' });
+  }
+});
+
+/**
+ * POST /api/activities/:id/class-plan
+ * A IA sugere como retomar em aula os critérios que a turma menos atendeu.
+ * Só dados agregados vão para a IA (sem nomes nem respostas). Gasta 1 geração da cota.
+ */
+router.post('/:id/class-plan', aiGenerateLimiter, async (req, res) => {
+  let reserved = false;
+  try {
+    const activity = getActivityIfOwned(Number(req.params.id), req.teacher.id);
+    if (!activity) {
+      return res.status(404).json({ error: 'Atividade não encontrada.' });
+    }
+    const insights = buildActivityInsights(activity, getResponsesByActivity(activity.id));
+    const focus = pickFocusCriteria(insights, activity);
+    if (focus.length === 0) {
+      const hasRubricCriteria = pickFocusCriteria({ criteria: insights.criteria.map((c) => ({ ...c, percent: 0 })) }, activity).length > 0;
+      return res.status(400).json({
+        error: hasRubricCriteria
+          ? 'A turma atendeu todos os critérios da rubrica: não há o que retomar.'
+          : 'A sugestão usa os critérios cadastrados na rubrica da atividade. Gere os feedbacks de uma atividade com critérios primeiro.',
+      });
+    }
+    try {
+      reserveQuota(req.teacher.id, 'feedback', 1);
+      reserved = true;
+    } catch (quotaError) {
+      if (quotaError instanceof QuotaError) {
+        return res.status(402).json({ error: quotaError.message, quota: quotaError.status, upgradeUrl: '/planos' });
+      }
+      throw quotaError;
+    }
+    const { plan } = await generateClassPlan(activity, focus, { apiKey: resolveGeminiKey(req.teacher.id) });
+    res.json({ criteria: focus, ...plan });
+  } catch (error) {
+    if (reserved) recordUsage(req.teacher.id, 'feedback', -1);
+    if (isDailyQuotaError(error)) {
+      return res.status(429).json({ error: DAILY_QUOTA_MESSAGE, reason: 'gemini_daily_quota' });
+    }
+    console.error('Erro ao sugerir retomada:', error);
+    res.status(500).json({ error: 'Não foi possível gerar a sugestão agora. Tente de novo em instantes.' });
   }
 });
 

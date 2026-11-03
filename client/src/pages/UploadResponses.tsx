@@ -26,6 +26,7 @@ export default function UploadResponses() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [activity, setActivity] = useState<ActivityWithResponses | null>(null);
+  const [loadError, setLoadError] = useState('');
   const [mode, setMode] = useState<'csv' | 'manual' | 'scan'>('csv');
   const [scanned, setScanned] = useState<ScannedStudent[]>([]);
   const [dragging, setDragging] = useState(false);
@@ -56,8 +57,8 @@ export default function UploadResponses() {
     if (activityId) {
       getActivity(Number(activityId))
         .then((act) => setActivity(act))
-        .catch(() => {
-          // Mantém silencioso se falhar
+        .catch((err: unknown) => {
+          setLoadError(err instanceof Error ? err.message : 'Não foi possível carregar a atividade.');
         });
     }
   }, [activityId]);
@@ -245,6 +246,7 @@ export default function UploadResponses() {
       <div className="filter-tabs" style={{ marginBottom: 'var(--space-6)' }}>
         <button
           className={`filter-tab ${mode === 'csv' ? 'active' : ''}`}
+          aria-pressed={mode === 'csv'}
           onClick={() => setMode('csv')}
           type="button"
         >
@@ -252,6 +254,7 @@ export default function UploadResponses() {
         </button>
         <button
           className={`filter-tab ${mode === 'manual' ? 'active' : ''}`}
+          aria-pressed={mode === 'manual'}
           onClick={() => setMode('manual')}
           type="button"
         >
@@ -259,6 +262,7 @@ export default function UploadResponses() {
         </button>
         <button
           className={`filter-tab ${mode === 'scan' ? 'active' : ''}`}
+          aria-pressed={mode === 'scan'}
           onClick={() => setMode('scan')}
           type="button"
         >
@@ -276,8 +280,12 @@ export default function UploadResponses() {
               students={scanned}
               onChange={setScanned}
             />
+          ) : loadError ? (
+            <div className="alert-box alert-box--error" role="alert">
+              <span>{loadError} Recarregue a página para tentar de novo.</span>
+            </div>
           ) : (
-            <p className="input-hint">Carregando a atividade...</p>
+            <p className="input-hint" role="status">Carregando a atividade...</p>
           )}
         </Card>
       ) : mode === 'csv' ? (
@@ -289,6 +297,15 @@ export default function UploadResponses() {
             onDragLeave={() => setDragging(false)}
             onDrop={handleDrop}
             onClick={() => fileInputRef.current?.click()}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                fileInputRef.current?.click();
+              }
+            }}
+            role="button"
+            tabIndex={0}
+            aria-describedby="csv-hint"
           >
             <div className="dropzone-icon"><Mascot size={70} /></div>
             <div className="dropzone-text">
@@ -296,7 +313,7 @@ export default function UploadResponses() {
                 ? `${csvPreview.length} respostas carregadas`
                 : 'Arraste um arquivo CSV aqui ou clique para selecionar'}
             </div>
-            <div className="dropzone-hint">
+            <div className="dropzone-hint" id="csv-hint">
               {isMulti ? (
                 <>
                   Colunas esperadas: <strong>nome_aluno</strong>,{' '}
@@ -369,6 +386,7 @@ export default function UploadResponses() {
                       variant="ghost"
                       size="sm"
                       onClick={() => removeManualRow(i)}
+                      aria-label={`Remover aluno ${i + 1}`}
                       style={{ color: 'var(--error-500)' }}
                     >
                       Remover
@@ -406,6 +424,7 @@ export default function UploadResponses() {
                     <input
                       className="input"
                       placeholder="Nome do aluno"
+                      aria-label={`Nome do aluno ${i + 1}`}
                       value={entry.student_name}
                       onChange={(e) => updateManualRow(i, 'student_name', e.target.value)}
                     />
@@ -414,6 +433,7 @@ export default function UploadResponses() {
                     <textarea
                       className="textarea"
                       placeholder="Resposta do aluno"
+                      aria-label={`Resposta do aluno ${i + 1}`}
                       value={entry.original_response}
                       onChange={(e) => updateManualRow(i, 'original_response', e.target.value)}
                       rows={2}

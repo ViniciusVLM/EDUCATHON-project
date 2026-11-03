@@ -5,20 +5,66 @@ import {
   getFeedbackIfOwned,
   updateFeedback,
   approveFeedback,
+  approveAllFeedbacks,
   deleteFeedbackByResponseId,
+  getDb,
   getExportData,
   setFeedbackGrade,
+  setFeedbackRating,
 } from '../database/db.js';
 import { processResponses, getProgress, markJobError, generateAndSave } from '../services/queue.js';
 import { aiGenerateLimiter } from '../middleware/rateLimit.js';
 import { reserveQuota, recordUsage, resolveGeminiKey, QuotaError } from '../services/plans.js';
 import { countAiNeeded } from '../services/objective.js';
 import { isDailyQuotaError, DAILY_QUOTA_MESSAGE } from '../services/gemini.js';
+import { parseReviewSeconds } from '../services/insights.js';
 
 const router = Router();
 
 function sendQuotaError(res, error) {
   return res.status(402).json({ error: error.message, quota: error.status, upgradeUrl: '/planos' });
+}
+
+function isValidCriteriaScores(list) {
+  return Array.isArray(list)
+    // Provas com várias perguntas juntam os critérios de todas (até 20 perguntas x 20 critérios)
+    && list.length <= 400
+    && list.every((c) => c && typeof c === 'object' && !Array.isArray(c)
+      && typeof c.criterio === 'string' && c.criterio.trim().length > 0 && c.criterio.length <= 500
+      && typeof c.atendido === 'boolean'
+      && (c.evidencia === undefined || c.evidencia === null || (typeof c.evidencia === 'string' && c.evidencia.length <= 2000)));
+}
+
+function parseJsonSafe(value) {
+  if (!value) return null;
+  if (typeof value !== 'string') return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
+/** Critérios de uma linha: a versão revisada pelo professor ou, se não houver, o rascunho da IA. */
+function rowCriteria(row) {
+  const revised = parseJsonSafe(row.criteria_scores);
+  const list = Array.isArray(revised) ? revised : parseJsonSafe(row.ai_feedback_json)?.criterios_avaliacao;
+  return Array.isArray(list)
+    ? list.filter((c) => c && typeof c.criterio === 'string' && c.criterio.trim())
+    : [];
+}
+
+/** Nomes dos critérios para o CSV: os da rubrica primeiro, na ordem cadastrada; depois os demais. */
+function exportCriteriaNames(activity, data) {
+  const names = [];
+  const add = (name) => {
+    const clean = typeof name === 'string' ? name.trim() : '';
+    if (clean && !names.includes(clean)) names.push(clean);
+  };
+  const rubric = parseJsonSafe(activity.rubric_criteria);
+  if (Array.isArray(rubric)) rubric.forEach((c) => add(typeof c === 'string' ? c : c?.criterio));
+  data.forEach((row) => rowCriteria(row).forEach((c) => add(c.criterio)));
+  return names.slice(0, 400);
 }
 
 /** Nota do professor: número de 0 a 10 com até uma casa decimal, ou null para apagar. */
@@ -153,6 +199,14 @@ router.patch('/feedback/:feedbackId', (req, res) => {
       });
     }
 
+    // Critérios revisados: lista de { criterio: texto, atendido: true/false }.
+    // Um item inválido salvo aqui quebrava o portal do aluno depois da aprovação.
+    if (criteriaScores !== undefined && criteriaScores !== null && !isValidCriteriaScores(criteriaScores)) {
+      return res.status(400).json({
+        error: 'Os critérios devem ser uma lista de { criterio, atendido } (até 400 itens).',
+      });
+    }
+
     if (teacherRating !== undefined && teacherRating !== null && ![-1, 0, 1].includes(teacherRating)) {
       return res.status(400).json({
         error: 'A avaliação deve ser -1, 0 ou 1.',
@@ -169,13 +223,15 @@ router.patch('/feedback/:feedbackId', (req, res) => {
       setFeedbackGrade(feedbackId, gradeUpdate.grade);
     }
 
-    const onlyGrade = teacherFeedback === undefined && teacherRating === undefined && criteriaScores === undefined;
-    if (onlyGrade) {
-      // Lançar a nota não muda o status: um feedback aprovado continua aprovado
+    // Só nota e/ou avaliação do rascunho: não muda o status (um feedback aprovado continua aprovado)
+    const onlyMeta = teacherFeedback === undefined && criteriaScores === undefined;
+    if (onlyMeta) {
+      if (teacherRating !== undefined) setFeedbackRating(feedbackId, teacherRating);
       return res.json({
-        message: 'Nota salva.',
+        message: gradeUpdate ? 'Nota salva.' : 'Avaliação do rascunho salva.',
         status: feedback.status,
-        teacherGrade: gradeUpdate.grade,
+        ...(gradeUpdate ? { teacherGrade: gradeUpdate.grade } : {}),
+        ...(teacherRating !== undefined ? { teacherRating } : {}),
       });
     }
 
@@ -195,6 +251,7 @@ router.patch('/feedback/:feedbackId', (req, res) => {
 /**
  * POST /api/feedback/:feedbackId/approve
  * Marca o feedback como aprovado pelo professor.
+ * Body opcional: { reviewSeconds } — tempo que o professor passou revisando este aluno.
  */
 router.post('/feedback/:feedbackId/approve', (req, res) => {
   try {
@@ -206,7 +263,7 @@ router.post('/feedback/:feedbackId/approve', (req, res) => {
       return res.status(404).json({ error: 'Feedback não encontrado.' });
     }
 
-    approveFeedback(feedbackId);
+    approveFeedback(feedbackId, parseReviewSeconds(req.body?.reviewSeconds));
 
     res.json({
       message: 'Feedback aprovado com sucesso!',
@@ -215,6 +272,35 @@ router.post('/feedback/:feedbackId/approve', (req, res) => {
   } catch (error) {
     console.error('Erro ao aprovar feedback:', error);
     res.status(500).json({ error: 'Erro interno ao aprovar feedback.' });
+  }
+});
+
+/**
+ * POST /api/activities/:id/approve-all
+ * Aprova de uma vez todos os feedbacks gerados e ainda não aprovados da atividade.
+ * Roda numa transação: ou aprova todos, ou nenhum. A nota sugerida pela IA nunca vira
+ * nota oficial aqui; só vale a nota que o professor lançou.
+ */
+router.post('/activities/:id/approve-all', (req, res) => {
+  try {
+    const activity = getActivityIfOwned(Number(req.params.id), req.teacher.id);
+    if (!activity) {
+      return res.status(404).json({ error: 'Atividade não encontrada.' });
+    }
+    const progress = getProgress(activity.id);
+    if (progress && progress.status === 'processing') {
+      return res.status(409).json({ error: 'Espere a geração dos feedbacks terminar antes de aprovar em lote.' });
+    }
+    const approved = approveAllFeedbacks(activity.id);
+    res.json({
+      message: approved > 0
+        ? `${approved} feedback(s) aprovado(s).`
+        : 'Não havia feedbacks pendentes para aprovar.',
+      approved,
+    });
+  } catch (error) {
+    console.error('Erro ao aprovar em lote:', error);
+    res.status(500).json({ error: 'Erro interno ao aprovar os feedbacks.' });
   }
 });
 
@@ -234,8 +320,7 @@ router.post('/feedback/:feedbackId/regenerate', aiGenerateLimiter, async (req, r
     }
 
     // Busca a atividade associada (teacher_id já validado acima)
-    const db = (await import('../database/db.js'));
-    const response = db.getDb().prepare(`
+    const response = getDb().prepare(`
       SELECT sr.*, a.id AS activity_id, a.question, a.rubric, a.education_level, a.subject, a.rubric_criteria,
              a.question_type, a.options, a.correct_option, a.questions, a.ai_grade_enabled
       FROM student_responses sr
@@ -342,14 +427,28 @@ router.get('/activities/:id/export', (req, res) => {
       return `"${val.replace(/"/g, '""')}"`;
     };
 
-    const header = 'nome_aluno,resposta_original,feedback_final,nota,status';
+    // Colunas extras depois das 5 fixas (quem lê só as primeiras continua funcionando):
+    // uma por critério da rubrica (sim/não) e, em múltipla escolha, a alternativa e o acerto.
+    const criteriaNames = exportCriteriaNames(activity, data);
+    const isObjective = activity.question_type === 'objetiva';
+    const header = [
+      'nome_aluno,resposta_original,feedback_final,nota,status',
+      ...criteriaNames.map((name) => escapeCsvCell(`criterio: ${name}`)),
+      ...(isObjective ? ['alternativa_escolhida', 'acertou'] : []),
+    ].join(',');
     const rows = data.map((row) => {
+      const met = new Map(rowCriteria(row).map((c) => [String(c.criterio).trim(), c.atendido]));
+      const auto = isObjective ? parseJsonSafe(row.auto_result) : null;
       return [
         escapeCsvCell(row.student_name),
         escapeCsvCell(row.original_response),
         escapeCsvCell(row.feedback_final),
         escapeCsvCell(row.nota === null || row.nota === undefined ? '' : String(row.nota).replace('.', ',')),
         escapeCsvCell(row.status),
+        ...criteriaNames.map((name) => escapeCsvCell(met.has(name) ? (met.get(name) === true ? 'sim' : 'não') : '')),
+        ...(isObjective
+          ? [escapeCsvCell(auto?.escolhida ?? ''), escapeCsvCell(auto ? (auto.acertou ? 'sim' : 'não') : '')]
+          : []),
       ].join(',');
     });
 

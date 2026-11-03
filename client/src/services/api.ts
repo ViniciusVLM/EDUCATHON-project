@@ -23,6 +23,9 @@ import type {
   StudentSubjectSummary,
   AnswerSheetsResult,
   OrgActivity,
+  ActivityInsights,
+  ClassPlan,
+  ClassProgress,
 } from '../types';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
@@ -91,7 +94,10 @@ async function request<T>(url: string, options?: RequestInit, tokenOverride?: st
     const error = await response.json().catch(() => ({
       error: 'Não foi possível conectar ao servidor. Tente novamente em instantes.',
     }));
-    throw new Error(error.error || `HTTP ${response.status}`);
+    throw new Error(
+      (typeof error?.error === 'string' && error.error) ||
+        'O servidor não conseguiu concluir a ação. Tente novamente em instantes.'
+    );
   }
 
   // Para download de CSV
@@ -247,12 +253,65 @@ export async function updateFeedback(
   });
 }
 
-export async function approveFeedback(feedbackId: number): Promise<{
+/**
+ * Aprova um feedback. reviewSeconds é o tempo que o professor passou revisando este aluno,
+ * usado para medir o ganho de tempo frente à correção manual.
+ */
+export async function approveFeedback(feedbackId: number, reviewSeconds?: number): Promise<{
   message: string;
   status: string;
 }> {
   return request(`/feedback/${feedbackId}/approve`, {
     method: 'POST',
+    ...(reviewSeconds && reviewSeconds > 0 ? { body: JSON.stringify({ reviewSeconds }) } : {}),
+  });
+}
+
+/** Aprova de uma vez, no servidor, todos os feedbacks ainda não aprovados da atividade. */
+export async function approveAllFeedbacks(activityId: number): Promise<{ message: string; approved: number }> {
+  return request(`/activities/${activityId}/approve-all`, { method: 'POST' });
+}
+
+/** A IA sugere como retomar em aula os critérios menos atendidos (só dados agregados vão para a IA). */
+export async function suggestClassPlan(activityId: number): Promise<ClassPlan> {
+  return request(`/activities/${activityId}/class-plan`, { method: 'POST' });
+}
+
+/** Diagnóstico da turma: critérios, notas, alunos que pedem atenção e tempo de revisão. */
+export async function getActivityInsights(activityId: number): Promise<ActivityInsights> {
+  return request(`/activities/${activityId}/insights`);
+}
+
+/**
+ * Reaplica uma atividade (ex.: em outra turma). Copia enunciado, rubrica, critérios e alternativas;
+ * não copia respostas, feedbacks, notas nem o prazo. classId null = sem turma.
+ */
+export async function duplicateActivity(
+  activityId: number,
+  data: { classId?: number | null; title?: string } = {}
+): Promise<{ message: string; id: number }> {
+  return request(`/activities/${activityId}/duplicate`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+/** Edita título, disciplina, prazo e turma (a turma só muda enquanto não há respostas). */
+export async function updateActivityDetails(
+  activityId: number,
+  data: { title?: string; subject?: string | null; dueDate?: string | null; classId?: number | null }
+): Promise<{ message: string; activity: Activity }> {
+  return request(`/activities/${activityId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  });
+}
+
+/** Arquiva (some do painel e da lista principal) ou reativa uma atividade. Nada é apagado. */
+export async function setActivityArchived(activityId: number, archived: boolean): Promise<{ message: string; archived: boolean }> {
+  return request(`/activities/${activityId}/archive`, {
+    method: 'PATCH',
+    body: JSON.stringify({ archived }),
   });
 }
 
@@ -269,17 +328,39 @@ export async function regenerateFeedback(feedbackId: number): Promise<{
 // Export
 // ──────────────────────────────────────────
 
+/** Lê o nome do arquivo enviado pelo servidor (prefere a versão UTF-8, com acentos). */
+export function filenameFromDisposition(header: string | null): string | null {
+  if (!header) return null;
+  const utf8 = /filename\*=UTF-8''([^;]+)/i.exec(header);
+  if (utf8) {
+    try {
+      return decodeURIComponent(utf8[1].trim());
+    } catch {
+      // cai para o nome ASCII
+    }
+  }
+  const ascii = /filename="([^"]+)"/i.exec(header);
+  return ascii ? ascii[1] : null;
+}
+
 export async function exportCSV(activityId: number): Promise<void> {
   const token = getAuthToken();
-  const response = await fetch(`${API_BASE}/activities/${activityId}/export`, {
-    headers: {
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE}/activities/${activityId}/export`, {
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+    });
+  } catch {
+    throw new Error('Não foi possível conectar ao servidor para exportar. Tente novamente em instantes.');
+  }
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: 'Erro ao exportar' }));
-    throw new Error(error.error);
+    const error = await response.json().catch(() => ({}));
+    throw new Error(
+      (typeof error?.error === 'string' && error.error) || 'Não foi possível exportar o CSV. Tente novamente.'
+    );
   }
 
   // Trigger download
@@ -287,7 +368,7 @@ export async function exportCSV(activityId: number): Promise<void> {
   const url = window.URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `feedbacks_atividade_${activityId}.csv`;
+  a.download = filenameFromDisposition(response.headers.get('content-disposition')) || `feedbacks_atividade_${activityId}.csv`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
@@ -333,6 +414,11 @@ export async function getMe(): Promise<{ teacher: AuthTeacher }> {
 
 export async function getClasses(): Promise<Class[]> {
   return request<Class[]>('/classes');
+}
+
+/** Evolução da turma ao longo das atividades corrigidas. */
+export async function getClassProgress(id: number): Promise<ClassProgress> {
+  return request<ClassProgress>(`/classes/${id}/progress`);
 }
 
 export async function getClass(id: number): Promise<ClassWithStudents> {
@@ -493,6 +579,11 @@ export async function resetOrgStudentPassword(studentId: number): Promise<{ mess
 
 export async function setOrgStudentDisabled(studentId: number, disabled: boolean): Promise<{ message: string; disabled: boolean }> {
   return request(`/org/students/${studentId}`, { method: 'PATCH', body: JSON.stringify({ disabled }) });
+}
+
+/** Devolve à turma um aluno que a instituição tinha tirado dela (volta com o histórico). */
+export async function readmitOrgStudent(studentId: number, classId: number): Promise<{ message: string }> {
+  return request(`/org/students/${studentId}/classes/${classId}/readmit`, { method: 'POST' });
 }
 
 export async function removeOrgStudentFromClass(studentId: number, classId: number): Promise<{ message: string }> {

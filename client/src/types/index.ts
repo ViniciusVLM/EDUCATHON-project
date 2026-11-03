@@ -77,6 +77,7 @@ export interface StudentResponse {
   // Nota de 0 a 10 lançada pelo professor (a IA nunca preenche)
   teacher_grade?: number | null;
   auto_result?: string | null; // JSON: ObjectiveResult
+  review_seconds?: number | null; // tempo que o professor levou revisando este aluno
 }
 
 export interface ActivityStats {
@@ -191,6 +192,8 @@ export interface DashboardMetrics {
   reviewed: number;
   approved: number;
   generation_errors: number;
+  /** Tempo médio de revisão por aluno, em segundos (null até a 1ª aprovação medida) */
+  avg_review_seconds?: number | null;
 }
 
 export interface DashboardPendingItem {
@@ -364,6 +367,8 @@ export interface OrgOverview {
   teachers: OrgTeacher[];
   classes: OrgClass[];
   students: OrgStudentAccount[];
+  /** Alunos tirados de turmas desta instituição (podem ser devolvidos) */
+  removedStudents?: { id: number; name: string; email: string; class_id: number; class_name: string; removed_at: string }[];
 }
 
 // ── Portal do aluno ──────────────────────────────────────────────────────
@@ -424,4 +429,73 @@ export interface AnswerSheetsResult {
   questions: string[];
   students: AnswerSheetStudent[];
   warnings: string[];
+}
+
+// ── Evolução da turma (GET /classes/:id/progress) ──
+export interface ClassProgress {
+  class_id: number;
+  class_name: string;
+  activities: {
+    activity_id: number;
+    title: string;
+    date: string | null;
+    is_archived: boolean;
+    students: number;
+    approved: number;
+    criteria_percent: number | null;
+    objective_percent: number | null;
+    average_grade: number | null;
+  }[];
+  recurring_criteria: {
+    criterio: string;
+    change: number;
+    points: { activity_id: number; title: string; percent: number }[];
+  }[];
+}
+
+// ── Sugestão de retomada em aula (POST /activities/:id/class-plan) ──
+export interface ClassPlan {
+  criteria: InsightCriterion[];
+  resumo: string;
+  sugestoes: { titulo: string; como_fazer: string; tempo_minutos: number | null }[];
+}
+
+// ── Diagnóstico da turma (GET /activities/:id/insights) ──
+
+export interface InsightCriterion {
+  criterio: string;
+  atendidos: number;
+  avaliados: number;
+  percent: number;
+}
+
+export interface ActivityInsights {
+  activity_id: number;
+  question_type: 'dissertativa' | 'objetiva';
+  totals: {
+    students: number;
+    with_feedback: number;
+    without_feedback: number;
+    pending: number;
+    edited: number;
+    approved: number;
+  };
+  /** Ordenados do menos para o mais atendido */
+  criteria: InsightCriterion[];
+  weakest_criterion: InsightCriterion | null;
+  grades: {
+    count: number;
+    average: number | null;
+    min: number | null;
+    max: number | null;
+    distribution: { label: string; count: number }[];
+  };
+  ai_agreement: { compared: number; average_difference: number; within_one_point: number } | null;
+  teacher_edits: { approved: number; edited: number; percent: number };
+  /** Avaliação do professor sobre os rascunhos da IA (null se ninguém avaliou) */
+  ai_quality: { rated: number; helped: number; partly: number; redo: number; helped_percent: number } | null;
+  review_time: { timed: number; total_seconds: number; average_seconds: number | null };
+  objective: { answered: number; correct: number; percent: number; options: Record<string, number> } | null;
+  attention: { response_id: number; student_name: string; reasons: string[] }[];
+  attention_total: number;
 }
