@@ -967,3 +967,12 @@ a.edu-user__item:hover { background: var(--surface-hover); }
   color: var(--text-secondary);
   max-width: 720px;
 }
+
+/* No diagnóstico, a cor da barra indica o quanto a turma atendeu o critério
+   (vermelho < 50%, laranja < 75%, verde a partir de 75%). O percentual também aparece em texto. */
+.insights__bars .ui-progress-bar__fill--red {
+  background: repeating-linear-gradient(-45deg, var(--error-500) 0 8px, color-mix(in srgb, var(--error-500) 80%, #000) 8px 16px) !important;
+}
+.insights__bars .ui-progress-bar__fill--green {
+  background: repeating-linear-gradient(-45deg, var(--success-500) 0 8px, color-mix(in srgb, var(--success-500) 80%, #000) 8px 16px) !important;
+}
