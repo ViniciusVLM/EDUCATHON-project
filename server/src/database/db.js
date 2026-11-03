@@ -205,7 +205,20 @@ const MIGRATIONS = [
   // ── E-mail confirmado pela instituição vale só nas turmas dela ────────────
   {
     name: '018_student_accounts_verified_org',
-    sqls: ['ALTER TABLE student_accounts ADD COLUMN verified_org_id INTEGER REFERENCES organizations(id) ON DELETE SET NULL'],
+    sqls: [
+      'ALTER TABLE student_accounts ADD COLUMN verified_org_id INTEGER REFERENCES organizations(id) ON DELETE SET NULL',
+      // Contas que já existiam com e-mail "confirmado" sem Google foram criadas por uma instituição:
+      // passam a valer só nas turmas dessa instituição. As ligações já feitas continuam como estão.
+      `UPDATE student_accounts
+       SET verified_org_id = (
+             SELECT MIN(t.organization_id) FROM students s
+             JOIN classes c ON c.id = s.class_id
+             JOIN teachers t ON t.id = c.teacher_id
+             WHERE s.account_id = student_accounts.id AND t.organization_id IS NOT NULL
+           ),
+           email_verified = 0
+       WHERE email_verified = 1 AND google_uid IS NULL`,
+    ],
   },
 ];
 
