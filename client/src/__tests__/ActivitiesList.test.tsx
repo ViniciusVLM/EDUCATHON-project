@@ -18,6 +18,7 @@ vi.mock('react-router-dom', async (importOriginal) => {
 
 vi.mock('../services/api', () => ({
   getActivities: vi.fn(),
+  setActivityArchived: vi.fn(),
 }));
 
 const mockGetActivities = vi.mocked(api.getActivities);
@@ -82,5 +83,60 @@ describe('ActivitiesList', () => {
     await waitFor(() => screen.getByText(/Nenhuma atividade ainda/i));
     await user.click(screen.getByRole('button', { name: /Criar a primeira/i }));
     expect(mockNavigate).toHaveBeenCalledWith('/setup');
+  });
+});
+
+describe('ActivitiesList — busca e arquivadas', () => {
+  const base = {
+    question: 'q',
+    rubric: 'r',
+    education_level: 'medio',
+    created_at: '2026-09-01T10:00:00.000Z',
+  };
+  const list: Activity[] = [
+    { ...base, id: 1, title: 'Fotossíntese', subject: 'Biologia', is_archived: 0 },
+    { ...base, id: 2, title: 'Revolução Francesa', subject: 'História', is_archived: 0 },
+    { ...base, id: 3, title: 'Prova antiga', subject: 'História', is_archived: 1 },
+  ];
+
+  beforeEach(() => {
+    mockNavigate.mockReset();
+    vi.mocked(api.setActivityArchived).mockReset();
+  });
+
+  it('busca sem diferenciar acentos e esconde as arquivadas por padrão', async () => {
+    const user = userEvent.setup();
+    mockGetActivities.mockResolvedValue(list);
+    renderActivitiesList();
+
+    expect(await screen.findByText('Fotossíntese')).toBeInTheDocument();
+    expect(screen.queryByText('Prova antiga')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Ativas (2)' })).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText('Buscar atividades'), 'historia');
+    expect(screen.getByText('Revolução Francesa')).toBeInTheDocument();
+    expect(screen.queryByText('Fotossíntese')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Arquivadas (1)' }));
+    expect(screen.getByText('Prova antiga')).toBeInTheDocument();
+  });
+
+  it('arquiva com confirmação e move a atividade para "Arquivadas"', async () => {
+    const user = userEvent.setup();
+    mockGetActivities.mockResolvedValue(list);
+    vi.mocked(api.setActivityArchived).mockResolvedValue({ message: 'Atividade arquivada.', archived: true });
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    renderActivitiesList();
+
+    await screen.findByText('Fotossíntese');
+    await user.click(document.getElementById('btn-archive-1') as HTMLElement);
+
+    expect(confirmSpy).toHaveBeenCalledWith(expect.stringContaining('nada é apagado'));
+    await waitFor(() => expect(api.setActivityArchived).toHaveBeenCalledWith(1, true));
+    expect(await screen.findByText('Atividade arquivada.')).toBeInTheDocument();
+    expect(screen.queryByText('Fotossíntese')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Arquivadas (2)' })).toBeInTheDocument();
+    expect(mockNavigate).not.toHaveBeenCalled();
+    confirmSpy.mockRestore();
   });
 });

@@ -929,3 +929,34 @@ a.edu-user__item:hover { background: var(--surface-hover); }
     padding-right: var(--space-4);
   }
 }
+
+/* ── Lista de atividades: busca e arquivadas ─────────────────────────── */
+.activities-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.activities-toolbar__search {
+  flex: 1 1 240px;
+  max-width: 420px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-md);
+  background: var(--surface-input);
+  color: var(--text-primary);
+  font: inherit;
+}
+
+.activities-toolbar__empty {
+  margin: var(--space-4) 0;
+  color: var(--text-secondary);
+}
+
+.activities-subject {
+  font-weight: 400;
+  color: var(--text-muted);
+}
