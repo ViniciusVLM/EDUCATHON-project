@@ -10,6 +10,7 @@ import { useEffect, useState } from 'react';
 import { getActivityInsights } from '../services/api';
 import type { ActivityInsights } from '../types';
 import { ProgressBar } from './ui/ProgressBar';
+import { formatDuration } from '../services/format';
 
 const MANUAL_ESTIMATE_KEY = 'educathon_manual_minutes_per_answer';
 
@@ -28,20 +29,6 @@ function saveManualEstimate(value: string) {
   } catch {
     // navegador sem armazenamento: o valor vale só nesta tela
   }
-}
-
-/** 75 → "1 min 15 s"; 40 → "40 s". */
-export function formatDuration(seconds: number): string {
-  const s = Math.max(0, Math.round(seconds));
-  if (s < 60) return `${s} s`;
-  const min = Math.floor(s / 60);
-  const rest = s % 60;
-  if (min >= 60) {
-    const h = Math.floor(min / 60);
-    const m = min % 60;
-    return m ? `${h} h ${m} min` : `${h} h`;
-  }
-  return rest ? `${min} min ${rest} s` : `${min} min`;
 }
 
 function formatGrade(n: number | null): string {

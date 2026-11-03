@@ -797,7 +797,9 @@ export function getDashboardSummary(teacherId) {
       COUNT(f.id) as total_feedbacks,
       COALESCE(SUM(CASE WHEN f.status = 'pendente' THEN 1 ELSE 0 END), 0) as pending_review,
       COALESCE(SUM(CASE WHEN f.status = 'revisado' THEN 1 ELSE 0 END), 0) as reviewed,
-      COALESCE(SUM(CASE WHEN f.status = 'aprovado' THEN 1 ELSE 0 END), 0) as approved
+      COALESCE(SUM(CASE WHEN f.status = 'aprovado' THEN 1 ELSE 0 END), 0) as approved,
+      COUNT(CASE WHEN f.review_seconds > 0 THEN 1 END) as timed_reviews,
+      COALESCE(SUM(CASE WHEN f.review_seconds > 0 THEN f.review_seconds ELSE 0 END), 0) as review_seconds
     FROM activities a
     JOIN student_responses sr ON sr.activity_id = a.id
     LEFT JOIN feedbacks f ON f.student_response_id = sr.id
@@ -920,6 +922,10 @@ export function getDashboardSummary(teacherId) {
       reviewed: feedbackMetrics.reviewed,
       approved: feedbackMetrics.approved,
       generation_errors: (jobMetrics.total_errors || 0) + (jobMetrics.error_jobs || 0),
+      // Tempo médio que o professor levou revisando cada aluno (null até a 1ª aprovação medida)
+      avg_review_seconds: feedbackMetrics.timed_reviews > 0
+        ? Math.round(feedbackMetrics.review_seconds / feedbackMetrics.timed_reviews)
+        : null,
     },
     pending_review_items: [
       ...errorJobs,

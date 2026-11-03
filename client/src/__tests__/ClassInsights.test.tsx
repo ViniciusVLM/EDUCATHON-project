@@ -4,7 +4,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { ClassInsights, formatDuration } from '../components/ClassInsights';
+import { ClassInsights } from '../components/ClassInsights';
+import { formatDuration } from '../services/format';
 import * as api from '../services/api';
 import type { ActivityInsights } from '../types';
 

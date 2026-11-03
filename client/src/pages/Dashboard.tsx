@@ -13,6 +13,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { getDashboardSummary } from '../services/api';
+import { formatDuration } from '../services/format';
 import type { DashboardSummary } from '../types';
 import {
   Card,
@@ -320,7 +321,12 @@ export default function Dashboard() {
         </div>
         <div className="stat-tile stat-tile--green">
           <span className="stat-tile__num" aria-label={`Taxa de aprovação: ${approvedPercent}%`}>{metrics.approved}</span>
-          <span className="stat-tile__label">Aprovados<span className="stat-tile__sub">{approvedPercent}% prontos para exportar</span></span>
+          <span className="stat-tile__label">Aprovados<span className="stat-tile__sub">
+            {approvedPercent}% prontos para exportar
+            {typeof metrics.avg_review_seconds === 'number' && metrics.avg_review_seconds > 0
+              ? ` · revisão média de ${formatDuration(metrics.avg_review_seconds)} por aluno`
+              : ''}
+          </span></span>
         </div>
         <div className="stat-tile stat-tile--red">
           <span className="stat-tile__num" aria-label={`Taxa de erros: ${errorPercent}%`}>{metrics.generation_errors}</span>

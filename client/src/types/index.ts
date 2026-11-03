@@ -192,6 +192,8 @@ export interface DashboardMetrics {
   reviewed: number;
   approved: number;
   generation_errors: number;
+  /** Tempo médio de revisão por aluno, em segundos (null até a 1ª aprovação medida) */
+  avg_review_seconds?: number | null;
 }
 
 export interface DashboardPendingItem {

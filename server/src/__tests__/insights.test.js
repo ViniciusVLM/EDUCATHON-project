@@ -189,6 +189,9 @@ describe('rotas de diagnóstico, aprovação em lote e arquivamento', () => {
     const insights = await request(app).get(`/api/activities/${id}/insights`).set(auth(token));
     assert.deepEqual(insights.body.review_time, { timed: 1, total_seconds: 75, average_seconds: 75 });
     assert.equal(insights.body.totals.approved, 2);
+
+    const summary = await request(app).get('/api/dashboard/summary').set(auth(token));
+    assert.equal(summary.body.metrics.avg_review_seconds, 75, 'o painel mostra a revisão média');
   });
 
   test('aprovar sem corpo continua funcionando (compatível com o client antigo)', async () => {
