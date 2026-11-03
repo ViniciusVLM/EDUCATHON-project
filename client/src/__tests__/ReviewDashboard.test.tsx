@@ -545,4 +545,20 @@ describe('ReviewDashboard — aba "A revisar" e tempo de revisão', () => {
     renderDashboard();
     expect(await screen.findByRole('button', { name: /A revisar \(1\)/ })).toBeInTheDocument();
   });
+  it('o professor avalia o rascunho da IA sem mudar o status; clicar de novo apaga', async () => {
+    const user = userEvent.setup();
+    mockGetActivity.mockResolvedValue(sampleActivity);
+    renderDashboard();
+    await screen.findByText('As plantas usam a luz do sol e água para crescer.');
+
+    const helped = screen.getByRole('button', { name: 'Ajudou' });
+    expect(helped).toHaveAttribute('aria-pressed', 'false');
+    await user.click(helped);
+    await waitFor(() => expect(mockUpdateFeedback).toHaveBeenCalledWith(201, { teacherRating: 1 }));
+    expect(screen.getByRole('button', { name: 'Ajudou' })).toHaveAttribute('aria-pressed', 'true');
+
+    await user.click(screen.getByRole('button', { name: 'Ajudou' }));
+    await waitFor(() => expect(mockUpdateFeedback).toHaveBeenLastCalledWith(201, { teacherRating: null }));
+    expect(screen.getByRole('button', { name: 'Ajudou' })).toHaveAttribute('aria-pressed', 'false');
+  });
 });

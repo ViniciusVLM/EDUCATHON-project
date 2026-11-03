@@ -461,6 +461,8 @@ export interface ActivityInsights {
   };
   ai_agreement: { compared: number; average_difference: number; within_one_point: number } | null;
   teacher_edits: { approved: number; edited: number; percent: number };
+  /** Avaliação do professor sobre os rascunhos da IA (null se ninguém avaliou) */
+  ai_quality: { rated: number; helped: number; partly: number; redo: number; helped_percent: number } | null;
   review_time: { timed: number; total_seconds: number; average_seconds: number | null };
   objective: { answered: number; correct: number; percent: number; options: Record<string, number> } | null;
   attention: { response_id: number; student_name: string; reasons: string[] }[];

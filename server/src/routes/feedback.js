@@ -10,6 +10,7 @@ import {
   getDb,
   getExportData,
   setFeedbackGrade,
+  setFeedbackRating,
 } from '../database/db.js';
 import { processResponses, getProgress, markJobError, generateAndSave } from '../services/queue.js';
 import { aiGenerateLimiter } from '../middleware/rateLimit.js';
@@ -222,13 +223,15 @@ router.patch('/feedback/:feedbackId', (req, res) => {
       setFeedbackGrade(feedbackId, gradeUpdate.grade);
     }
 
-    const onlyGrade = teacherFeedback === undefined && teacherRating === undefined && criteriaScores === undefined;
-    if (onlyGrade) {
-      // Lançar a nota não muda o status: um feedback aprovado continua aprovado
+    // Só nota e/ou avaliação do rascunho: não muda o status (um feedback aprovado continua aprovado)
+    const onlyMeta = teacherFeedback === undefined && criteriaScores === undefined;
+    if (onlyMeta) {
+      if (teacherRating !== undefined) setFeedbackRating(feedbackId, teacherRating);
       return res.json({
-        message: 'Nota salva.',
+        message: gradeUpdate ? 'Nota salva.' : 'Avaliação do rascunho salva.',
         status: feedback.status,
-        teacherGrade: gradeUpdate.grade,
+        ...(gradeUpdate ? { teacherGrade: gradeUpdate.grade } : {}),
+        ...(teacherRating !== undefined ? { teacherRating } : {}),
       });
     }
 

@@ -265,6 +265,13 @@ export function ClassInsights({ activityId, refreshKey, onSelectStudent }: Class
               </section>
             )}
 
+            {data.ai_quality && (
+              <p className="insights__muted">
+                Rascunhos da IA avaliados por você: {data.ai_quality.helped} ajudaram, {data.ai_quality.partly} mais ou
+                menos e {data.ai_quality.redo} precisaram ser refeitos ({data.ai_quality.helped_percent}% ajudaram).
+              </p>
+            )}
+
             {data.teacher_edits.approved > 0 && (
               <p className="insights__muted">
                 Você editou o texto da IA em {data.teacher_edits.edited} de {data.teacher_edits.approved} feedback(s) aprovado(s)

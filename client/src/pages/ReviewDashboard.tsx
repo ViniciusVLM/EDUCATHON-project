@@ -414,6 +414,26 @@ export default function ReviewDashboard() {
     }
   }, [selected?.feedback_id, editText, currentCriteriaScores, loadActivity, filteredResponses, selectedIndex, gradeText, isGradeDirty, filter]);
 
+  /** O professor diz se o rascunho da IA ajudou. Clicar de novo na mesma opção apaga. */
+  async function handleRateDraft(rating: -1 | 0 | 1) {
+    if (!selected?.feedback_id || !activity) return;
+    const next = selected.teacher_rating === rating ? null : rating;
+    const feedbackId = selected.feedback_id;
+    setActionLoading('rate');
+    setError('');
+    try {
+      await updateFeedback(feedbackId, { teacherRating: next });
+      setActivity({
+        ...activity,
+        responses: activity.responses.map((r) => (r.feedback_id === feedbackId ? { ...r, teacher_rating: next } : r)),
+      });
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Não foi possível salvar a avaliação.');
+    } finally {
+      setActionLoading('');
+    }
+  }
+
   async function handleToggleAiGrade() {
     if (!activity) return;
     const enable = !activity.ai_grade_enabled;
@@ -1079,6 +1099,26 @@ export default function ReviewDashboard() {
 
               {/* Barra de Ações */}
               {selected.feedback_id && (
+                <>
+                <div className="draft-rating" role="group" aria-label="O rascunho da IA ajudou?">
+                  <span className="draft-rating__label">O rascunho da IA ajudou?</span>
+                  {([
+                    [1, 'Ajudou'],
+                    [0, 'Mais ou menos'],
+                    [-1, 'Precisei refazer'],
+                  ] as const).map(([value, label]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      className={`draft-rating__option${selected.teacher_rating === value ? ' draft-rating__option--on' : ''}`}
+                      aria-pressed={selected.teacher_rating === value}
+                      disabled={!!actionLoading}
+                      onClick={() => handleRateDraft(value)}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
                 <div className="review-actions">
                   <Button
                     type="button"
@@ -1110,6 +1150,7 @@ export default function ReviewDashboard() {
                     Aprovar
                   </Button>
                 </div>
+                </>
               )}
             </div>
           )}

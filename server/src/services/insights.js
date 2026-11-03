@@ -62,6 +62,7 @@ export function buildActivityInsights(activity, rows) {
   let reviewSeconds = 0;
   const attention = [];
   const objective = { answered: 0, correct: 0, options: {} };
+  const aiQuality = { rated: 0, helped: 0, partly: 0, redo: 0 };
 
   for (const row of rows) {
     if (!row.feedback_id) {
@@ -100,6 +101,14 @@ export function buildActivityInsights(activity, rows) {
       const ai = (row.ai_feedback_text || '').trim();
       const final = (row.teacher_feedback || '').trim();
       if (final && ai && final !== ai) approvedEditedByTeacher += 1;
+    }
+
+    // Avaliação do professor sobre o rascunho da IA
+    if (row.teacher_rating === 1 || row.teacher_rating === 0 || row.teacher_rating === -1) {
+      aiQuality.rated += 1;
+      if (row.teacher_rating === 1) aiQuality.helped += 1;
+      else if (row.teacher_rating === 0) aiQuality.partly += 1;
+      else aiQuality.redo += 1;
     }
 
     // Tempo de revisão medido na tela de revisão
@@ -169,6 +178,9 @@ export function buildActivityInsights(activity, rows) {
       edited: approvedEditedByTeacher,
       percent: totals.approved > 0 ? Math.round((approvedEditedByTeacher / totals.approved) * 100) : 0,
     },
+    ai_quality: aiQuality.rated > 0
+      ? { ...aiQuality, helped_percent: Math.round((aiQuality.helped / aiQuality.rated) * 100) }
+      : null,
     review_time: {
       timed: reviewTimed,
       total_seconds: reviewSeconds,

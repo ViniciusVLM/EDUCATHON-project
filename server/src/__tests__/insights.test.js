@@ -346,4 +346,28 @@ describe('rotas de diagnóstico, aprovação em lote e arquivamento', () => {
     assert.equal(copyQuiz.body.correct_option, 'B');
     assert.equal(JSON.parse(copyQuiz.body.options).length, 2);
   });
+  test('avaliar o rascunho da IA não muda o status e aparece no diagnóstico', async () => {
+    const token = await registerTeacher('diag15@escola.dev');
+    const { id, detail } = await createActivityWithFeedbacks(token, RESPONSES);
+    const [a, b, c] = detail.responses.map((r) => r.feedback_id);
+    await request(app).post(`/api/feedback/${a}/approve`).set(auth(token)).expect(200);
+
+    const r1 = await request(app).patch(`/api/feedback/${a}`).set(auth(token)).send({ teacherRating: 1 });
+    assert.equal(r1.status, 200);
+    assert.equal(r1.body.status, 'aprovado', 'avaliar não desfaz a aprovação');
+    await request(app).patch(`/api/feedback/${b}`).set(auth(token)).send({ teacherRating: -1 }).expect(200);
+    await request(app).patch(`/api/feedback/${c}`).set(auth(token)).send({ teacherRating: 0 }).expect(200);
+    assert.equal((await request(app).patch(`/api/feedback/${c}`).set(auth(token)).send({ teacherRating: 5 })).status, 400);
+
+    const after = await request(app).get(`/api/activities/${id}`).set(auth(token));
+    assert.equal(after.body.responses.find((r) => r.feedback_id === b).status, 'pendente');
+
+    const insights = await request(app).get(`/api/activities/${id}/insights`).set(auth(token));
+    assert.deepEqual(insights.body.ai_quality, { rated: 3, helped: 1, partly: 1, redo: 1, helped_percent: 33 });
+
+    // null apaga a avaliação
+    await request(app).patch(`/api/feedback/${c}`).set(auth(token)).send({ teacherRating: null }).expect(200);
+    const again = await request(app).get(`/api/activities/${id}/insights`).set(auth(token));
+    assert.equal(again.body.ai_quality.rated, 2);
+  });
 });

@@ -689,6 +689,14 @@ export function updateFeedback(feedbackId, teacherFeedback, teacherRating = null
 }
 
 /**
+ * Avaliação do professor sobre o rascunho da IA: 1 (ajudou), 0 (mais ou menos), -1 (precisou refazer)
+ * ou null para apagar. Não altera o status do feedback.
+ */
+export function setFeedbackRating(feedbackId, rating) {
+  return getDb().prepare('UPDATE feedbacks SET teacher_rating = ? WHERE id = ?').run(rating, feedbackId);
+}
+
+/**
  * Lança (ou apaga, com null) a nota do professor. Não altera o status do feedback:
  * a nota só aparece para o aluno depois que o feedback for aprovado.
  */

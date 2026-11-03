@@ -39,6 +39,7 @@ const sample: ActivityInsights = {
   },
   ai_agreement: { compared: 4, average_difference: 0.8, within_one_point: 3 },
   teacher_edits: { approved: 5, edited: 2, percent: 40 },
+  ai_quality: { rated: 4, helped: 3, partly: 0, redo: 1, helped_percent: 75 },
   review_time: { timed: 5, total_seconds: 300, average_seconds: 60 },
   objective: null,
   attention: [{ response_id: 55, student_name: 'Bruno Lima', reasons: ['atendeu 0 de 2 critérios', 'nota 3'] }],
@@ -64,6 +65,7 @@ describe('ClassInsights', () => {
     expect(screen.getByText('6,8')).toBeInTheDocument();
     expect(screen.getByText(/diferença média de 0,8 ponto/)).toBeInTheDocument();
     expect(screen.getByText(/editou o texto da IA em 2 de 5/)).toBeInTheDocument();
+    expect(screen.getByText(/3 ajudaram, 0 mais ou\s+menos e 1 precisaram ser refeitos \(75% ajudaram\)/)).toBeInTheDocument();
     expect(screen.getByRole('img', { name: /0 a 2: 0; 2 a 4: 1; 4 a 6: 0; 6 a 8: 2; 8 a 10: 2/ })).toBeInTheDocument();
   });
 

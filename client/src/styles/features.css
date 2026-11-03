@@ -1019,3 +1019,51 @@ a.edu-user__item:hover { background: var(--surface-hover); }
   font: inherit;
   font-weight: 400;
 }
+
+/* ── O rascunho da IA ajudou? (tela de revisão) ───────────────────────── */
+.draft-rating {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin: var(--space-4) 0 var(--space-2);
+}
+
+.draft-rating__label {
+  font-size: var(--text-sm);
+  font-weight: 700;
+  color: var(--text-secondary);
+  margin-right: var(--space-1);
+}
+
+.draft-rating__option {
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-full);
+  background: var(--surface-card);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.draft-rating__option:hover:not(:disabled):not(.draft-rating__option--on) {
+  background: var(--surface-hover);
+}
+
+.draft-rating__option:focus-visible {
+  outline: 2px solid var(--primary-500);
+  outline-offset: 2px;
+}
+
+.draft-rating__option--on {
+  background: var(--primary-500);
+  color: var(--text-on-primary, #fff);
+  border-color: var(--primary-500);
+}
+
+.draft-rating__option:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
