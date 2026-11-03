@@ -324,3 +324,25 @@ describe('aluno tirado da turma pela instituição', () => {
     assert.equal(dup.status, 409);
   });
 });
+
+describe('readmissão pela instituição', () => {
+  test('aluno que entrou pelo código volta ao mesmo cadastro e não perde o histórico', async () => {
+    const admin = await register('Admin', 'admin11@escola.dev');
+    await request(app).post('/api/org').set(auth(admin.token)).send({ name: 'Escola H' }).expect(201);
+    const cls = await request(app).post('/api/classes').set(auth(admin.token)).send({ name: '6º H' });
+    const classId = cls.body.class.id;
+    const code = await request(app).post(`/api/classes/${classId}/join-code`).set(auth(admin.token));
+    const reg = await request(app).post('/api/student-auth/register')
+      .send({ name: 'Hugo', email: 'hugo@aluno.org', password: 'SenhaForte@2026', classCode: code.body.joinCode });
+    assert.equal(reg.status, 201, JSON.stringify(reg.body));
+    const accountId = reg.body.student.id;
+    const rowsBefore = getDb().prepare('SELECT id FROM students WHERE class_id = ?').all(classId);
+    assert.equal(rowsBefore.length, 1);
+
+    await request(app).delete(`/api/org/students/${accountId}/classes/${classId}`).set(auth(admin.token)).expect(200);
+    await request(app).post('/api/org/students').set(auth(admin.token)).send({ name: 'Hugo', email: 'hugo@aluno.org', classId }).expect(200);
+
+    const rowsAfter = getDb().prepare('SELECT id, account_id FROM students WHERE class_id = ?').all(classId);
+    assert.deepEqual(rowsAfter, [{ id: rowsBefore[0].id, account_id: accountId }], 'mesmo cadastro, sem duplicar');
+  });
+});

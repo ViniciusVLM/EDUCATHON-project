@@ -23,6 +23,8 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   loading?: boolean;
   icon?: React.ReactNode;
   children?: React.ReactNode;
+  /** React 19: ref chega como prop comum e vai direto para o <button> */
+  ref?: React.Ref<HTMLButtonElement>;
 }
 
 export function Button({

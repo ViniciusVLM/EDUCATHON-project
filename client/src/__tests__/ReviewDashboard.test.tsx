@@ -614,5 +614,32 @@ describe('ReviewDashboard — aba "A revisar" e tempo de revisão', () => {
     );
     expect(await screen.findByRole('heading', { name: 'Biologia revisada' })).toBeInTheDocument();
     expect(screen.queryByRole('form', { name: 'Editar dados da atividade' })).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Editar dados' })).toHaveFocus());
+
+    // Esc fecha o painel e devolve o foco
+    await user.click(screen.getByRole('button', { name: 'Editar dados' }));
+    expect(screen.getByRole('button', { name: 'Editar dados' })).toHaveAttribute('aria-expanded', 'true');
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('form', { name: 'Editar dados da atividade' })).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Editar dados' })).toHaveFocus());
+  });
+  it('volta depois de mais de 2 min parado antes do tique: conta no máximo 2 min do trecho parado', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    let now = 9_000_000;
+    const nowSpy = vi.spyOn(Date, 'now').mockImplementation(() => now);
+    mockGetActivity.mockResolvedValue(sampleActivity);
+    renderDashboard();
+    await screen.findByText('As plantas usam a luz do sol e água para crescer.');
+
+    fireEvent.pointerMove(window);
+    now += 130_000; // 130 s sem mexer, sem o tique de 15 s ter rodado
+    fireEvent.pointerMove(window);
+    now += 10_000;
+    fireEvent.click(screen.getByRole('button', { name: /Aprovar$/i }));
+
+    // 120 s (limite) + 10 s depois de voltar
+    await waitFor(() => expect(mockApproveFeedback).toHaveBeenCalledWith(201, 130));
+    nowSpy.mockRestore();
+    vi.useRealTimers();
   });
 });

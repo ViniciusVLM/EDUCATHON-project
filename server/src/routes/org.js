@@ -28,7 +28,7 @@ import {
   setStudentPassword,
   setStudentDisabled,
   unlinkStudentFromOrgClass,
-  clearClassRemoval,
+  readmitStudentToClass,
   isRemovedFromClass,
 } from '../database/accounts.js';
 import { requireOrgAdmin } from '../middleware/auth.js';
@@ -161,8 +161,7 @@ router.post('/students', requireOrgAdmin, async (req, res) => {
     const existing = getStudentAccountByEmail(person.email);
     if (existing && isRemovedFromClass(cls.id, existing.id)) {
       // O aluno foi tirado desta turma pela instituição: criar o acesso de novo o devolve a ela
-      clearClassRemoval(cls.id, existing.id);
-      joinClass(existing.id, cls.id);
+      readmitStudentToClass(cls.id, existing.id);
       return res.json({
         message: `${existing.name} voltou para a turma ${cls.name}. A senha dele não mudou.`,
         tempPassword: null,

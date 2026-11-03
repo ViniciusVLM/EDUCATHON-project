@@ -7,6 +7,7 @@
  * O professor decide se e como usar a sugestão.
  */
 import { generateFeedback, usesRealModel } from './gemini.js';
+import { sanitizePromptInput } from '../prompts/feedback.js';
 
 const MAX_CRITERIA = 3;
 
@@ -41,9 +42,41 @@ export const CLASS_PLAN_SCHEMA = {
   required: ['resumo', 'sugestoes'],
 };
 
-/** Critérios que a turma menos atendeu (abaixo de 100%), do mais fraco ao mais forte. */
-export function pickFocusCriteria(insights) {
-  return (insights.criteria || []).filter((c) => c.percent < 100).slice(0, MAX_CRITERIA);
+function normalizeName(text) {
+  return String(text || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/** Nomes dos critérios cadastrados pelo professor na rubrica da atividade. */
+function rubricCriteriaNames(activity) {
+  let list = activity.rubric_criteria;
+  if (typeof list === 'string') {
+    try {
+      list = JSON.parse(list);
+    } catch {
+      list = null;
+    }
+  }
+  if (!Array.isArray(list)) return new Set();
+  return new Set(list.map((c) => normalizeName(typeof c === 'string' ? c : c?.criterio)).filter(Boolean));
+}
+
+/**
+ * Critérios que a turma menos atendeu (abaixo de 100%), do mais fraco ao mais forte.
+ * Só entram critérios que o PROFESSOR cadastrou na rubrica: os nomes que a IA escreve em cada
+ * feedback são texto livre gerado a partir da resposta do aluno e poderiam carregar dados ou
+ * instruções vindos dele.
+ */
+export function pickFocusCriteria(insights, activity) {
+  const allowed = rubricCriteriaNames(activity);
+  return (insights.criteria || [])
+    .filter((c) => allowed.has(normalizeName(c.criterio)))
+    .filter((c) => c.percent < 100)
+    .slice(0, MAX_CRITERIA);
 }
 
 export function buildClassPlanPrompt(activity, focus) {
@@ -52,14 +85,15 @@ export function buildClassPlanPrompt(activity, focus) {
     `Disciplina: ${activity.subject || 'não informada'}`,
     '',
     '<enunciado>',
-    String(activity.question || '').slice(0, 2000),
+    sanitizePromptInput(String(activity.question || '').slice(0, 2000)),
     '</enunciado>',
     '<rubrica>',
-    String(activity.rubric || '').slice(0, 4000),
+    sanitizePromptInput(String(activity.rubric || '').slice(0, 4000)),
     '</rubrica>',
     '',
-    'Critérios com menor atendimento na turma:',
-    ...focus.map((c) => `- ${c.criterio.slice(0, 300)}: ${c.atendidos} de ${c.avaliados} alunos atenderam (${c.percent}%)`),
+    '<criterios_menos_atendidos>',
+    ...focus.map((c) => `- ${sanitizePromptInput(c.criterio.slice(0, 300))}: ${c.atendidos} de ${c.avaliados} alunos atenderam (${c.percent}%)`),
+    '</criterios_menos_atendidos>',
     '',
     'Sugira de 2 a 3 formas de retomar esses pontos com a turma inteira na próxima aula.',
   ];

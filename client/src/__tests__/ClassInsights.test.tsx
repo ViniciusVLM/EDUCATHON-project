@@ -136,4 +136,23 @@ describe('ClassInsights', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Sua cota de IA deste mês acabou.');
     expect(screen.getByRole('button', { name: /Sugerir como retomar/ })).toBeEnabled();
   });
+  it('a sugestão some quando os feedbacks mudam e pode ser gerada de novo', async () => {
+    const user = userEvent.setup();
+    mockInsights.mockResolvedValue(sample);
+    vi.mocked(api.suggestClassPlan).mockResolvedValue({
+      criteria: [sample.criteria[0]],
+      resumo: 'Retome a condensação.',
+      sugestoes: [{ titulo: 'Copo com gelo', como_fazer: 'Mostre.', tempo_minutos: 15 }],
+    });
+    const { rerender } = render(<ClassInsights activityId={7} refreshKey="a" />);
+    await user.click(screen.getByText('Diagnóstico da turma'));
+    await user.click(await screen.findByRole('button', { name: /Sugerir como retomar/ }));
+    expect(await screen.findByText('Copo com gelo')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Gerar outras sugestões' }));
+    await waitFor(() => expect(api.suggestClassPlan).toHaveBeenCalledTimes(2));
+
+    rerender(<ClassInsights activityId={7} refreshKey="b" />);
+    await waitFor(() => expect(screen.queryByText('Copo com gelo')).not.toBeInTheDocument());
+    expect(await screen.findByRole('button', { name: /Sugerir como retomar/ })).toBeInTheDocument();
+  });
 });

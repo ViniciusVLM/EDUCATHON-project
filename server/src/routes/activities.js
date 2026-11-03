@@ -253,6 +253,13 @@ router.post('/:id/duplicate', (req, res) => {
 
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
 
+/** 'AAAA-MM-DD' que existe no calendário (recusa 2026-02-31, que o Date.parse aceita). */
+function isValidDateOnly(value) {
+  if (typeof value !== 'string' || !DATE_ONLY.test(value)) return false;
+  const date = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
+
 /**
  * PATCH /api/activities/:id
  * Edita os dados gerais: título, disciplina, prazo e turma. Body com qualquer um destes campos:
@@ -282,14 +289,16 @@ router.patch('/:id', (req, res) => {
       fields.subject = body.subject && body.subject.trim() ? body.subject.trim() : null;
     }
     if (body.dueDate !== undefined) {
-      if (body.dueDate !== null && body.dueDate !== '' &&
-          (typeof body.dueDate !== 'string' || !DATE_ONLY.test(body.dueDate) || Number.isNaN(Date.parse(body.dueDate)))) {
+      if (body.dueDate !== null && body.dueDate !== '' && !isValidDateOnly(body.dueDate)) {
         return res.status(400).json({ error: 'O prazo deve ser uma data no formato AAAA-MM-DD.' });
       }
       fields.dueDate = body.dueDate || null;
     }
     if (body.classId !== undefined) {
-      const newClassId = body.classId === null || body.classId === '' ? null : Number(body.classId);
+      const newClassId = body.classId === null || body.classId === '' ? null : body.classId;
+      if (newClassId !== null && !(Number.isInteger(newClassId) && newClassId > 0)) {
+        return res.status(400).json({ error: 'A turma deve ser o número de uma turma, ou null para nenhuma.' });
+      }
       if (newClassId !== null) {
         const cls = getClassById(newClassId, req.teacher.id);
         if (!cls) return res.status(404).json({ error: 'Turma não encontrada.' });
@@ -371,12 +380,13 @@ router.post('/:id/class-plan', aiGenerateLimiter, async (req, res) => {
       return res.status(404).json({ error: 'Atividade não encontrada.' });
     }
     const insights = buildActivityInsights(activity, getResponsesByActivity(activity.id));
-    const focus = pickFocusCriteria(insights);
+    const focus = pickFocusCriteria(insights, activity);
     if (focus.length === 0) {
+      const hasRubricCriteria = pickFocusCriteria({ criteria: insights.criteria.map((c) => ({ ...c, percent: 0 })) }, activity).length > 0;
       return res.status(400).json({
-        error: insights.criteria.length === 0
-          ? 'Esta atividade não tem critérios avaliados ainda. Gere os feedbacks (com critérios na rubrica) primeiro.'
-          : 'A turma atendeu todos os critérios: não há o que retomar.',
+        error: hasRubricCriteria
+          ? 'A turma atendeu todos os critérios da rubrica: não há o que retomar.'
+          : 'A sugestão usa os critérios cadastrados na rubrica da atividade. Gere os feedbacks de uma atividade com critérios primeiro.',
       });
     }
     try {

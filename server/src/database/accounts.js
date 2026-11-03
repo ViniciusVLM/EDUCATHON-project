@@ -152,15 +152,16 @@ export function setStudentDisabled(accountId, disabled) {
 export function unlinkStudentFromOrgClass(orgId, accountId, classId) {
   const db = getDb();
   return db.transaction(() => {
-    const result = db.prepare(`
-      UPDATE students SET account_id = NULL
-      WHERE account_id = ? AND class_id = ?
-        AND class_id IN (SELECT c.id FROM classes c JOIN teachers t ON t.id = c.teacher_id WHERE t.organization_id = ?)
-    `).run(accountId, classId, orgId);
+    const row = db.prepare(`
+      SELECT s.id FROM students s
+      WHERE s.account_id = ? AND s.class_id = ?
+        AND s.class_id IN (SELECT c.id FROM classes c JOIN teachers t ON t.id = c.teacher_id WHERE t.organization_id = ?)
+      ORDER BY s.id ASC LIMIT 1
+    `).get(accountId, classId, orgId);
+    if (!row) return { changes: 0 };
+    const result = db.prepare('UPDATE students SET account_id = NULL WHERE account_id = ? AND class_id = ?').run(accountId, classId);
     // Registra a remoção: sem isso, o aluno voltava para a turma usando o código dela
-    if (result.changes > 0) {
-      db.prepare('INSERT OR REPLACE INTO class_removals (class_id, account_id) VALUES (?, ?)').run(classId, accountId);
-    }
+    db.prepare('INSERT OR REPLACE INTO class_removals (class_id, account_id, student_id) VALUES (?, ?, ?)').run(classId, accountId, row.id);
     return result;
   })();
 }
@@ -169,9 +170,23 @@ export function isRemovedFromClass(classId, accountId) {
   return Boolean(getDb().prepare('SELECT 1 FROM class_removals WHERE class_id = ? AND account_id = ?').get(classId, accountId));
 }
 
-/** A instituição devolve o aluno à turma (ao criar o acesso de novo nela). */
-export function clearClassRemoval(classId, accountId) {
-  return getDb().prepare('DELETE FROM class_removals WHERE class_id = ? AND account_id = ?').run(classId, accountId);
+/**
+ * A instituição devolve o aluno à turma (ao criar o acesso de novo nela). Religa a conta ao
+ * mesmo cadastro da lista, para o aluno voltar a ver as respostas e notas antigas e o professor
+ * não ficar com o nome duplicado.
+ */
+export function readmitStudentToClass(classId, accountId) {
+  const db = getDb();
+  return db.transaction(() => {
+    const removal = db.prepare('SELECT student_id FROM class_removals WHERE class_id = ? AND account_id = ?').get(classId, accountId);
+    db.prepare('DELETE FROM class_removals WHERE class_id = ? AND account_id = ?').run(classId, accountId);
+    if (removal?.student_id) {
+      const relinked = db.prepare('UPDATE students SET account_id = ? WHERE id = ? AND class_id = ? AND account_id IS NULL')
+        .run(accountId, removal.student_id, classId);
+      if (relinked.changes > 0) return { studentId: removal.student_id };
+    }
+    return joinClass(accountId, classId);
+  })();
 }
 
 /** O aluno foi tirado desta turma pela instituição e não pode voltar sozinho. */

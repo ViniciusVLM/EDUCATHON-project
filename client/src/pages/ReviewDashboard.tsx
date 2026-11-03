@@ -57,6 +57,12 @@ export default function ReviewDashboard() {
   const [generating, setGenerating] = useState(false);
   const [gradeText, setGradeText] = useState('');
   const [editingDetails, setEditingDetails] = useState(false);
+  const editButtonRef = useRef<HTMLButtonElement | null>(null);
+  function closeEditDetails() {
+    setEditingDetails(false);
+    // Devolve o foco ao botão que abriu o painel (teclado e leitor de tela)
+    window.setTimeout(() => editButtonRef.current?.focus(), 0);
+  }
 
   function filterResponses(responses: StudentResponse[], f: FilterType): StudentResponse[] {
     if (f === 'todos') return responses;
@@ -136,7 +142,9 @@ export default function ReviewDashboard() {
   const pauseReviewClock = useCallback(() => {
     const current = reviewStart.current;
     if (!current) return;
-    const elapsed = Date.now() - current.at;
+    // Nunca conta além de 2 min depois da última interação (o tique de checagem é a cada 15 s)
+    const end = Math.min(Date.now(), lastActivityAt.current + REVIEW_IDLE_MS);
+    const elapsed = Math.max(0, end - current.at);
     reviewMs.current.set(current.id, (reviewMs.current.get(current.id) || 0) + elapsed);
     reviewStart.current = null;
   }, []);
@@ -172,6 +180,13 @@ export default function ReviewDashboard() {
   const pausedByIdle = useRef<number | null>(null);
   useEffect(() => {
     function onActivity() {
+      // Voltou depois de mais de 2 min parado, antes do tique: fecha o trecho no limite
+      const current = reviewStart.current;
+      if (current && Date.now() > lastActivityAt.current + REVIEW_IDLE_MS) {
+        const elapsed = Math.max(0, lastActivityAt.current + REVIEW_IDLE_MS - current.at);
+        reviewMs.current.set(current.id, (reviewMs.current.get(current.id) || 0) + elapsed);
+        reviewStart.current = { id: current.id, at: Date.now() };
+      }
       lastActivityAt.current = Date.now();
       const id = pausedByIdle.current;
       if (id !== null && !reviewStart.current && document.visibilityState !== 'hidden') {
@@ -712,9 +727,10 @@ export default function ReviewDashboard() {
             </Button>
           )}
           <Button
+            ref={editButtonRef}
             variant="ghost"
-            onClick={() => setEditingDetails(true)}
-            disabled={editingDetails}
+            onClick={() => (editingDetails ? closeEditDetails() : setEditingDetails(true))}
+            aria-expanded={editingDetails}
             id="btn-edit-activity"
           >
             Editar dados
@@ -732,10 +748,10 @@ export default function ReviewDashboard() {
         <EditActivityPanel
           activity={activity}
           hasResponses={activity.responses.length > 0}
-          onCancel={() => setEditingDetails(false)}
+          onCancel={closeEditDetails}
           onSaved={(updated) => {
             setActivity({ ...activity, ...updated });
-            setEditingDetails(false);
+            closeEditDetails();
           }}
         />
       )}
@@ -853,7 +869,7 @@ export default function ReviewDashboard() {
         <ClassInsights
           activityId={activity.id}
           refreshKey={activity.responses
-            .map((r) => `${r.feedback_id}:${r.status}:${r.teacher_grade ?? ''}:${r.criteria_scores ?? ''}`)
+            .map((r) => `${r.feedback_id}:${r.status}:${r.teacher_grade ?? ''}:${r.teacher_rating ?? ''}:${r.criteria_scores ?? ''}`)
             .join('|')}
           onSelectStudent={handleJumpToResponse}
         />

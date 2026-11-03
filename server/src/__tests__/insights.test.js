@@ -384,7 +384,7 @@ describe('rotas de diagnóstico, aprovação em lote e arquivamento', () => {
 
     assert.equal((await request(app).patch(`/api/activities/${id}`).set(auth(token)).send({ dueDate: null })).body.activity.due_date, null);
     assert.equal((await request(app).patch(`/api/activities/${id}`).set(auth(other)).send({ title: 'x' })).status, 404);
-    for (const body of [{}, { title: '' }, { title: 5 }, { dueDate: '01/12/2026' }, { dueDate: '2026-13-45' }, { subject: 9 }]) {
+    for (const body of [{}, { title: '' }, { title: 5 }, { dueDate: '01/12/2026' }, { dueDate: '2026-13-45' }, { dueDate: '2026-02-31' }, { subject: 9 }, { classId: 'abc' }, { classId: true }, { classId: 1.5 }]) {
       assert.equal((await request(app).patch(`/api/activities/${id}`).set(auth(token)).send(body)).status, 400, JSON.stringify(body));
     }
 

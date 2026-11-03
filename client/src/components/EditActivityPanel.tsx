@@ -62,7 +62,13 @@ export function EditActivityPanel({ activity, hasResponses, onSaved, onCancel }:
 
   return (
     <Card className="duplicate-panel">
-      <form onSubmit={handleSubmit} aria-label="Editar dados da atividade">
+      <form
+        onSubmit={handleSubmit}
+        aria-label="Editar dados da atividade"
+        onKeyDown={(e) => {
+          if (e.key === 'Escape' && !saving) onCancel();
+        }}
+      >
         <h3 className="duplicate-panel__title" ref={headingRef} tabIndex={-1}>
           Editar dados da atividade
         </h3>

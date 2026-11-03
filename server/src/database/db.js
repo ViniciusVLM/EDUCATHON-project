@@ -239,6 +239,8 @@ const MIGRATIONS = [
       `CREATE TABLE IF NOT EXISTS class_removals (
         class_id INTEGER NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
         account_id INTEGER NOT NULL REFERENCES student_accounts(id) ON DELETE CASCADE,
+        -- Cadastro da lista da turma que estava ligado à conta: na readmissão, volta para ele
+        student_id INTEGER REFERENCES students(id) ON DELETE SET NULL,
         removed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY (class_id, account_id)
       )`,

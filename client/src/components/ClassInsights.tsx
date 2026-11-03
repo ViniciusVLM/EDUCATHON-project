@@ -53,6 +53,12 @@ export function ClassInsights({ activityId, refreshKey, onSelectStudent }: Class
   const [planLoading, setPlanLoading] = useState(false);
   const [planError, setPlanError] = useState('');
 
+  // A sugestão vale para os dados de quando foi pedida: se os feedbacks mudarem, some
+  useEffect(() => {
+    setPlan(null);
+    setPlanError('');
+  }, [activityId, refreshKey]);
+
   async function handleSuggestPlan() {
     setPlanLoading(true);
     setPlanError('');
@@ -227,6 +233,9 @@ export function ClassInsights({ activityId, refreshKey, onSelectStudent }: Class
                       ))}
                     </ol>
                     <p className="insights__muted">Sugestão da IA: adapte à sua turma. Você decide se e como usar.</p>
+                    <button type="button" className="insights__link" onClick={handleSuggestPlan} disabled={planLoading}>
+                      {planLoading ? 'Gerando...' : 'Gerar outras sugestões'}
+                    </button>
                   </>
                 )}
               </section>
