@@ -1190,3 +1190,14 @@ a.edu-user__item:hover { background: var(--surface-hover); }
   justify-content: space-between;
   gap: var(--space-2);
 }
+
+/* Texto "âmbar" com contraste AA: o laranja --warning-500 tem só 2,2:1 sobre o fundo claro */
+:root {
+  --warning-text: #7a3e0a;
+}
+[data-theme='dark'] {
+  --warning-text: var(--warning-500);
+}
+.export-stat-card__value--amber {
+  color: var(--warning-text);
+}

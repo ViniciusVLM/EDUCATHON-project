@@ -103,7 +103,19 @@ describe('AppLayout', () => {
     renderLayout();
     const userBtn = screen.getByRole('button', { name: /Menu do professor/i });
     await user.click(userBtn);
-    expect(screen.getByRole('menuitem', { name: /Sair/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Sair/i })).toBeInTheDocument();
+  });
+
+  it('Esc fecha o menu do usuário e devolve o foco ao botão', async () => {
+    const user = userEvent.setup();
+    renderLayout();
+    const userBtn = screen.getByRole('button', { name: /Menu do professor/i });
+    await user.click(userBtn);
+    expect(userBtn).toHaveAttribute('aria-expanded', 'true');
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('button', { name: /Sair/i })).not.toBeInTheDocument();
+    expect(userBtn).toHaveFocus();
+    expect(userBtn).toHaveAttribute('aria-expanded', 'false');
   });
 
   it('renderiza a barra de navegação inferior para dispositivos móveis com os 4 links', () => {

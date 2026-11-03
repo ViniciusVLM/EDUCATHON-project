@@ -94,7 +94,10 @@ async function request<T>(url: string, options?: RequestInit, tokenOverride?: st
     const error = await response.json().catch(() => ({
       error: 'Não foi possível conectar ao servidor. Tente novamente em instantes.',
     }));
-    throw new Error(error.error || `HTTP ${response.status}`);
+    throw new Error(
+      (typeof error?.error === 'string' && error.error) ||
+        'O servidor não conseguiu concluir a ação. Tente novamente em instantes.'
+    );
   }
 
   // Para download de CSV
@@ -342,15 +345,22 @@ export function filenameFromDisposition(header: string | null): string | null {
 
 export async function exportCSV(activityId: number): Promise<void> {
   const token = getAuthToken();
-  const response = await fetch(`${API_BASE}/activities/${activityId}/export`, {
-    headers: {
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE}/activities/${activityId}/export`, {
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+    });
+  } catch {
+    throw new Error('Não foi possível conectar ao servidor para exportar. Tente novamente em instantes.');
+  }
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: 'Erro ao exportar' }));
-    throw new Error(error.error);
+    const error = await response.json().catch(() => ({}));
+    throw new Error(
+      (typeof error?.error === 'string' && error.error) || 'Não foi possível exportar o CSV. Tente novamente.'
+    );
   }
 
   // Trigger download

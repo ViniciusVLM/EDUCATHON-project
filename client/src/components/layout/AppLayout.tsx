@@ -156,13 +156,23 @@ export function AppLayout({ children }: AppLayoutProps) {
             </button>
           </div>
 
-          <div className="edu-user" ref={userMenuRef}>
+          <div
+            className="edu-user"
+            ref={userMenuRef}
+            onKeyDown={(e) => {
+              // Esc fecha o menu e devolve o foco ao botão
+              if (e.key === 'Escape' && userMenuOpen) {
+                setUserMenuOpen(false);
+                document.getElementById('btn-user-menu')?.focus();
+              }
+            }}
+          >
             <button
               type="button"
               className="edu-user__btn"
               onClick={() => setUserMenuOpen((v) => !v)}
-              aria-haspopup="menu"
               aria-expanded={userMenuOpen}
+              aria-controls="user-menu"
               aria-label={`Menu do professor ${teacher?.name ?? ''}`}
               id="btn-user-menu"
             >
@@ -170,7 +180,7 @@ export function AppLayout({ children }: AppLayoutProps) {
             </button>
 
             {userMenuOpen && (
-              <div className="edu-user__menu" role="menu" aria-label="Opções do usuário">
+              <div className="edu-user__menu" id="user-menu" aria-label="Opções do usuário">
                 <div className="edu-user__head">
                   <p className="edu-user__name">{teacher?.name}</p>
                   <p className="edu-user__email">{teacher?.email}</p>
@@ -183,7 +193,6 @@ export function AppLayout({ children }: AppLayoutProps) {
                 </div>
                 <Link
                   to="/conta"
-                  role="menuitem"
                   className="edu-user__item"
                   onClick={() => setUserMenuOpen(false)}
                   id="menu-conta"
@@ -193,7 +202,6 @@ export function AppLayout({ children }: AppLayoutProps) {
                 </Link>
                 <Link
                   to="/planos"
-                  role="menuitem"
                   className="edu-user__item"
                   onClick={() => setUserMenuOpen(false)}
                   id="menu-planos"
@@ -203,7 +211,6 @@ export function AppLayout({ children }: AppLayoutProps) {
                 </Link>
                 <Link
                   to="/instituicao"
-                  role="menuitem"
                   className="edu-user__item"
                   onClick={() => setUserMenuOpen(false)}
                   id="menu-instituicao"
@@ -217,7 +224,6 @@ export function AppLayout({ children }: AppLayoutProps) {
                 </Link>
                 <button
                   type="button"
-                  role="menuitem"
                   className="edu-user__item"
                   onClick={handleLogout}
                   id="btn-logout-dropdown"

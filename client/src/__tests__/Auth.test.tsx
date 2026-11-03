@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import Login from '../pages/Login';
@@ -80,6 +80,10 @@ describe('Login Page', () => {
     await user.click(screen.getByRole('button', { name: /Entrar na Plataforma/i }));
 
     expect(await screen.findByText(/E-mail ou senha incorretos/i)).toBeInTheDocument();
+    const emailInput = screen.getByLabelText(/E-mail/i);
+    expect(emailInput).toHaveAttribute('aria-invalid', 'true');
+    expect(emailInput).toHaveAccessibleDescription(/E-mail ou senha incorretos/);
+    await waitFor(() => expect(emailInput).toHaveFocus());
   });
 });
 

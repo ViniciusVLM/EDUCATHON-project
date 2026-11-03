@@ -54,7 +54,7 @@ export default function ExportResults() {
   if (loading) {
     return (
       <div className="page-container page-container--center">
-        <div className="spinner spinner-lg"></div>
+        <div className="spinner spinner-lg" role="status" aria-label="Carregando atividade"></div>
       </div>
     );
   }
@@ -64,7 +64,13 @@ export default function ExportResults() {
       <div className="page-container">
         <Card className="empty-state">
           <div className="empty-state-icon"><Mascot size={90} /></div>
-          <h3 className="empty-state-title">Atividade não encontrada</h3>
+          {error ? (
+            <div className="alert-box alert-box--error" role="alert">
+              <span>{error}</span>
+            </div>
+          ) : (
+            <h3 className="empty-state-title">Atividade não encontrada</h3>
+          )}
         </Card>
       </div>
     );

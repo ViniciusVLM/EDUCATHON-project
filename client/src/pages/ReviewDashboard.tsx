@@ -771,7 +771,7 @@ export default function ReviewDashboard() {
         </div>
         <div className="stat-item">
           <div>
-            <div className="stat-value" style={{ color: 'var(--warning-500)' }}>
+            <div className="stat-value" style={{ color: 'var(--warning-text)' }}>
               {toReviewCount}
             </div>
             <div className="stat-label">A revisar</div>
