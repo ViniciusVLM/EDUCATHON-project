@@ -35,8 +35,11 @@ router.post('/', (req, res) => {
   try {
     const { name, schoolYear } = req.body;
 
-    if (!name || !name.trim()) {
+    if (typeof name !== 'string' || !name.trim()) {
       return res.status(400).json({ error: 'O nome da turma é obrigatório.' });
+    }
+    if (schoolYear !== undefined && schoolYear !== null && typeof schoolYear !== 'string') {
+      return res.status(400).json({ error: 'O ano letivo deve ser texto.' });
     }
 
     const newClass = createClass({
@@ -149,8 +152,11 @@ router.post('/:id/students', (req, res) => {
     }
 
     // Inclusão individual
-    if (!name || !name.trim()) {
+    if (typeof name !== 'string' || !name.trim()) {
       return res.status(400).json({ error: 'O nome do aluno é obrigatório.' });
+    }
+    if (email !== undefined && email !== null && typeof email !== 'string') {
+      return res.status(400).json({ error: 'O e-mail do aluno deve ser texto.' });
     }
 
     const student = createStudent({

@@ -71,7 +71,7 @@ export function getOrgClass(orgId, classId) {
 }
 
 export function getOrgTeacher(orgId, teacherId) {
-  return getDb().prepare('SELECT id, name, email, role FROM teachers WHERE id = ? AND organization_id = ?')
+  return getDb().prepare('SELECT id, name, email, role, google_uid FROM teachers WHERE id = ? AND organization_id = ?')
     .get(teacherId, orgId) || null;
 }
 
@@ -118,7 +118,7 @@ export function listOrgActivities(orgId) {
  */
 export function getManageableStudent(orgId, accountId) {
   const db = getDb();
-  const account = db.prepare('SELECT id, name, email, disabled_at FROM student_accounts WHERE id = ?').get(accountId);
+  const account = db.prepare('SELECT id, name, email, disabled_at, google_uid FROM student_accounts WHERE id = ?').get(accountId);
   if (!account) return { error: 'not_found' };
   const memberships = db.prepare(`
     SELECT s.class_id, t.organization_id FROM students s
@@ -195,11 +195,15 @@ export function getClassByJoinCode(code) {
 // Contas de aluno
 // ──────────────────────────────────────────
 
-export function createStudentAccount({ name, email, passwordHash, googleUid = null, emailVerified = false }) {
+/**
+ * emailVerified: e-mail confirmado de verdade (login com Google) — vale em qualquer turma.
+ * verifiedOrgId: a instituição criou o acesso e conhece o aluno — vale SÓ nas turmas dela.
+ */
+export function createStudentAccount({ name, email, passwordHash, googleUid = null, emailVerified = false, verifiedOrgId = null }) {
   const normalizedEmail = email.toLowerCase().trim();
   const result = getDb().prepare(`
-    INSERT INTO student_accounts (name, email, password_hash, google_uid, email_verified) VALUES (?, ?, ?, ?, ?)
-  `).run(name.trim(), normalizedEmail, passwordHash, googleUid, emailVerified ? 1 : 0);
+    INSERT INTO student_accounts (name, email, password_hash, google_uid, email_verified, verified_org_id) VALUES (?, ?, ?, ?, ?, ?)
+  `).run(name.trim(), normalizedEmail, passwordHash, googleUid, emailVerified ? 1 : 0, verifiedOrgId || null);
   return { id: Number(result.lastInsertRowid), name: name.trim(), email: normalizedEmail };
 }
 
@@ -224,7 +228,7 @@ export function linkStudentGoogle(accountId, uid, unusableHash) {
 }
 
 export function getStudentAccount(accountId) {
-  return getDb().prepare('SELECT id, name, email, email_verified, created_at FROM student_accounts WHERE id = ?').get(accountId) || null;
+  return getDb().prepare('SELECT id, name, email, email_verified, verified_org_id, created_at FROM student_accounts WHERE id = ?').get(accountId) || null;
 }
 
 /**
@@ -244,7 +248,16 @@ export function joinClass(accountId, classId) {
     const existing = db.prepare('SELECT id FROM students WHERE class_id = ? AND account_id = ?').get(classId, accountId);
     if (existing) return { studentId: existing.id, alreadyMember: true };
 
-    const roster = account.email_verified ? db.prepare(`
+    // O e-mail só é confiável nesta turma se foi confirmado pelo Google, ou se a instituição
+    // que criou o acesso é a dona da turma. Um admin de outra instituição não consegue
+    // "verificar" o e-mail de um aluno alheio e puxar as notas dele.
+    const classOrg = db.prepare(`
+      SELECT t.organization_id AS org FROM classes c JOIN teachers t ON t.id = c.teacher_id WHERE c.id = ?
+    `).get(classId)?.org ?? null;
+    const trusted = Boolean(account.email_verified)
+      || (account.verified_org_id !== null && account.verified_org_id !== undefined && classOrg === account.verified_org_id);
+
+    const roster = trusted ? db.prepare(`
       SELECT id FROM students
       WHERE class_id = ? AND account_id IS NULL AND email IS NOT NULL AND lower(email) = ?
       ORDER BY id ASC LIMIT 1
@@ -258,11 +271,11 @@ export function joinClass(accountId, classId) {
       // E-mail não verificado não é gravado no cadastro: respostas enviadas pelo professor
       // com aquele e-mail não podem ser puxadas por quem só digitou o e-mail de outra pessoa.
       const created = db.prepare('INSERT INTO students (class_id, name, email, account_id, self_joined) VALUES (?, ?, ?, ?, 1)')
-        .run(classId, account.name, account.email_verified ? account.email : null, accountId);
+        .run(classId, account.name, trusted ? account.email : null, accountId);
       studentId = Number(created.lastInsertRowid);
     }
 
-    if (account.email_verified) db.prepare(`
+    if (trusted) db.prepare(`
       UPDATE student_responses SET student_id = ?
       WHERE student_id IS NULL AND email IS NOT NULL AND lower(email) = ?
         AND activity_id IN (SELECT id FROM activities WHERE class_id = ?)

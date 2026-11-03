@@ -24,6 +24,15 @@ function sendQuotaError(res, error) {
   return res.status(402).json({ error: error.message, quota: error.status, upgradeUrl: '/planos' });
 }
 
+function isValidCriteriaScores(list) {
+  return Array.isArray(list)
+    && list.length <= 30
+    && list.every((c) => c && typeof c === 'object' && !Array.isArray(c)
+      && typeof c.criterio === 'string' && c.criterio.trim().length > 0 && c.criterio.length <= 500
+      && typeof c.atendido === 'boolean'
+      && (c.evidencia === undefined || c.evidencia === null || (typeof c.evidencia === 'string' && c.evidencia.length <= 2000)));
+}
+
 /** Nota do professor: número de 0 a 10 com até uma casa decimal, ou null para apagar. */
 function parseGrade(value) {
   if (value === null || value === '') return { grade: null };
@@ -153,6 +162,14 @@ router.patch('/feedback/:feedbackId', (req, res) => {
     if (teacherFeedback !== undefined && (typeof teacherFeedback !== 'string' || teacherFeedback.length > 40000)) {
       return res.status(400).json({
         error: 'O feedback do professor deve ter no máximo 40.000 caracteres.',
+      });
+    }
+
+    // Critérios revisados: lista de { criterio: texto, atendido: true/false }.
+    // Um item inválido salvo aqui quebrava o portal do aluno depois da aprovação.
+    if (criteriaScores !== undefined && criteriaScores !== null && !isValidCriteriaScores(criteriaScores)) {
+      return res.status(400).json({
+        error: 'Os critérios devem ser uma lista de { criterio, atendido } (até 30 itens).',
       });
     }
 

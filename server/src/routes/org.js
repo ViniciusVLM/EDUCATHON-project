@@ -167,8 +167,9 @@ router.post('/students', requireOrgAdmin, async (req, res) => {
       name: person.name,
       email: person.email,
       passwordHash: await hashPassword(tempPassword),
-      // A instituição conhece o aluno e o e-mail: o acesso pode ser ligado à lista da turma.
-      emailVerified: true,
+      // A instituição conhece o aluno: o e-mail vale para ligar o acesso à lista das turmas
+      // DESTA instituição. Em turmas de outras escolas ele não é tratado como confirmado.
+      verifiedOrgId: req.organizationId,
     });
     joinClass(account.id, cls.id);
     res.status(201).json({
@@ -205,6 +206,8 @@ router.post('/teachers/:id/reset-password', requireOrgAdmin, async (req, res) =>
     }
     const teacher = getOrgTeacher(req.organizationId, teacherId);
     if (!teacher) return res.status(404).json({ error: 'Professor não encontrado nesta instituição.' });
+    // Quem entra com Google provou ser dono do e-mail: a instituição não pode assumir a conta.
+    if (teacher.google_uid) return res.status(403).json({ error: 'Esta conta entra com o Google: a senha é controlada pela própria pessoa e não pode ser redefinida pela instituição.' });
     const tempPassword = generateTempPassword();
     setTeacherPassword(teacherId, await hashPassword(tempPassword));
     res.json({ message: `Nova senha provisória criada para ${teacher.name}.`, tempPassword });
@@ -275,6 +278,7 @@ router.post('/students/:id/reset-password', requireOrgAdmin, async (req, res) =>
   try {
     const account = loadManageableStudent(req, res);
     if (!account) return;
+    if (account.google_uid) return res.status(403).json({ error: 'Esta conta entra com o Google: a senha é controlada pela própria pessoa e não pode ser redefinida pela instituição.' });
     const tempPassword = generateTempPassword();
     setStudentPassword(account.id, await hashPassword(tempPassword));
     res.json({ message: `Nova senha provisória criada para ${account.name}.`, tempPassword });

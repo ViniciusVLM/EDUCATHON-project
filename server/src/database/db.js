@@ -202,6 +202,11 @@ const MIGRATIONS = [
     name: '017_feedbacks_review_seconds',
     sqls: ['ALTER TABLE feedbacks ADD COLUMN review_seconds INTEGER NOT NULL DEFAULT 0'],
   },
+  // ── E-mail confirmado pela instituição vale só nas turmas dela ────────────
+  {
+    name: '018_student_accounts_verified_org',
+    sqls: ['ALTER TABLE student_accounts ADD COLUMN verified_org_id INTEGER REFERENCES organizations(id) ON DELETE SET NULL'],
+  },
 ];
 
 /**
@@ -366,8 +371,8 @@ export function createStudentsBatch(classId, students) {
   const insertMany = db.transaction((items) => {
     const created = [];
     for (const item of items) {
-      if (!item.name || !item.name.trim()) continue;
-      const normalizedEmail = item.email ? item.email.toLowerCase().trim() : null;
+      if (!item || typeof item.name !== 'string' || !item.name.trim()) continue;
+      const normalizedEmail = typeof item.email === 'string' && item.email.trim() ? item.email.toLowerCase().trim() : null;
       const result = stmt.run(classId, item.name.trim(), normalizedEmail);
       created.push({ id: result.lastInsertRowid, class_id: classId, name: item.name.trim(), email: normalizedEmail });
     }
@@ -535,8 +540,11 @@ export function addResponses(activityId, responses, defaultMethod = 'manual') {
         : (text.trim() ? text.trim().split(/\s+/).filter(Boolean).length : 0);
       const method = item.submission_method || defaultMethod;
 
-      let matchedStudentId = item.student_id || null;
-      let studentEmail = item.email ? item.email.trim().toLowerCase() : null;
+      // student_id enviado pelo client só vale se o aluno for da turma da atividade
+      let matchedStudentId = item.student_id && registeredStudents.some((s) => s.id === Number(item.student_id))
+        ? Number(item.student_id)
+        : null;
+      let studentEmail = typeof item.email === 'string' && item.email.trim() ? item.email.trim().toLowerCase() : null;
 
       // Reconciliação com alunos cadastrados da turma
       if (!matchedStudentId && registeredStudents.length > 0) {

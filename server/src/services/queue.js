@@ -21,15 +21,13 @@ import {
 const log = process.env.NODE_TEST_CONTEXT ? () => {} : console.log;
 
 /**
- * Quando a cota foi reservada antes de começar, devolve as unidades que não viraram feedback.
- * Em questões objetivas, só as respostas que precisam de IA falham, então o número de erros
- * (ou o que sobrou, se o processamento foi abortado) é o que volta para a cota.
+ * Quando a cota foi reservada antes de começar, devolve o que não virou chamada de IA.
+ * Conta as unidades realmente usadas (e não o progresso): em questões objetivas as
+ * respostas certas nunca gastam IA, então inferir pelo progresso devolvia cota a mais.
  */
-function refundFailures(activityId, teacherId, reservedUnits, aborted = false) {
+function refundUnused(teacherId, reservedUnits, usedUnits) {
   if (!reservedUnits || !teacherId) return;
-  const progress = getProgress(activityId);
-  const unused = aborted ? progress.total - progress.processed + progress.errors : progress.errors;
-  const refund = Math.min(reservedUnits, Math.max(0, unused));
+  const refund = Math.min(reservedUnits, Math.max(0, reservedUnits - usedUnits));
   if (refund > 0) recordUsage(teacherId, 'feedback', -refund);
 }
 
@@ -76,7 +74,7 @@ export async function generateAndSave(activity, response, { teacherId = null, ap
       result.autoResult
     );
     if (result.usedAi && teacherId && !alreadyReserved) recordUsage(teacherId, 'feedback', 1);
-    return { saved, parsed: result.parsed };
+    return { saved, parsed: result.parsed, aiUnits: result.usedAi ? 1 : 0 };
   }
 
   const suggestGrade = Boolean(activity.ai_grade_enabled);
@@ -165,7 +163,7 @@ export async function generateAndSave(activity, response, { teacherId = null, ap
     );
     // Uma correção por aluno, independente de quantas perguntas a prova tem
     if (teacherId && !alreadyReserved) recordUsage(teacherId, 'feedback', 1);
-    return { saved, parsed: combined };
+    return { saved, parsed: combined, aiUnits: 1 };
   }
 
   const result = await generateFeedback({
@@ -191,7 +189,7 @@ export async function generateAndSave(activity, response, { teacherId = null, ap
     aiGrade !== null ? { aiGrade, aiGradeReason: result.parsed?.justificativa_nota || null } : {}
   );
   if (teacherId && !alreadyReserved) recordUsage(teacherId, 'feedback', 1);
-  return { saved, parsed: result.parsed };
+  return { saved, parsed: result.parsed, aiUnits: 1 };
 }
 
 // ──────────────────────────────────────────
@@ -310,6 +308,7 @@ export async function processResponses(
 
   // Cria / atualiza job como 'processing'
   upsertJob(activityId, 'processing', responses.length, 0, 0);
+  let usedUnits = 0;
 
   try {
     for (let i = 0; i < responses.length; i += BATCH_SIZE) {
@@ -320,12 +319,13 @@ export async function processResponses(
         batch.map(async (response) => {
           try {
             // Salva no banco com registro do modelo utilizado e critérios avaliados
-            await generateAndSave(activity, response, {
+            const saved = await generateAndSave(activity, response, {
               teacherId,
               apiKey,
               parsedCriteria,
               alreadyReserved: reservedUnits > 0,
             });
+            usedUnits += saved?.aiUnits ?? 0;
 
             return { success: true, studentName: response.student_name, responseId: response.id };
           } catch (error) {
@@ -354,7 +354,7 @@ export async function processResponses(
       // Cota do dia acabou: não adianta continuar chamando a API para os próximos alunos
       if (results.some((r) => r.value?.dailyQuota)) {
         log(`⛔ Cota diária do Gemini esgotada. Processamento da atividade ${activityId} interrompido.`);
-        refundFailures(activityId, teacherId, reservedUnits, true);
+        refundUnused(teacherId, reservedUnits, usedUnits);
         markJobError(activityId, 'gemini_daily_quota');
         return;
       }
@@ -369,14 +369,14 @@ export async function processResponses(
     }
 
     // Devolve à cota as gerações reservadas que falharam
-    refundFailures(activityId, teacherId, reservedUnits);
+    refundUnused(teacherId, reservedUnits, usedUnits);
 
     // Marca como completo
     markJobComplete(activityId);
     log(`✅ Processamento da atividade ${activityId} finalizado.`);
   } catch (criticalError) {
     console.error(`❌ Processamento abortado para atividade ${activityId}:`, criticalError);
-    refundFailures(activityId, teacherId, reservedUnits, true);
+    refundUnused(teacherId, reservedUnits, usedUnits);
     markJobError(activityId);
     throw criticalError;
   }

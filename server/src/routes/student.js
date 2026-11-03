@@ -58,7 +58,11 @@ function toPortalActivity(row) {
     myAnswer: row.original_response ?? null,
     feedback: row.feedback ?? null,
     grade: row.grade ?? null,
-    criteria: Array.isArray(criteria) ? criteria.map((c) => ({ criterio: c.criterio, atendido: Boolean(c.atendido) })) : [],
+    criteria: Array.isArray(criteria)
+      ? criteria
+        .filter((c) => c && typeof c === 'object' && typeof c.criterio === 'string')
+        .map((c) => ({ criterio: c.criterio, atendido: Boolean(c.atendido) }))
+      : [],
     objectiveResult: parseJson(row.auto_result),
     approvedAt: row.approved_at ?? null,
   };

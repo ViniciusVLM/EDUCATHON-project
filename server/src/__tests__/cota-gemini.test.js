@@ -135,4 +135,30 @@ describe('processamento com a IA de verdade', () => {
     assert.equal(p2.status, 'complete');
     assert.equal(p2.last_error, null);
   });
+  test('objetiva: cota acaba no meio e só volta o que não foi usado (as certas nunca gastam IA)', async () => {
+    let calls = 0;
+    setModel({
+      async generateContent() {
+        calls++;
+        if (calls >= 2) throw dailyError();
+        return { response: { text: () => JSON.stringify({ pontos_fortes: 'a', lacunas: 'b', sugestao_melhoria: 'c', feedback_completo: 'Explicação do erro.' }) } };
+      },
+    });
+    // Duas erradas vêm primeiro na ordem por nome; oito certas depois
+    const responses = [
+      { student_name: 'A1 Errou', original_response: 'C' },
+      { student_name: 'A2 Errou', original_response: 'C' },
+      ...Array.from({ length: 8 }, (_, i) => ({ student_name: `B${i} Acertou`, original_response: 'B' })),
+    ];
+    const { token, id } = await setup('cota3@escola.dev', {
+      title: 'Quiz', question: 'Qual?', rubric: '', questionType: 'objetiva',
+      options: [{ texto: 'um' }, { texto: 'dois' }, { texto: 'três' }], correctOption: 'B',
+    }, responses);
+    const before = usage();
+    await request(app).post(`/api/activities/${id}/generate`).set(auth(token)).expect(202);
+    const p = await waitJob(id);
+    assert.equal(p.last_error, 'gemini_daily_quota');
+    assert.equal(calls, 2);
+    assert.equal(usage() - before, 1, 'uma geração de IA deu certo: só ela fica na cota');
+  });
 });
