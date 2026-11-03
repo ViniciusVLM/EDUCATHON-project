@@ -10,7 +10,7 @@
  * Em telas ≤ 820px os links da barra superior somem e as abas inferiores aparecem.
  */
 import React, { useState, useRef, useEffect } from 'react';
-import { NavLink, Link, useNavigate } from 'react-router-dom';
+import { NavLink, Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import {
@@ -26,6 +26,25 @@ import { Mascot } from '../ui/Mascot';
 import { Avatar } from '../ui/Avatar';
 import { getHealth } from '../../services/api';
 import { IconSparkles } from '../ui/Icons';
+
+/** Título da aba por página: leitores de tela anunciam a troca de página pelo título. */
+const PAGE_TITLES: [RegExp, string][] = [
+  [/^\/painel/, 'Painel'],
+  [/^\/activities/, 'Atividades'],
+  [/^\/classes/, 'Turmas'],
+  [/^\/setup/, 'Nova atividade'],
+  [/^\/upload\//, 'Enviar respostas'],
+  [/^\/review\//, 'Revisão'],
+  [/^\/export\//, 'Exportar resultados'],
+  [/^\/planos/, 'Planos e uso de IA'],
+  [/^\/conta/, 'Minha conta'],
+  [/^\/instituicao/, 'Instituição'],
+];
+
+export function pageTitleFor(pathname: string): string {
+  const match = PAGE_TITLES.find(([re]) => re.test(pathname));
+  return match ? `${match[1]} · Educathon` : 'Educathon — Copiloto Pedagógico com IA';
+}
 
 interface NavItem {
   to: string;
@@ -50,6 +69,10 @@ export function AppLayout({ children }: AppLayoutProps) {
   const { teacher, logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const navigate = useNavigate();
+  const { pathname } = useLocation();
+  useEffect(() => {
+    document.title = pageTitleFor(pathname);
+  }, [pathname]);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [isMockMode, setIsMockMode] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);

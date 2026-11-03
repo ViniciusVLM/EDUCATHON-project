@@ -373,4 +373,10 @@ describe('SetupActivity — Nota sugerida pela IA', () => {
     await user.click(screen.getByRole('radio', { name: /Múltipla escolha/i }));
     expect(screen.queryByLabelText(/Deixar a IA sugerir uma nota/i)).not.toBeInTheDocument();
   });
+
+  it('avisa quando as turmas não carregam, sem travar a criação', async () => {
+    mockGetClasses.mockRejectedValueOnce(new Error('falhou'));
+    renderSetup();
+    expect(await screen.findByText(/Não foi possível carregar suas turmas/)).toBeInTheDocument();
+  });
 });

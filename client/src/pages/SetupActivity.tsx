@@ -99,11 +99,12 @@ export default function SetupActivity() {
   });
   // Nota sugerida pela IA (vale para as dissertativas criadas agora). Desligada por padrão.
   const [aiGrade, setAiGrade] = useState(false);
+  const [classesError, setClassesError] = useState(false);
 
   useEffect(() => {
     getClasses()
       .then(setClasses)
-      .catch((err) => console.warn('Erro ao carregar turmas:', err));
+      .catch(() => setClassesError(true));
   }, []);
 
   const draft = drafts[active] ?? drafts[0];
@@ -575,6 +576,12 @@ export default function SetupActivity() {
                   </option>
                 ))}
               </select>
+              {classesError && (
+                <p className="input-hint" role="alert">
+                  Não foi possível carregar suas turmas. Você pode criar a atividade sem turma e ajustar depois em
+                  “Editar dados”.
+                </p>
+              )}
             </div>
 
             <div className="input-group">

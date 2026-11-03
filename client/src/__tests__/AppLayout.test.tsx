@@ -7,7 +7,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
-import { AppLayout } from '../components/layout/AppLayout';
+import { AppLayout, pageTitleFor } from '../components/layout/AppLayout';
 import { ThemeProvider } from '../contexts/ThemeContext';
 import { AuthProvider } from '../contexts/AuthContext';
 
@@ -104,6 +104,12 @@ describe('AppLayout', () => {
     const userBtn = screen.getByRole('button', { name: /Menu do professor/i });
     await user.click(userBtn);
     expect(screen.getByRole('button', { name: /Sair/i })).toBeInTheDocument();
+  });
+
+  it('o título da aba muda conforme a página', () => {
+    expect(pageTitleFor('/review/3')).toBe('Revisão · Educathon');
+    expect(pageTitleFor('/classes')).toBe('Turmas · Educathon');
+    expect(pageTitleFor('/qualquer')).toBe('Educathon — Copiloto Pedagógico com IA');
   });
 
   it('Esc fecha o menu do usuário e devolve o foco ao botão', async () => {
