@@ -762,7 +762,8 @@ export function getExportData(activityId) {
     SELECT sr.student_name, sr.original_response,
            COALESCE(f.teacher_feedback, f.ai_feedback_text) as feedback_final,
            f.teacher_grade as nota,
-           f.status
+           f.status,
+           f.criteria_scores, f.ai_feedback_json, f.auto_result
     FROM student_responses sr
     LEFT JOIN feedbacks f ON f.student_response_id = sr.id
     WHERE sr.activity_id = ?

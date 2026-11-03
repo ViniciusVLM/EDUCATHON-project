@@ -187,6 +187,12 @@ export default function ExportResults() {
         </Button>
       </div>
 
+      <p className="export-csv-hint">
+        O CSV abre no Excel ou no Google Planilhas. Além do nome, da resposta, do feedback, da nota e do
+        status, ele traz uma coluna por critério da rubrica (sim/não) e, em múltipla escolha, a alternativa
+        marcada por cada aluno.
+      </p>
+
       {error && (
         <div className="alert-box alert-box--error" role="alert" style={{ marginTop: 'var(--space-4)' }}>
           <IconAlertCircle size={18} />

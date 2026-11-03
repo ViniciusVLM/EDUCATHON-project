@@ -960,3 +960,10 @@ a.edu-user__item:hover { background: var(--surface-hover); }
   font-weight: 400;
   color: var(--text-muted);
 }
+
+.export-csv-hint {
+  margin-top: var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  max-width: 720px;
+}

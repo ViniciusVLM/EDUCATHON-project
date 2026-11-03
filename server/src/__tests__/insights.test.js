@@ -259,4 +259,48 @@ describe('rotas de diagnóstico, aprovação em lote e arquivamento', () => {
     const after = await request(app).get('/api/dashboard/summary').set(auth(token));
     assert.equal(after.body.metrics.total_activities, 1);
   });
+  test('CSV exportado ganha uma coluna por critério (sim/não), depois das colunas de sempre', async () => {
+    const token = await registerTeacher('diag10@escola.dev');
+    const { id, detail } = await createActivityWithFeedbacks(token, RESPONSES);
+    const ana = detail.responses.find((r) => r.student_name === 'Ana');
+    await request(app).patch(`/api/feedback/${ana.feedback_id}`).set(auth(token)).send({
+      criteriaScores: [
+        { criterio: 'Evaporação', atendido: true },
+        { criterio: 'Condensação', atendido: false },
+        { criterio: 'Precipitação', atendido: true },
+      ],
+    }).expect(200);
+
+    const res = await request(app).get(`/api/activities/${id}/export`).set(auth(token));
+    assert.equal(res.status, 200);
+    const lines = res.text.replace(/^\uFEFF/, '').split('\n');
+    assert.equal(
+      lines[0],
+      'nome_aluno,resposta_original,feedback_final,nota,status,"criterio: Evaporação","criterio: Condensação","criterio: Precipitação"'
+    );
+    const anaLine = lines.find((l) => l.startsWith('"Ana"'));
+    assert.ok(anaLine.endsWith('"sim","não","sim"'), anaLine);
+    assert.equal(lines.length, 4);
+  });
+  test('CSV de múltipla escolha traz a alternativa escolhida e se acertou', async () => {
+    const token = await registerTeacher('diag11@escola.dev');
+    const created = await request(app).post('/api/activities').set(auth(token)).send({
+      title: 'Quiz', question: 'Qual?', rubric: '', questionType: 'objetiva',
+      options: [{ texto: 'um' }, { texto: 'dois' }], correctOption: 'B',
+    });
+    const id = created.body.id;
+    await request(app).post(`/api/activities/${id}/manual`).set(auth(token)).send({
+      responses: [{ student_name: 'Ana', original_response: 'B' }, { student_name: 'Bia', original_response: 'A' }],
+    });
+    await request(app).post(`/api/activities/${id}/generate`).set(auth(token)).expect(202);
+    await waitJob(id);
+    const res = await request(app).get(`/api/activities/${id}/export`).set(auth(token));
+    const lines = res.text.replace(/^\uFEFF/, '').split('\n');
+    assert.ok(lines[0].endsWith(',alternativa_escolhida,acertou'), lines[0]);
+    assert.ok(lines.find((l) => l.startsWith('"Ana"')).endsWith('"B","sim"'));
+    assert.ok(lines.find((l) => l.startsWith('"Bia"')).endsWith('"A","não"'));
+
+    const insights = await request(app).get(`/api/activities/${id}/insights`).set(auth(token));
+    assert.equal(insights.body.objective.percent, 50);
+  });
 });

@@ -33,6 +33,38 @@ function isValidCriteriaScores(list) {
       && (c.evidencia === undefined || c.evidencia === null || (typeof c.evidencia === 'string' && c.evidencia.length <= 2000)));
 }
 
+function parseJsonSafe(value) {
+  if (!value) return null;
+  if (typeof value !== 'string') return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
+/** Critérios de uma linha: a versão revisada pelo professor ou, se não houver, o rascunho da IA. */
+function rowCriteria(row) {
+  const revised = parseJsonSafe(row.criteria_scores);
+  const list = Array.isArray(revised) ? revised : parseJsonSafe(row.ai_feedback_json)?.criterios_avaliacao;
+  return Array.isArray(list)
+    ? list.filter((c) => c && typeof c.criterio === 'string' && c.criterio.trim())
+    : [];
+}
+
+/** Nomes dos critérios para o CSV: os da rubrica primeiro, na ordem cadastrada; depois os demais. */
+function exportCriteriaNames(activity, data) {
+  const names = [];
+  const add = (name) => {
+    const clean = typeof name === 'string' ? name.trim() : '';
+    if (clean && !names.includes(clean)) names.push(clean);
+  };
+  const rubric = parseJsonSafe(activity.rubric_criteria);
+  if (Array.isArray(rubric)) rubric.forEach((c) => add(typeof c === 'string' ? c : c?.criterio));
+  data.forEach((row) => rowCriteria(row).forEach((c) => add(c.criterio)));
+  return names.slice(0, 30);
+}
+
 /** Nota do professor: número de 0 a 10 com até uma casa decimal, ou null para apagar. */
 function parseGrade(value) {
   if (value === null || value === '') return { grade: null };
@@ -391,14 +423,28 @@ router.get('/activities/:id/export', (req, res) => {
       return `"${val.replace(/"/g, '""')}"`;
     };
 
-    const header = 'nome_aluno,resposta_original,feedback_final,nota,status';
+    // Colunas extras depois das 5 fixas (quem lê só as primeiras continua funcionando):
+    // uma por critério da rubrica (sim/não) e, em múltipla escolha, a alternativa e o acerto.
+    const criteriaNames = exportCriteriaNames(activity, data);
+    const isObjective = activity.question_type === 'objetiva';
+    const header = [
+      'nome_aluno,resposta_original,feedback_final,nota,status',
+      ...criteriaNames.map((name) => escapeCsvCell(`criterio: ${name}`)),
+      ...(isObjective ? ['alternativa_escolhida', 'acertou'] : []),
+    ].join(',');
     const rows = data.map((row) => {
+      const met = new Map(rowCriteria(row).map((c) => [String(c.criterio).trim(), c.atendido]));
+      const auto = isObjective ? parseJsonSafe(row.auto_result) : null;
       return [
         escapeCsvCell(row.student_name),
         escapeCsvCell(row.original_response),
         escapeCsvCell(row.feedback_final),
         escapeCsvCell(row.nota === null || row.nota === undefined ? '' : String(row.nota).replace('.', ',')),
         escapeCsvCell(row.status),
+        ...criteriaNames.map((name) => escapeCsvCell(met.has(name) ? (met.get(name) === true ? 'sim' : 'não') : '')),
+        ...(isObjective
+          ? [escapeCsvCell(auto?.escolhida ?? ''), escapeCsvCell(auto ? (auto.acertou ? 'sim' : 'não') : '')]
+          : []),
       ].join(',');
     });
 
