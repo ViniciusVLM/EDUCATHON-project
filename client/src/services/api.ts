@@ -24,6 +24,7 @@ import type {
   AnswerSheetsResult,
   OrgActivity,
   ActivityInsights,
+  ClassPlan,
 } from '../types';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
@@ -265,6 +266,11 @@ export async function approveFeedback(feedbackId: number, reviewSeconds?: number
 /** Aprova de uma vez, no servidor, todos os feedbacks ainda não aprovados da atividade. */
 export async function approveAllFeedbacks(activityId: number): Promise<{ message: string; approved: number }> {
   return request(`/activities/${activityId}/approve-all`, { method: 'POST' });
+}
+
+/** A IA sugere como retomar em aula os critérios menos atendidos (só dados agregados vão para a IA). */
+export async function suggestClassPlan(activityId: number): Promise<ClassPlan> {
+  return request(`/activities/${activityId}/class-plan`, { method: 'POST' });
 }
 
 /** Diagnóstico da turma: critérios, notas, alunos que pedem atenção e tempo de revisão. */

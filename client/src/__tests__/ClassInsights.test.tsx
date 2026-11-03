@@ -11,6 +11,7 @@ import type { ActivityInsights } from '../types';
 
 vi.mock('../services/api', () => ({
   getActivityInsights: vi.fn(),
+  suggestClassPlan: vi.fn(),
 }));
 
 const mockInsights = vi.mocked(api.getActivityInsights);
@@ -106,5 +107,33 @@ describe('ClassInsights', () => {
     expect(formatDuration(75)).toBe('1 min 15 s');
     expect(formatDuration(120)).toBe('2 min');
     expect(formatDuration(5400)).toBe('1 h 30 min');
+  });
+  it('pede à IA sugestões de retomada e mostra o resultado', async () => {
+    const user = userEvent.setup();
+    mockInsights.mockResolvedValue(sample);
+    vi.mocked(api.suggestClassPlan).mockResolvedValue({
+      criteria: [sample.criteria[0]],
+      resumo: 'Retome a condensação.',
+      sugestoes: [{ titulo: 'Copo com gelo', como_fazer: 'Mostre a água condensando no copo.', tempo_minutos: 15 }],
+    });
+    render(<ClassInsights activityId={7} refreshKey="a" />);
+    await user.click(screen.getByText('Diagnóstico da turma'));
+    expect(await screen.findByText(/nenhum nome ou resposta de aluno/)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /Sugerir como retomar/ }));
+    expect(await screen.findByText('Copo com gelo')).toBeInTheDocument();
+    expect(screen.getByText('Retome a condensação.')).toBeInTheDocument();
+    expect(screen.getByText(/cerca de 15 min/)).toBeInTheDocument();
+    expect(api.suggestClassPlan).toHaveBeenCalledWith(7);
+  });
+
+  it('mostra o erro da cota sem quebrar o painel', async () => {
+    const user = userEvent.setup();
+    mockInsights.mockResolvedValue(sample);
+    vi.mocked(api.suggestClassPlan).mockRejectedValue(new Error('Sua cota de IA deste mês acabou.'));
+    render(<ClassInsights activityId={7} refreshKey="a" />);
+    await user.click(screen.getByText('Diagnóstico da turma'));
+    await user.click(await screen.findByRole('button', { name: /Sugerir como retomar/ }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Sua cota de IA deste mês acabou.');
+    expect(screen.getByRole('button', { name: /Sugerir como retomar/ })).toBeEnabled();
   });
 });

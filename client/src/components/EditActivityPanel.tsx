@@ -25,7 +25,7 @@ export function EditActivityPanel({ activity, hasResponses, onSaved, onCancel }:
   const [subject, setSubject] = useState(activity.subject || '');
   const [dueDate, setDueDate] = useState(toDateInput(activity.due_date));
   const [classId, setClassId] = useState(activity.class_id ? String(activity.class_id) : '');
-  const [classes, setClasses] = useState<Class[] | null>(hasResponses ? [] : null);
+  const [classes, setClasses] = useState<Class[] | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const headingRef = useRef<HTMLHeadingElement | null>(null);
@@ -35,11 +35,12 @@ export function EditActivityPanel({ activity, hasResponses, onSaved, onCancel }:
   }, []);
 
   useEffect(() => {
-    if (hasResponses) return;
     getClasses()
       .then(setClasses)
       .catch(() => setClasses([]));
-  }, [hasResponses]);
+  }, []);
+
+  const currentClassListed = (classes || []).some((c) => String(c.id) === classId);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -66,8 +67,7 @@ export function EditActivityPanel({ activity, hasResponses, onSaved, onCancel }:
           Editar dados da atividade
         </h3>
         <p className="duplicate-panel__hint">
-          Enunciado, rubrica e critérios não mudam aqui, para os feedbacks já gerados continuarem coerentes. Para
-          mudar o enunciado, use “Reaplicar” na lista de atividades e ajuste a cópia.
+          Enunciado, rubrica e critérios não mudam aqui, para os feedbacks já gerados continuarem coerentes.
         </p>
         <div className="duplicate-panel__fields">
           <label className="duplicate-panel__field">
@@ -90,8 +90,8 @@ export function EditActivityPanel({ activity, hasResponses, onSaved, onCancel }:
               disabled={hasResponses || classes === null}
               aria-describedby={hasResponses ? 'edit-class-hint' : undefined}
             >
-              {(hasResponses || classes === null) && classId && (
-                <option value={classId}>{activity.class_name || 'Turma atual'}</option>
+              {classId && !currentClassListed && (
+                <option value={classId}>{classes === null ? 'Carregando turmas...' : activity.class_name || 'Turma atual'}</option>
               )}
               <option value="">Sem turma</option>
               {(classes || []).map((c) => (

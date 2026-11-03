@@ -7,8 +7,8 @@
  * navegador dele): o sistema não inventa esse número.
  */
 import { useEffect, useState } from 'react';
-import { getActivityInsights } from '../services/api';
-import type { ActivityInsights } from '../types';
+import { getActivityInsights, suggestClassPlan } from '../services/api';
+import type { ActivityInsights, ClassPlan } from '../types';
 import { ProgressBar } from './ui/ProgressBar';
 import { formatDuration } from '../services/format';
 
@@ -49,6 +49,21 @@ export function ClassInsights({ activityId, refreshKey, onSelectStudent }: Class
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [manualMinutes, setManualMinutes] = useState(readManualEstimate);
+  const [plan, setPlan] = useState<ClassPlan | null>(null);
+  const [planLoading, setPlanLoading] = useState(false);
+  const [planError, setPlanError] = useState('');
+
+  async function handleSuggestPlan() {
+    setPlanLoading(true);
+    setPlanError('');
+    try {
+      setPlan(await suggestClassPlan(activityId));
+    } catch (err: unknown) {
+      setPlanError(err instanceof Error ? err.message : 'Não foi possível gerar a sugestão.');
+    } finally {
+      setPlanLoading(false);
+    }
+  }
 
   useEffect(() => {
     if (!open) return;
@@ -181,6 +196,40 @@ export function ClassInsights({ activityId, refreshKey, onSelectStudent }: Class
                   </p>
                 )}
               </div>
+            )}
+
+            {data.weakest_criterion && (
+              <section className="insights__section insights__plan" aria-live="polite">
+                <h4 className="insights__section-title">Como retomar em aula</h4>
+                {!plan && (
+                  <>
+                    <p className="insights__muted">
+                      A IA sugere atividades curtas para retomar os critérios menos atendidos com a turma inteira. Só vão
+                      para a IA o enunciado, a rubrica e os percentuais da turma: nenhum nome ou resposta de aluno. Usa 1
+                      geração da sua cota.
+                    </p>
+                    <button type="button" className="insights__plan-btn" onClick={handleSuggestPlan} disabled={planLoading}>
+                      {planLoading ? 'Pensando nas sugestões...' : 'Sugerir como retomar (IA)'}
+                    </button>
+                  </>
+                )}
+                {planError && <p className="insights__error" role="alert">{planError}</p>}
+                {plan && (
+                  <>
+                    {plan.resumo && <p className="insights__plan-summary">{plan.resumo}</p>}
+                    <ol className="insights__plan-list">
+                      {plan.sugestoes.map((s, i) => (
+                        <li key={i}>
+                          <strong>{s.titulo}</strong>
+                          {s.tempo_minutos ? <span className="insights__muted"> · cerca de {s.tempo_minutos} min</span> : null}
+                          <p>{s.como_fazer}</p>
+                        </li>
+                      ))}
+                    </ol>
+                    <p className="insights__muted">Sugestão da IA: adapte à sua turma. Você decide se e como usar.</p>
+                  </>
+                )}
+              </section>
             )}
 
             {data.criteria.length > 0 && (

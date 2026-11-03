@@ -12,6 +12,10 @@ import {
 } from '../database/db.js';
 import { validateExtraQuestions } from '../services/multiQuestion.js';
 import { buildActivityInsights } from '../services/insights.js';
+import { generateClassPlan, pickFocusCriteria } from '../services/classPlan.js';
+import { reserveQuota, recordUsage, resolveGeminiKey, QuotaError } from '../services/plans.js';
+import { aiGenerateLimiter } from '../middleware/rateLimit.js';
+import { isDailyQuotaError, DAILY_QUOTA_MESSAGE } from '../services/gemini.js';
 
 const router = Router();
 
@@ -351,6 +355,48 @@ router.get('/:id/insights', (req, res) => {
   } catch (error) {
     console.error('Erro ao montar o diagnóstico da turma:', error);
     res.status(500).json({ error: 'Erro interno ao montar o diagnóstico.' });
+  }
+});
+
+/**
+ * POST /api/activities/:id/class-plan
+ * A IA sugere como retomar em aula os critérios que a turma menos atendeu.
+ * Só dados agregados vão para a IA (sem nomes nem respostas). Gasta 1 geração da cota.
+ */
+router.post('/:id/class-plan', aiGenerateLimiter, async (req, res) => {
+  let reserved = false;
+  try {
+    const activity = getActivityIfOwned(Number(req.params.id), req.teacher.id);
+    if (!activity) {
+      return res.status(404).json({ error: 'Atividade não encontrada.' });
+    }
+    const insights = buildActivityInsights(activity, getResponsesByActivity(activity.id));
+    const focus = pickFocusCriteria(insights);
+    if (focus.length === 0) {
+      return res.status(400).json({
+        error: insights.criteria.length === 0
+          ? 'Esta atividade não tem critérios avaliados ainda. Gere os feedbacks (com critérios na rubrica) primeiro.'
+          : 'A turma atendeu todos os critérios: não há o que retomar.',
+      });
+    }
+    try {
+      reserveQuota(req.teacher.id, 'feedback', 1);
+      reserved = true;
+    } catch (quotaError) {
+      if (quotaError instanceof QuotaError) {
+        return res.status(402).json({ error: quotaError.message, quota: quotaError.status, upgradeUrl: '/planos' });
+      }
+      throw quotaError;
+    }
+    const { plan } = await generateClassPlan(activity, focus, { apiKey: resolveGeminiKey(req.teacher.id) });
+    res.json({ criteria: focus, ...plan });
+  } catch (error) {
+    if (reserved) recordUsage(req.teacher.id, 'feedback', -1);
+    if (isDailyQuotaError(error)) {
+      return res.status(429).json({ error: DAILY_QUOTA_MESSAGE, reason: 'gemini_daily_quota' });
+    }
+    console.error('Erro ao sugerir retomada:', error);
+    res.status(500).json({ error: 'Não foi possível gerar a sugestão agora. Tente de novo em instantes.' });
   }
 });
 

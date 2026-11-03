@@ -429,6 +429,13 @@ export interface AnswerSheetsResult {
   warnings: string[];
 }
 
+// ── Sugestão de retomada em aula (POST /activities/:id/class-plan) ──
+export interface ClassPlan {
+  criteria: InsightCriterion[];
+  resumo: string;
+  sugestoes: { titulo: string; como_fazer: string; tempo_minutos: number | null }[];
+}
+
 // ── Diagnóstico da turma (GET /activities/:id/insights) ──
 
 export interface InsightCriterion {
