@@ -150,11 +150,37 @@ export function setStudentDisabled(accountId, disabled) {
  * respostas e notas já lançadas ficam com o professor), mas o aluno deixa de ver aquela turma.
  */
 export function unlinkStudentFromOrgClass(orgId, accountId, classId) {
-  return getDb().prepare(`
-    UPDATE students SET account_id = NULL
-    WHERE account_id = ? AND class_id = ?
-      AND class_id IN (SELECT c.id FROM classes c JOIN teachers t ON t.id = c.teacher_id WHERE t.organization_id = ?)
-  `).run(accountId, classId, orgId);
+  const db = getDb();
+  return db.transaction(() => {
+    const result = db.prepare(`
+      UPDATE students SET account_id = NULL
+      WHERE account_id = ? AND class_id = ?
+        AND class_id IN (SELECT c.id FROM classes c JOIN teachers t ON t.id = c.teacher_id WHERE t.organization_id = ?)
+    `).run(accountId, classId, orgId);
+    // Registra a remoção: sem isso, o aluno voltava para a turma usando o código dela
+    if (result.changes > 0) {
+      db.prepare('INSERT OR REPLACE INTO class_removals (class_id, account_id) VALUES (?, ?)').run(classId, accountId);
+    }
+    return result;
+  })();
+}
+
+export function isRemovedFromClass(classId, accountId) {
+  return Boolean(getDb().prepare('SELECT 1 FROM class_removals WHERE class_id = ? AND account_id = ?').get(classId, accountId));
+}
+
+/** A instituição devolve o aluno à turma (ao criar o acesso de novo nela). */
+export function clearClassRemoval(classId, accountId) {
+  return getDb().prepare('DELETE FROM class_removals WHERE class_id = ? AND account_id = ?').run(classId, accountId);
+}
+
+/** O aluno foi tirado desta turma pela instituição e não pode voltar sozinho. */
+export class ClassRemovedError extends Error {
+  constructor() {
+    super('Você foi retirado(a) desta turma pela escola. Fale com a coordenação para voltar.');
+    this.name = 'ClassRemovedError';
+    this.status = 403;
+  }
 }
 
 export function removeTeacherFromOrg(orgId, teacherId) {
@@ -247,6 +273,9 @@ export function joinClass(accountId, classId) {
   return db.transaction(() => {
     const existing = db.prepare('SELECT id FROM students WHERE class_id = ? AND account_id = ?').get(classId, accountId);
     if (existing) return { studentId: existing.id, alreadyMember: true };
+    if (db.prepare('SELECT 1 FROM class_removals WHERE class_id = ? AND account_id = ?').get(classId, accountId)) {
+      throw new ClassRemovedError();
+    }
 
     // O e-mail só é confiável nesta turma se foi confirmado pelo Google, ou se a instituição
     // que criou o acesso é a dona da turma. Um admin de outra instituição não consegue

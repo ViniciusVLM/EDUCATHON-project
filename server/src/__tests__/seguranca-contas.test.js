@@ -289,3 +289,38 @@ describe('atividade arquivada no portal do aluno', () => {
     assert.equal(acts.body.activities.find((a) => a.id === real.activityId).grade, 3.5);
   });
 });
+
+describe('aluno tirado da turma pela instituição', () => {
+  test('não volta sozinho pelo código; a instituição pode devolvê-lo criando o acesso de novo', async () => {
+    const admin = await register('Admin', 'admin10@escola.dev');
+    await request(app).post('/api/org').set(auth(admin.token)).send({ name: 'Escola R' }).expect(201);
+    const cls = await request(app).post('/api/classes').set(auth(admin.token)).send({ name: '5º A' });
+    const classId = cls.body.class.id;
+    const code = await request(app).post(`/api/classes/${classId}/join-code`).set(auth(admin.token));
+    const created = await request(app).post('/api/org/students').set(auth(admin.token))
+      .send({ name: 'Rafa', email: 'rafa@aluno.org', classId });
+    const login = await request(app).post('/api/student-auth/login').send({ email: 'rafa@aluno.org', password: created.body.tempPassword });
+    const st = login.body.token;
+    const accountId = login.body.student.id;
+
+    await request(app).delete(`/api/org/students/${accountId}/classes/${classId}`).set(auth(admin.token)).expect(200);
+    const me = await request(app).get('/api/student/me').set(auth(st));
+    assert.equal(me.body.classes.length, 0);
+
+    const back = await request(app).post('/api/student/join').set(auth(st)).send({ classCode: code.body.joinCode });
+    assert.equal(back.status, 403, 'não volta pelo código');
+    assert.match(back.body.error, /retirado/);
+
+    const readd = await request(app).post('/api/org/students').set(auth(admin.token))
+      .send({ name: 'Rafa', email: 'rafa@aluno.org', classId });
+    assert.equal(readd.status, 200, JSON.stringify(readd.body));
+    assert.equal(readd.body.tempPassword, null, 'a senha do aluno não muda');
+    const me2 = await request(app).get('/api/student/me').set(auth(st));
+    assert.equal(me2.body.classes.length, 1);
+
+    // Outro aluno sem remoção continua recebendo 409 (entra pelo código)
+    const dup = await request(app).post('/api/org/students').set(auth(admin.token))
+      .send({ name: 'Rafa', email: 'rafa@aluno.org', classId });
+    assert.equal(dup.status, 409);
+  });
+});

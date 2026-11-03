@@ -232,6 +232,18 @@ const MIGRATIONS = [
       MIGRATE_ORG_VERIFIED_ACCOUNTS_SQL,
     ],
   },
+  // ── Aluno tirado da turma pela instituição não volta sozinho pelo código ──
+  {
+    name: '019_class_removals',
+    sqls: [
+      `CREATE TABLE IF NOT EXISTS class_removals (
+        class_id INTEGER NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
+        account_id INTEGER NOT NULL REFERENCES student_accounts(id) ON DELETE CASCADE,
+        removed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (class_id, account_id)
+      )`,
+    ],
+  },
 ];
 
 /**

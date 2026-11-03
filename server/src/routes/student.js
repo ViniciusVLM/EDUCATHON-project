@@ -10,6 +10,7 @@ import {
   listStudentActivities,
   getClassByJoinCode,
   joinClass,
+  ClassRemovedError,
 } from '../database/accounts.js';
 import { normalizeJoinCode } from '../services/secrets.js';
 import { parseOptions } from '../services/objective.js';
@@ -111,6 +112,7 @@ router.post('/join', studentAuthLimiter, (req, res) => {
       class: { id: cls.id, name: cls.name, teacher_name: cls.teacher_name },
     });
   } catch (err) {
+    if (err instanceof ClassRemovedError) return res.status(403).json({ error: err.message });
     console.error('Erro ao entrar na turma:', err);
     res.status(500).json({ error: 'Erro interno ao entrar na turma.' });
   }

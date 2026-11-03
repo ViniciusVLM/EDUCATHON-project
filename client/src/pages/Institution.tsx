@@ -275,7 +275,7 @@ export default function Institution() {
   }
 
   function handleRemoveFromClass(id: number, name: string, classId: number, className: string) {
-    if (!window.confirm(`Tirar ${name} da turma ${className}? O nome continua na lista do professor, mas o aluno deixa de ver a turma.`)) return;
+    if (!window.confirm(`Tirar ${name} da turma ${className}? O nome continua na lista do professor, mas o aluno deixa de ver a turma e não consegue voltar pelo código. Para devolver, crie o acesso dele de novo nesta turma.`)) return;
     act(`s-cls-${id}-${classId}`, () => removeOrgStudentFromClass(id, classId));
   }
 

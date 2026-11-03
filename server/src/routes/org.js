@@ -28,6 +28,8 @@ import {
   setStudentPassword,
   setStudentDisabled,
   unlinkStudentFromOrgClass,
+  clearClassRemoval,
+  isRemovedFromClass,
 } from '../database/accounts.js';
 import { requireOrgAdmin } from '../middleware/auth.js';
 import { hashPassword } from '../services/auth.js';
@@ -156,7 +158,17 @@ router.post('/students', requireOrgAdmin, async (req, res) => {
     const cls = getOrgClass(req.organizationId, Number(req.body?.classId));
     if (!cls) return res.status(404).json({ error: 'Turma não encontrada nesta instituição.' });
 
-    if (getStudentAccountByEmail(person.email)) {
+    const existing = getStudentAccountByEmail(person.email);
+    if (existing && isRemovedFromClass(cls.id, existing.id)) {
+      // O aluno foi tirado desta turma pela instituição: criar o acesso de novo o devolve a ela
+      clearClassRemoval(cls.id, existing.id);
+      joinClass(existing.id, cls.id);
+      return res.json({
+        message: `${existing.name} voltou para a turma ${cls.name}. A senha dele não mudou.`,
+        tempPassword: null,
+      });
+    }
+    if (existing) {
       return res.status(409).json({
         error: 'Já existe uma conta de aluno com esse e-mail. Passe o código da turma para o aluno entrar por conta própria.',
       });
