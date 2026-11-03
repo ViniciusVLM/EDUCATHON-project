@@ -286,6 +286,17 @@ export async function duplicateActivity(
   });
 }
 
+/** Edita título, disciplina, prazo e turma (a turma só muda enquanto não há respostas). */
+export async function updateActivityDetails(
+  activityId: number,
+  data: { title?: string; subject?: string | null; dueDate?: string | null; classId?: number | null }
+): Promise<{ message: string; activity: Activity }> {
+  return request(`/activities/${activityId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  });
+}
+
 /** Arquiva (some do painel e da lista principal) ou reativa uma atividade. Nada é apagado. */
 export async function setActivityArchived(activityId: number, archived: boolean): Promise<{ message: string; archived: boolean }> {
   return request(`/activities/${activityId}/archive`, {

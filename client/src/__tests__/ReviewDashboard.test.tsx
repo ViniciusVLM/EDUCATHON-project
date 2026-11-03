@@ -2,7 +2,7 @@
  * Testes da página ReviewDashboard (Fase 4 e Fase 6D).
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import ReviewDashboard from '../pages/ReviewDashboard';
@@ -17,6 +17,8 @@ vi.mock('../services/api', () => ({
   approveFeedback: vi.fn().mockResolvedValue({ message: 'OK', status: 'aprovado' }),
   approveAllFeedbacks: vi.fn().mockResolvedValue({ message: '2 feedback(s) aprovado(s).', approved: 2 }),
   getActivityInsights: vi.fn().mockResolvedValue(null),
+  updateActivityDetails: vi.fn(),
+  getClasses: vi.fn().mockResolvedValue([]),
   regenerateFeedback: vi.fn().mockResolvedValue({ message: 'OK', feedbackId: 10 }),
   setActivityAiGrade: vi.fn().mockResolvedValue({ message: 'Nota sugerida ligada.', aiGradeEnabled: true }),
 }));
@@ -584,5 +586,33 @@ describe('ReviewDashboard — aba "A revisar" e tempo de revisão', () => {
     await waitFor(() => expect(mockApproveFeedback).toHaveBeenCalledWith(201, 170));
     nowSpy.mockRestore();
     vi.useRealTimers();
+  });
+  it('edita título, disciplina e prazo; com respostas, a turma fica travada', async () => {
+    const user = userEvent.setup();
+    mockGetActivity.mockResolvedValue({ ...sampleActivity, class_id: 9 });
+    vi.mocked(api.updateActivityDetails).mockResolvedValue({
+      message: 'Atividade atualizada.',
+      activity: { ...sampleActivity, title: 'Biologia revisada', subject: 'Biologia', due_date: '2026-12-01' },
+    });
+    renderDashboard();
+    await screen.findByText('As plantas usam a luz do sol e água para crescer.');
+
+    await user.click(screen.getByRole('button', { name: 'Editar dados' }));
+    const form = screen.getByRole('form', { name: 'Editar dados da atividade' });
+    expect(within(form).getByRole('heading')).toHaveFocus();
+    expect(within(form).getByRole('combobox')).toBeDisabled();
+
+    const titleInput = within(form).getByDisplayValue('Atividade de Biologia');
+    await user.clear(titleInput);
+    await user.type(titleInput, 'Biologia revisada');
+    await user.type(within(form).getByLabelText('Disciplina'), 'Biologia');
+    fireEvent.change(within(form).getByLabelText('Prazo de entrega'), { target: { value: '2026-12-01' } });
+    await user.click(within(form).getByRole('button', { name: 'Salvar' }));
+
+    await waitFor(() =>
+      expect(api.updateActivityDetails).toHaveBeenCalledWith(1, { title: 'Biologia revisada', subject: 'Biologia', dueDate: '2026-12-01' })
+    );
+    expect(await screen.findByRole('heading', { name: 'Biologia revisada' })).toBeInTheDocument();
+    expect(screen.queryByRole('form', { name: 'Editar dados da atividade' })).not.toBeInTheDocument();
   });
 });

@@ -28,6 +28,7 @@ import { Stamp } from '../components/ui/Stamp';
 import { Window, toFileSlug } from '../components/ui/Window';
 import { Mascot } from '../components/ui/Mascot';
 import { ClassInsights } from '../components/ClassInsights';
+import { EditActivityPanel } from '../components/EditActivityPanel';
 import { getActivityQuestions, getResponseAnswers } from '../services/questions';
 import {
   IconCheckCircle,
@@ -55,6 +56,7 @@ export default function ReviewDashboard() {
   const [progress, setProgress] = useState<Progress | null>(null);
   const [generating, setGenerating] = useState(false);
   const [gradeText, setGradeText] = useState('');
+  const [editingDetails, setEditingDetails] = useState(false);
 
   function filterResponses(responses: StudentResponse[], f: FilterType): StudentResponse[] {
     if (f === 'todos') return responses;
@@ -711,12 +713,32 @@ export default function ReviewDashboard() {
           )}
           <Button
             variant="ghost"
+            onClick={() => setEditingDetails(true)}
+            disabled={editingDetails}
+            id="btn-edit-activity"
+          >
+            Editar dados
+          </Button>
+          <Button
+            variant="ghost"
             onClick={() => navigate(`/export/${activityId}`)}
           >
             Exportar resultados
           </Button>
         </div>
       </div>
+
+      {editingDetails && (
+        <EditActivityPanel
+          activity={activity}
+          hasResponses={activity.responses.length > 0}
+          onCancel={() => setEditingDetails(false)}
+          onSaved={(updated) => {
+            setActivity({ ...activity, ...updated });
+            setEditingDetails(false);
+          }}
+        />
+      )}
 
       {/* Stats Bar com Progresso */}
       <div className="stats-bar" style={{ marginBottom: 'var(--space-6)' }}>

@@ -8,6 +8,7 @@ import {
   getClassById,
   setActivityAiGrade,
   setActivityArchived,
+  updateActivityDetails,
 } from '../database/db.js';
 import { validateExtraQuestions } from '../services/multiQuestion.js';
 import { buildActivityInsights } from '../services/insights.js';
@@ -243,6 +244,70 @@ router.post('/:id/duplicate', (req, res) => {
   } catch (error) {
     console.error('Erro ao duplicar atividade:', error);
     res.status(500).json({ error: 'Erro interno ao duplicar a atividade.' });
+  }
+});
+
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * PATCH /api/activities/:id
+ * Edita os dados gerais: título, disciplina, prazo e turma. Body com qualquer um destes campos:
+ * { title, subject, dueDate ('AAAA-MM-DD' ou null), classId (número ou null) }.
+ * A turma só muda enquanto a atividade não tem respostas (as respostas ficam ligadas aos
+ * alunos da turma original).
+ */
+router.patch('/:id', (req, res) => {
+  try {
+    const activity = getActivityIfOwned(Number(req.params.id), req.teacher.id);
+    if (!activity) {
+      return res.status(404).json({ error: 'Atividade não encontrada.' });
+    }
+    const body = req.body || {};
+    const fields = {};
+
+    if (body.title !== undefined) {
+      if (typeof body.title !== 'string' || !body.title.trim() || body.title.trim().length > 200) {
+        return res.status(400).json({ error: 'O título deve ter entre 1 e 200 caracteres.' });
+      }
+      fields.title = body.title.trim();
+    }
+    if (body.subject !== undefined) {
+      if (body.subject !== null && (typeof body.subject !== 'string' || body.subject.trim().length > 100)) {
+        return res.status(400).json({ error: 'A disciplina deve ter no máximo 100 caracteres.' });
+      }
+      fields.subject = body.subject && body.subject.trim() ? body.subject.trim() : null;
+    }
+    if (body.dueDate !== undefined) {
+      if (body.dueDate !== null && body.dueDate !== '' &&
+          (typeof body.dueDate !== 'string' || !DATE_ONLY.test(body.dueDate) || Number.isNaN(Date.parse(body.dueDate)))) {
+        return res.status(400).json({ error: 'O prazo deve ser uma data no formato AAAA-MM-DD.' });
+      }
+      fields.dueDate = body.dueDate || null;
+    }
+    if (body.classId !== undefined) {
+      const newClassId = body.classId === null || body.classId === '' ? null : Number(body.classId);
+      if (newClassId !== null) {
+        const cls = getClassById(newClassId, req.teacher.id);
+        if (!cls) return res.status(404).json({ error: 'Turma não encontrada.' });
+      }
+      if ((newClassId ?? null) !== (activity.class_id ?? null)) {
+        if (getResponsesByActivity(activity.id).length > 0) {
+          return res.status(409).json({
+            error: 'A turma não pode mudar depois que a atividade recebeu respostas. Use "Reaplicar" para usar a atividade em outra turma.',
+          });
+        }
+        fields.classId = newClassId;
+      }
+    }
+
+    if (Object.keys(fields).length === 0) {
+      return res.status(400).json({ error: 'Envie ao menos um campo para alterar (title, subject, dueDate ou classId).' });
+    }
+    updateActivityDetails(activity.id, fields);
+    res.json({ message: 'Atividade atualizada.', activity: getActivityIfOwned(activity.id, req.teacher.id) });
+  } catch (error) {
+    console.error('Erro ao editar atividade:', error);
+    res.status(500).json({ error: 'Erro interno ao editar a atividade.' });
   }
 });
 

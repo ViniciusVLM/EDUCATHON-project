@@ -370,4 +370,33 @@ describe('rotas de diagnóstico, aprovação em lote e arquivamento', () => {
     const again = await request(app).get(`/api/activities/${id}/insights`).set(auth(token));
     assert.equal(again.body.ai_quality.rated, 2);
   });
+  test('PATCH /activities/:id edita título, disciplina e prazo; turma só sem respostas', async () => {
+    const token = await registerTeacher('diag16@escola.dev');
+    const other = await registerTeacher('diag17@escola.dev');
+    const { id } = await createActivityWithFeedbacks(token, RESPONSES.slice(0, 1));
+
+    const ok = await request(app).patch(`/api/activities/${id}`).set(auth(token))
+      .send({ title: '  Ciclo da água (revisada) ', subject: 'Ciências', dueDate: '2026-12-01' });
+    assert.equal(ok.status, 200, JSON.stringify(ok.body));
+    assert.equal(ok.body.activity.title, 'Ciclo da água (revisada)');
+    assert.equal(ok.body.activity.subject, 'Ciências');
+    assert.equal(ok.body.activity.due_date, '2026-12-01');
+
+    assert.equal((await request(app).patch(`/api/activities/${id}`).set(auth(token)).send({ dueDate: null })).body.activity.due_date, null);
+    assert.equal((await request(app).patch(`/api/activities/${id}`).set(auth(other)).send({ title: 'x' })).status, 404);
+    for (const body of [{}, { title: '' }, { title: 5 }, { dueDate: '01/12/2026' }, { dueDate: '2026-13-45' }, { subject: 9 }]) {
+      assert.equal((await request(app).patch(`/api/activities/${id}`).set(auth(token)).send(body)).status, 400, JSON.stringify(body));
+    }
+
+    const cls = await request(app).post('/api/activities').set(auth(token)).send({ title: 'Nova', question: 'Q?', rubric: 'R.' });
+    // a atividade com respostas não troca de turma
+    const db = getDb();
+    const classId = Number(db.prepare('INSERT INTO classes (teacher_id, name) VALUES ((SELECT teacher_id FROM activities WHERE id = ?), ?)').run(id, 'T1').lastInsertRowid);
+    assert.equal((await request(app).patch(`/api/activities/${id}`).set(auth(token)).send({ classId })).status, 409);
+    // sem respostas, troca
+    const moved = await request(app).patch(`/api/activities/${cls.body.id}`).set(auth(token)).send({ classId });
+    assert.equal(moved.status, 200);
+    assert.equal(moved.body.activity.class_id, classId);
+    assert.equal((await request(app).patch(`/api/activities/${cls.body.id}`).set(auth(token)).send({ classId: 99999 })).status, 404);
+  });
 });

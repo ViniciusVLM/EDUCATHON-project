@@ -755,6 +755,22 @@ export function approveAllFeedbacks(activityId) {
   return result.changes;
 }
 
+/** Atualiza os dados gerais da atividade. Só os campos presentes em `fields` mudam. */
+export function updateActivityDetails(activityId, fields) {
+  const columns = { title: 'title', subject: 'subject', dueDate: 'due_date', classId: 'class_id' };
+  const sets = [];
+  const values = [];
+  for (const [key, column] of Object.entries(columns)) {
+    if (Object.prototype.hasOwnProperty.call(fields, key)) {
+      sets.push(`${column} = ?`);
+      values.push(fields[key]);
+    }
+  }
+  if (sets.length === 0) return null;
+  sets.push("updated_at = datetime('now')");
+  return getDb().prepare(`UPDATE activities SET ${sets.join(', ')} WHERE id = ?`).run(...values, activityId);
+}
+
 /** Arquiva (true) ou reativa (false) uma atividade. Arquivar não apaga nada. */
 export function setActivityArchived(activityId, archived) {
   return getDb()
