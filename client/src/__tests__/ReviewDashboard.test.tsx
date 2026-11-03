@@ -298,9 +298,8 @@ describe('ReviewDashboard — Recursos da Fase 6D', () => {
 
     renderDashboard();
 
-    await waitFor(() => {
-      expect(screen.getAllByText('Beatriz Santos').length).toBeGreaterThan(0);
-    });
+    // Espera o painel do aluno (e o atalho de teclado) estar pronto antes de apertar
+    expect(await screen.findByText('As plantas usam a luz do sol e água para crescer.')).toBeInTheDocument();
 
     // Pressiona Alt+ArrowRight para ir para Carlos Dias
     fireEvent.keyDown(window, { key: 'ArrowRight', altKey: true });
