@@ -36,6 +36,7 @@ vi.mock('../services/api', () => ({
   resetOrgStudentPassword: vi.fn(),
   setOrgStudentDisabled: vi.fn(),
   removeOrgStudentFromClass: vi.fn(),
+  readmitOrgStudent: vi.fn(),
   getStudentMe: vi.fn(),
   getStudentActivities: vi.fn(),
   joinClassWithCode: vi.fn(),
@@ -215,6 +216,23 @@ describe('Administrador geral', () => {
     await waitFor(() => expect(api.setOrgStudentDisabled).toHaveBeenCalledWith(7, true));
     await user.click(screen.getByRole('button', { name: /Tirar Lia Souza da turma ADM T2/i }));
     await waitFor(() => expect(api.removeOrgStudentFromClass).toHaveBeenCalledWith(7, 10));
+  });
+
+  it('lista quem foi tirado de turma e devolve com um clique', async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.getOrganization).mockResolvedValue({
+      ...overview,
+      students: [],
+      removedStudents: [{ id: 8, name: 'Rui Lima', email: 'rui@a.org', class_id: 9, class_name: 'ADM T1', removed_at: '2026-11-03' }],
+    });
+    vi.mocked(api.readmitOrgStudent).mockResolvedValue({ message: 'O aluno voltou para a turma ADM T1.' });
+    render(<MemoryRouter><Institution /></MemoryRouter>);
+    await screen.findByText('Prof. Davi');
+    await user.click(screen.getByRole('tab', { name: /Alunos com conta/i }));
+    expect(screen.getByRole('heading', { name: 'Tirados de turmas' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Devolver Rui Lima à turma ADM T1' }));
+    await waitFor(() => expect(api.readmitOrgStudent).toHaveBeenCalledWith(8, 9));
+    expect(await screen.findByText(/voltou para a turma/)).toBeInTheDocument();
   });
 
   it('mostra as atividades da escola só com o andamento', async () => {

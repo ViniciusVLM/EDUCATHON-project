@@ -367,6 +367,8 @@ export interface OrgOverview {
   teachers: OrgTeacher[];
   classes: OrgClass[];
   students: OrgStudentAccount[];
+  /** Alunos tirados de turmas desta instituição (podem ser devolvidos) */
+  removedStudents?: { id: number; name: string; email: string; class_id: number; class_name: string; removed_at: string }[];
 }
 
 // ── Portal do aluno ──────────────────────────────────────────────────────

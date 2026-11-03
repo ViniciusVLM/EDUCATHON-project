@@ -571,6 +571,11 @@ export async function setOrgStudentDisabled(studentId: number, disabled: boolean
   return request(`/org/students/${studentId}`, { method: 'PATCH', body: JSON.stringify({ disabled }) });
 }
 
+/** Devolve à turma um aluno que a instituição tinha tirado dela (volta com o histórico). */
+export async function readmitOrgStudent(studentId: number, classId: number): Promise<{ message: string }> {
+  return request(`/org/students/${studentId}/classes/${classId}/readmit`, { method: 'POST' });
+}
+
 export async function removeOrgStudentFromClass(studentId: number, classId: number): Promise<{ message: string }> {
   return request(`/org/students/${studentId}/classes/${classId}`, { method: 'DELETE' });
 }

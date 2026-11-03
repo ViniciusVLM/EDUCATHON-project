@@ -166,6 +166,20 @@ export function unlinkStudentFromOrgClass(orgId, accountId, classId) {
   })();
 }
 
+/** Alunos tirados de turmas desta instituição (para o administrador poder devolvê-los). */
+export function listOrgClassRemovals(orgId) {
+  return getDb().prepare(`
+    SELECT r.account_id AS id, sa.name, sa.email, r.class_id, c.name AS class_name, r.removed_at
+    FROM class_removals r
+    JOIN student_accounts sa ON sa.id = r.account_id
+    JOIN classes c ON c.id = r.class_id
+    JOIN teachers t ON t.id = c.teacher_id
+    WHERE t.organization_id = ?
+    ORDER BY r.removed_at DESC, sa.name ASC
+    LIMIT 500
+  `).all(orgId);
+}
+
 export function isRemovedFromClass(classId, accountId) {
   return Boolean(getDb().prepare('SELECT 1 FROM class_removals WHERE class_id = ? AND account_id = ?').get(classId, accountId));
 }

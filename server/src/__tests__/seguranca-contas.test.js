@@ -346,3 +346,32 @@ describe('readmissão pela instituição', () => {
     assert.deepEqual(rowsAfter, [{ id: rowsBefore[0].id, account_id: accountId }], 'mesmo cadastro, sem duplicar');
   });
 });
+
+describe('devolver à turma pelo painel da instituição', () => {
+  test('lista quem foi tirado, devolve pelo botão e não aceita turma de outra escola', async () => {
+    const admin = await register('Admin', 'admin12@escola.dev');
+    await request(app).post('/api/org').set(auth(admin.token)).send({ name: 'Escola D' }).expect(201);
+    const cls = await request(app).post('/api/classes').set(auth(admin.token)).send({ name: '7º D' });
+    const classId = cls.body.class.id;
+    const created = await request(app).post('/api/org/students').set(auth(admin.token)).send({ name: 'Dani', email: 'dani@aluno.org', classId });
+    const login = await request(app).post('/api/student-auth/login').send({ email: 'dani@aluno.org', password: created.body.tempPassword });
+    const accountId = login.body.student.id;
+
+    await request(app).delete(`/api/org/students/${accountId}/classes/${classId}`).set(auth(admin.token)).expect(200);
+    const overview = await request(app).get('/api/org').set(auth(admin.token));
+    assert.deepEqual(overview.body.removedStudents.map((r) => [r.id, r.class_id, r.class_name]), [[accountId, classId, '7º D']]);
+
+    // Outra instituição não consegue devolver
+    const intruso = await register('Intruso', 'admin13@escola.dev');
+    await request(app).post('/api/org').set(auth(intruso.token)).send({ name: 'Escola E' }).expect(201);
+    assert.equal((await request(app).post(`/api/org/students/${accountId}/classes/${classId}/readmit`).set(auth(intruso.token))).status, 404);
+
+    const ok = await request(app).post(`/api/org/students/${accountId}/classes/${classId}/readmit`).set(auth(admin.token));
+    assert.equal(ok.status, 200, JSON.stringify(ok.body));
+    const me = await request(app).get('/api/student/me').set(auth(login.body.token));
+    assert.equal(me.body.classes.length, 1);
+    const after = await request(app).get('/api/org').set(auth(admin.token));
+    assert.deepEqual(after.body.removedStudents, []);
+    assert.equal((await request(app).post(`/api/org/students/${accountId}/classes/${classId}/readmit`).set(auth(admin.token))).status, 404);
+  });
+});
