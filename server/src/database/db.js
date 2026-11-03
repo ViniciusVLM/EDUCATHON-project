@@ -197,6 +197,11 @@ const MIGRATIONS = [
     name: '016_student_accounts_disabled',
     sqls: ['ALTER TABLE student_accounts ADD COLUMN disabled_at TEXT'],
   },
+  // ── Tempo que o professor levou revisando cada feedback (em segundos) ─────
+  {
+    name: '017_feedbacks_review_seconds',
+    sqls: ['ALTER TABLE feedbacks ADD COLUMN review_seconds INTEGER NOT NULL DEFAULT 0'],
+  },
 ];
 
 /**
@@ -580,7 +585,7 @@ export function getResponsesByActivity(activityId) {
     SELECT sr.*, f.id as feedback_id, f.ai_feedback_json, f.ai_feedback_text,
            f.teacher_feedback, f.status, f.generated_at, f.approved_at,
            f.ai_model, f.teacher_rating, f.criteria_scores, f.sent_to_student_at,
-           f.teacher_grade, f.auto_result, f.ai_grade, f.ai_grade_reason
+           f.teacher_grade, f.auto_result, f.ai_grade, f.ai_grade_reason, f.review_seconds
     FROM student_responses sr
     LEFT JOIN feedbacks f ON f.student_response_id = sr.id
     WHERE sr.activity_id = ?
@@ -659,7 +664,11 @@ export function setFeedbackGrade(feedbackId, grade) {
   return db.prepare('UPDATE feedbacks SET teacher_grade = ? WHERE id = ?').run(grade, feedbackId);
 }
 
-export function approveFeedback(feedbackId) {
+/**
+ * Aprova o feedback. reviewSeconds (já validado) soma o tempo que o professor passou
+ * revisando este aluno, para medir o ganho de tempo frente à correção manual.
+ */
+export function approveFeedback(feedbackId, reviewSeconds = 0) {
   const db = getDb();
   // Se o professor não editou, usa o texto da IA como feedback final
   const feedback = db.prepare('SELECT * FROM feedbacks WHERE id = ?').get(feedbackId);
@@ -668,10 +677,36 @@ export function approveFeedback(feedbackId) {
   const finalText = feedback.teacher_feedback || feedback.ai_feedback_text;
   const stmt = db.prepare(`
     UPDATE feedbacks
-    SET teacher_feedback = ?, status = 'aprovado', approved_at = datetime('now')
+    SET teacher_feedback = ?, status = 'aprovado', approved_at = datetime('now'),
+        review_seconds = COALESCE(review_seconds, 0) + ?
     WHERE id = ?
   `);
-  return stmt.run(finalText, feedbackId);
+  return stmt.run(finalText, reviewSeconds, feedbackId);
+}
+
+/**
+ * Aprova de uma vez, numa transação, todos os feedbacks gerados e ainda não aprovados
+ * de uma atividade. Quem chama já conferiu a posse da atividade.
+ * Devolve quantos feedbacks foram aprovados.
+ */
+export function approveAllFeedbacks(activityId) {
+  const db = getDb();
+  const result = db.prepare(`
+    UPDATE feedbacks
+    SET teacher_feedback = COALESCE(NULLIF(teacher_feedback, ''), ai_feedback_text),
+        status = 'aprovado',
+        approved_at = datetime('now')
+    WHERE status != 'aprovado'
+      AND student_response_id IN (SELECT id FROM student_responses WHERE activity_id = ?)
+  `).run(activityId);
+  return result.changes;
+}
+
+/** Arquiva (true) ou reativa (false) uma atividade. Arquivar não apaga nada. */
+export function setActivityArchived(activityId, archived) {
+  return getDb()
+    .prepare("UPDATE activities SET is_archived = ?, updated_at = datetime('now') WHERE id = ?")
+    .run(archived ? 1 : 0, activityId);
 }
 
 export function getFeedback(feedbackId) {

@@ -7,8 +7,10 @@ import {
   getActivityStats,
   getClassById,
   setActivityAiGrade,
+  setActivityArchived,
 } from '../database/db.js';
 import { validateExtraQuestions } from '../services/multiQuestion.js';
+import { buildActivityInsights } from '../services/insights.js';
 
 const router = Router();
 
@@ -176,6 +178,49 @@ router.patch('/:id/ai-grade', (req, res) => {
   } catch (error) {
     console.error('Erro ao alterar nota sugerida:', error);
     res.status(500).json({ error: 'Erro interno ao alterar a configuração.' });
+  }
+});
+
+/**
+ * PATCH /api/activities/:id/archive
+ * Arquiva ou reativa uma atividade. Arquivar só tira a atividade do painel e da lista
+ * principal: respostas, feedbacks e notas continuam guardados. Body: { archived: boolean }
+ */
+router.patch('/:id/archive', (req, res) => {
+  try {
+    const activity = getActivityIfOwned(Number(req.params.id), req.teacher.id);
+    if (!activity) {
+      return res.status(404).json({ error: 'Atividade não encontrada.' });
+    }
+    if (typeof req.body?.archived !== 'boolean') {
+      return res.status(400).json({ error: 'Envie "archived" como true ou false.' });
+    }
+    setActivityArchived(activity.id, req.body.archived);
+    res.json({
+      message: req.body.archived ? 'Atividade arquivada.' : 'Atividade reativada.',
+      archived: req.body.archived,
+    });
+  } catch (error) {
+    console.error('Erro ao arquivar atividade:', error);
+    res.status(500).json({ error: 'Erro interno ao arquivar a atividade.' });
+  }
+});
+
+/**
+ * GET /api/activities/:id/insights
+ * Diagnóstico da turma: critérios mais e menos atendidos, distribuição das notas do
+ * professor, alunos que pedem atenção e tempo de revisão. Só o professor dono vê.
+ */
+router.get('/:id/insights', (req, res) => {
+  try {
+    const activity = getActivityIfOwned(Number(req.params.id), req.teacher.id);
+    if (!activity) {
+      return res.status(404).json({ error: 'Atividade não encontrada.' });
+    }
+    res.json(buildActivityInsights(activity, getResponsesByActivity(activity.id)));
+  } catch (error) {
+    console.error('Erro ao montar o diagnóstico da turma:', error);
+    res.status(500).json({ error: 'Erro interno ao montar o diagnóstico.' });
   }
 });
 

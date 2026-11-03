@@ -5,7 +5,9 @@ import {
   getFeedbackIfOwned,
   updateFeedback,
   approveFeedback,
+  approveAllFeedbacks,
   deleteFeedbackByResponseId,
+  getDb,
   getExportData,
   setFeedbackGrade,
 } from '../database/db.js';
@@ -14,6 +16,7 @@ import { aiGenerateLimiter } from '../middleware/rateLimit.js';
 import { reserveQuota, recordUsage, resolveGeminiKey, QuotaError } from '../services/plans.js';
 import { countAiNeeded } from '../services/objective.js';
 import { isDailyQuotaError, DAILY_QUOTA_MESSAGE } from '../services/gemini.js';
+import { parseReviewSeconds } from '../services/insights.js';
 
 const router = Router();
 
@@ -195,6 +198,7 @@ router.patch('/feedback/:feedbackId', (req, res) => {
 /**
  * POST /api/feedback/:feedbackId/approve
  * Marca o feedback como aprovado pelo professor.
+ * Body opcional: { reviewSeconds } — tempo que o professor passou revisando este aluno.
  */
 router.post('/feedback/:feedbackId/approve', (req, res) => {
   try {
@@ -206,7 +210,7 @@ router.post('/feedback/:feedbackId/approve', (req, res) => {
       return res.status(404).json({ error: 'Feedback não encontrado.' });
     }
 
-    approveFeedback(feedbackId);
+    approveFeedback(feedbackId, parseReviewSeconds(req.body?.reviewSeconds));
 
     res.json({
       message: 'Feedback aprovado com sucesso!',
@@ -215,6 +219,35 @@ router.post('/feedback/:feedbackId/approve', (req, res) => {
   } catch (error) {
     console.error('Erro ao aprovar feedback:', error);
     res.status(500).json({ error: 'Erro interno ao aprovar feedback.' });
+  }
+});
+
+/**
+ * POST /api/activities/:id/approve-all
+ * Aprova de uma vez todos os feedbacks gerados e ainda não aprovados da atividade.
+ * Roda numa transação: ou aprova todos, ou nenhum. A nota sugerida pela IA nunca vira
+ * nota oficial aqui; só vale a nota que o professor lançou.
+ */
+router.post('/activities/:id/approve-all', (req, res) => {
+  try {
+    const activity = getActivityIfOwned(Number(req.params.id), req.teacher.id);
+    if (!activity) {
+      return res.status(404).json({ error: 'Atividade não encontrada.' });
+    }
+    const progress = getProgress(activity.id);
+    if (progress && progress.status === 'processing') {
+      return res.status(409).json({ error: 'Espere a geração dos feedbacks terminar antes de aprovar em lote.' });
+    }
+    const approved = approveAllFeedbacks(activity.id);
+    res.json({
+      message: approved > 0
+        ? `${approved} feedback(s) aprovado(s).`
+        : 'Não havia feedbacks pendentes para aprovar.',
+      approved,
+    });
+  } catch (error) {
+    console.error('Erro ao aprovar em lote:', error);
+    res.status(500).json({ error: 'Erro interno ao aprovar os feedbacks.' });
   }
 });
 
@@ -234,8 +267,7 @@ router.post('/feedback/:feedbackId/regenerate', aiGenerateLimiter, async (req, r
     }
 
     // Busca a atividade associada (teacher_id já validado acima)
-    const db = (await import('../database/db.js'));
-    const response = db.getDb().prepare(`
+    const response = getDb().prepare(`
       SELECT sr.*, a.id AS activity_id, a.question, a.rubric, a.education_level, a.subject, a.rubric_criteria,
              a.question_type, a.options, a.correct_option, a.questions, a.ai_grade_enabled
       FROM student_responses sr
