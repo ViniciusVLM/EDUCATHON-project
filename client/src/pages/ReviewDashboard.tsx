@@ -36,6 +36,9 @@ import {
   IconSparkles,
 } from '../components/ui/Icons';
 
+/** Depois de 2 minutos sem nenhuma interação, o tempo de revisão para de contar. */
+const REVIEW_IDLE_MS = 2 * 60 * 1000;
+
 export default function ReviewDashboard() {
   const { activityId } = useParams<{ activityId: string }>();
   const navigate = useNavigate();
@@ -140,6 +143,8 @@ export default function ReviewDashboard() {
   const selectedStatus = selected?.status ?? null;
   useEffect(() => {
     pauseReviewClock();
+    pausedByIdle.current = null;
+    lastActivityAt.current = Date.now();
     const isVisible = typeof document === 'undefined' || document.visibilityState !== 'hidden';
     if (selectedFeedbackId && selectedStatus !== 'aprovado' && isVisible) {
       reviewStart.current = { id: selectedFeedbackId, at: Date.now() };
@@ -157,6 +162,39 @@ export default function ReviewDashboard() {
       pauseReviewClock();
     };
   }, [selectedFeedbackId, selectedStatus, pauseReviewClock]);
+
+  // Pausa por inatividade: se o professor ficar mais de 2 min sem mexer na tela (saiu para o
+  // café com a aba aberta), conta só até 2 min depois da última interação e volta a contar
+  // quando ele mexer de novo. Assim o tempo medido é tempo de revisão de verdade.
+  const lastActivityAt = useRef(Date.now());
+  const pausedByIdle = useRef<number | null>(null);
+  useEffect(() => {
+    function onActivity() {
+      lastActivityAt.current = Date.now();
+      const id = pausedByIdle.current;
+      if (id !== null && !reviewStart.current && document.visibilityState !== 'hidden') {
+        reviewStart.current = { id, at: Date.now() };
+      }
+      pausedByIdle.current = null;
+    }
+    const events = ['pointerdown', 'pointermove', 'keydown', 'wheel', 'scroll', 'touchstart'] as const;
+    events.forEach((ev) => window.addEventListener(ev, onActivity, { passive: true }));
+    const timer = window.setInterval(() => {
+      const current = reviewStart.current;
+      if (!current) return;
+      const idleEnd = lastActivityAt.current + REVIEW_IDLE_MS;
+      if (Date.now() > idleEnd) {
+        const elapsed = Math.max(0, idleEnd - current.at);
+        reviewMs.current.set(current.id, (reviewMs.current.get(current.id) || 0) + elapsed);
+        reviewStart.current = null;
+        pausedByIdle.current = current.id;
+      }
+    }, 15_000);
+    return () => {
+      events.forEach((ev) => window.removeEventListener(ev, onActivity));
+      window.clearInterval(timer);
+    };
+  }, []);
 
   /** Segundos de revisão acumulados para o feedback (sem zerar: só zera se a aprovação der certo). */
   function peekReviewSeconds(feedbackId: number): number {

@@ -561,4 +561,28 @@ describe('ReviewDashboard — aba "A revisar" e tempo de revisão', () => {
     await waitFor(() => expect(mockUpdateFeedback).toHaveBeenLastCalledWith(201, { teacherRating: null }));
     expect(screen.getByRole('button', { name: 'Ajudou' })).toHaveAttribute('aria-pressed', 'false');
   });
+  it('para de contar o tempo depois de 2 min sem interação e volta quando o professor mexe', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    let now = 5_000_000;
+    const nowSpy = vi.spyOn(Date, 'now').mockImplementation(() => now);
+    mockGetActivity.mockResolvedValue(sampleActivity);
+    renderDashboard();
+    await screen.findByText('As plantas usam a luz do sol e água para crescer.');
+
+    // 30 s revisando, depois 10 min parado com a aba aberta
+    now += 30_000;
+    fireEvent.pointerMove(window);
+    now += 10 * 60_000;
+    vi.advanceTimersByTime(15_000);
+
+    // Volta, mexe e revisa mais 20 s antes de aprovar
+    fireEvent.pointerMove(window);
+    now += 20_000;
+    fireEvent.click(screen.getByRole('button', { name: /Aprovar$/i }));
+
+    // 30 s + 2 min (tolerância) + 20 s = 170 s, e não os 10 min parados
+    await waitFor(() => expect(mockApproveFeedback).toHaveBeenCalledWith(201, 170));
+    nowSpy.mockRestore();
+    vi.useRealTimers();
+  });
 });
